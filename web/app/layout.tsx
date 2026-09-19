@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Google_Sans_Flex, JetBrains_Mono } from "next/font/google";
+import { ThemeSync } from "@/components/theme-sync";
 import "./globals.css";
 
 const googleSansFlex = Google_Sans_Flex({
@@ -28,7 +29,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${googleSansFlex.variable} ${jetbrainsMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col"><ThemeSync />{children}</body>
     </html>
   );
 }

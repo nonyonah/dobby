@@ -59,7 +59,7 @@ export function InsightColumn({
 
   return (
     <section aria-label={title}>
-      <h2 className="m-0 text-[13px] font-semibold text-[#1c1d20] dark:text-[#eceef0]">{title}</h2>
+      <h2 className="m-0 text-[13px] font-semibold text-foreground">{title}</h2>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
           {formatUSD(headline)}
@@ -83,7 +83,7 @@ export function InsightColumn({
           <YAxis hide domain={["auto", "auto"]} />
           <ChartTooltip
             cursor={{ stroke: color, strokeOpacity: 0.35, strokeDasharray: "3 3" }}
-            content={<ChartTooltipContent className="bg-white dark:bg-[#1a1a1d]" formatter={(v) => formatUSD(Number(v))} />}
+            content={<ChartTooltipContent className="bg-card" formatter={(v) => formatUSD(Number(v))} />}
           />
           <ReferenceArea
             x1={MONTH_LABELS[range.start]}
@@ -92,7 +92,7 @@ export function InsightColumn({
             fillOpacity={0.08}
             stroke="none"
           />
-          <Line dataKey="value" type="monotone" stroke={color} strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: color, stroke: "#fff", strokeWidth: 2 }} />
+          <Line dataKey="value" type="monotone" stroke={color} strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: color, stroke: "var(--card)", strokeWidth: 2 }} />
         </LineChart>
       </ChartContainer>
 
@@ -101,7 +101,7 @@ export function InsightColumn({
           {rows.map((r) => {
             const pct = total > 0 ? (r.amount / total) * 100 : 0;
             return (
-              <tr key={r.id} className="border-b border-[#f1efeb] dark:border-[#26262a] last:border-b-0">
+              <tr key={r.id} className="border-b border-line last:border-b-0">
                 <td className="py-1.5 pr-2">
                   <span className="flex items-center gap-1.5">
                     {r.dot ? (
@@ -112,7 +112,7 @@ export function InsightColumn({
                 </td>
                 <td className="py-1.5 pr-2 whitespace-nowrap">
                   <span className="flex items-center gap-1.5">
-                    <span className="mono text-[12px] text-[#8a8b91] dark:text-[#a2a3a8] tabular-nums">{pct.toFixed(0)}%</span>
+                    <span className="mono text-[12px] text-muted-foreground tabular-nums">{pct.toFixed(0)}%</span>
                     <span className="w-16">
                       <Meter value={pct} tone="accent" />
                     </span>

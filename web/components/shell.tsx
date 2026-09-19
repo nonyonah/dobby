@@ -17,7 +17,7 @@ const SIDEBAR_KEY = "rift-sidebar-collapsed";
 
 interface ShellProps {
   title: string;
-  active: "dashboard" | "transactions" | "insights" | "budget";
+  active: "dashboard" | "transactions" | "insights" | "budget" | "goals" | "settings";
   children: ReactNode;
 }
 
@@ -32,6 +32,8 @@ export function Shell({ title, active, children }: ShellProps) {
 
   useEffect(() => {
     try {
+      // Read persisted UI preference after hydration to avoid server/client markup drift.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (window.localStorage.getItem(SIDEBAR_KEY) === "1") setCollapsed(true);
     } catch {
       // storage unavailable — sidebar stays open
@@ -60,12 +62,12 @@ export function Shell({ title, active, children }: ShellProps) {
       open={!collapsed}
       onOpenChange={handleOpenChange}
       style={{ "--sidebar-width": "248px" } as CSSProperties}
-      className="min-h-screen bg-[#F9FAFB] dark:bg-[#09090A]"
+      className="min-h-screen bg-background"
     >
       <AppSidebar active={active} peek={peek} onPeekChange={setPeek} />
 
       <div className={`min-w-0 flex-1 ${collapsed ? "p-2" : "py-2 pr-2 pl-0 md:pl-1"}`}>
-        <main className="min-h-[calc(100vh-16px)] rounded-[12px] border border-[#e0ddd7] dark:border-transparent bg-white dark:bg-[#121213] shadow-[0_8px_24px_rgba(23,24,28,0.08),0_2px_6px_rgba(23,24,28,0.06)]">
+        <main className="min-h-[calc(100vh-16px)] rounded-xl border border-line bg-background shadow-none">
           <TopBar title={title} />
           {children}
         </main>
@@ -78,7 +80,7 @@ export function Shell({ title, active, children }: ShellProps) {
               type="button"
               aria-label="Contact support"
               title="Contact support"
-              className="fixed right-4 bottom-4 z-40 flex size-10 cursor-pointer items-center justify-center rounded-full border border-[#e0ddd7] dark:border-[#2d2d31] bg-white dark:bg-[#1a1a1d] text-[#55565c] dark:text-[#a2a3a8] shadow-[0_8px_24px_rgba(23,24,28,0.16)] transition-colors outline-none hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-[#4a55c9] focus-visible:outline-offset-2"
+              className="fixed right-4 bottom-4 z-40 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line dark:border-border bg-card text-sidebar-foreground shadow-[0_8px_24px_rgb(23_24_28/0.16)] transition-colors outline-none hover:bg-secondary dark:hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
             >
               <QuestionIcon />
             </button>

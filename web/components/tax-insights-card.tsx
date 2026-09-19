@@ -15,12 +15,12 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
         <div className="flex flex-col items-center px-4 py-4 text-center">
           <span
             aria-hidden="true"
-            className="flex size-12 items-center justify-center rounded-full border border-[#cfe3d5] bg-[#e4efe7]"
+            className="flex size-12 items-center justify-center rounded-full border border-success/40 bg-success-soft"
           >
-            <CheckCircleIcon className="text-[#22C55E]" />
+            <CheckCircleIcon className="text-success-vivid" />
           </span>
-          <p className="mt-3 mb-0 text-[13px] font-semibold text-[#1c1d20] dark:text-[#eceef0]">Nil return</p>
-          <p className="mt-1 mb-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
+          <p className="mt-3 mb-0 text-[13px] font-semibold text-foreground">Nil return</p>
+          <p className="mt-1 mb-0 text-[12px] text-muted-foreground">
             Nothing owed — you&apos;re all clear for the year
           </p>
         </div>
@@ -30,8 +30,8 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
             {formatUSD(owed)}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Estimated owed</p>
-            <span className="rounded-full border border-[#FDE68A] bg-[#FEF3C7] px-2 py-0.5 text-[12px] font-semibold text-[#B45309] dark:border-[#B45309] dark:bg-[#451a03] dark:text-[#fcd34d]">
+            <p className="m-0 text-[12px] text-muted-foreground">Estimated owed</p>
+            <span className="rounded-full border border-warning/40 bg-warning-soft px-2 py-0.5 text-[12px] font-semibold text-warning-soft-foreground">
               {TAX_DUE.sub}
             </span>
           </div>
@@ -47,7 +47,7 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
         </>
       )}
 
-      <div className="my-3 border-t border-[#f1efeb] dark:border-[#26262a]" />
+      <div className="my-3 border-t border-soft-line" />
 
       <div className="flex items-baseline gap-2">
         <p className="mono m-0 text-[16px] font-semibold tracking-[-0.02em] tabular-nums">
@@ -61,24 +61,24 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
         {TAX_DOCS.map((d) => (
           <li
             key={d.id}
-            className="flex items-center gap-2 border-b border-[#f1efeb] dark:border-[#26262a] py-1.5 text-[13px] last:border-b-0"
+            className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0"
           >
             {d.done ? (
-              <CheckIcon className="shrink-0 text-[#35754e] dark:text-[#4cc38a]" />
+              <CheckIcon className="shrink-0 text-success" />
             ) : (
               <span
                 aria-hidden="true"
-                className="size-3.5 shrink-0 rounded-full border border-[#d8d6d0] dark:border-[#2d2d31]"
+                className="size-3.5 shrink-0 rounded-full border border-line"
               />
             )}
-            <span className={`min-w-0 flex-1 truncate ${d.done ? "text-[#1c1d20] dark:text-[#eceef0]" : "text-[#8a8b91] dark:text-[#a2a3a8]"}`}>
+            <span className={`min-w-0 flex-1 truncate ${d.done ? "text-foreground" : "text-muted-foreground"}`}>
               {d.label}
             </span>
           </li>
         ))}
       </ul>
 
-      <p className="m-0 mt-3 text-[12px] leading-relaxed text-[#8a8b91] dark:text-[#a2a3a8]">
+      <p className="m-0 mt-3 text-[12px] leading-relaxed text-muted-foreground">
         Advisory only — Dobby doesn&apos;t prepare or file returns.
       </p>
     </ModuleCard>

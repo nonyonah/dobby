@@ -1,0 +1,53 @@
+import type { TxFull } from "./transactions";
+
+/** Frontend-only inbox items awaiting a bookkeeping decision. */
+export const REVIEW_QUEUE: TxFull[] = [
+  {
+    id: "review-01",
+    name: "Figma Pro",
+    account: "Amex ··1005",
+    date: "2026-09-18",
+    amount: -15,
+    category: "other",
+    taxable: true,
+    source: "card",
+    parse: { state: "review", confidence: 86 },
+    note: "AI suggests software expense",
+  },
+  {
+    id: "review-02",
+    name: "Delta Air Lines",
+    account: "Amex ··1005",
+    date: "2026-09-18",
+    amount: -482.2,
+    category: "transport",
+    taxable: true,
+    source: "email",
+    parse: { state: "review", confidence: 79 },
+    note: "AI suggests business travel",
+  },
+  {
+    id: "review-03",
+    name: "Notion Labs",
+    account: "Mercury ··4821",
+    date: "2026-09-17",
+    amount: -10,
+    category: "education",
+    taxable: true,
+    source: "wallet",
+    parse: { state: "review", confidence: 91 },
+    note: "AI suggests productivity software",
+  },
+  {
+    id: "review-04",
+    name: "Client reimbursement",
+    account: "Cash",
+    date: "2026-09-17",
+    amount: 125,
+    category: "income",
+    taxable: false,
+    source: "manual",
+    parse: { state: "review", confidence: 73 },
+    note: "AI suggests reimbursement",
+  },
+];

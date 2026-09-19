@@ -142,7 +142,7 @@ export function BudgetDrawer({ catId, budgets, onEdit, onToggleExclude, onDelete
         </BarChart>
       </ChartContainer>
 
-      <div className="mt-2 grid grid-cols-2 gap-3 border-y border-[#f1efeb] dark:border-[#26262a] py-2.5">
+      <div className="mt-2 grid grid-cols-2 gap-3 border-y border-soft-line py-2.5">
         <div>
           <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Spent per year</p>
           <p className="mono m-0 text-[13px] font-semibold tabular-nums">{formatUSD(year)}</p>
@@ -157,7 +157,7 @@ export function BudgetDrawer({ catId, budgets, onEdit, onToggleExclude, onDelete
       <ul className="m-0 list-none p-0">
         {(Object.keys(feeds) as FeedKey[]).map((k) => {
           return (
-            <li key={k} className="flex items-center gap-2 border-b border-[#f1efeb] dark:border-[#26262a] py-1.5 text-[13px] last:border-b-0">
+            <li key={k} className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0">
               <span className="flex size-7 items-center justify-center overflow-hidden rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]">
                 {k === "gmail" ? (
                   <img src={GMAIL_LOGO} alt="" width={16} height={16} className="size-4" />
@@ -184,7 +184,7 @@ export function BudgetDrawer({ catId, budgets, onEdit, onToggleExclude, onDelete
             <p className="m-0 mt-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">{g.day}</p>
             <ul className="m-0 list-none p-0">
               {g.items.map((t) => (
-                <li key={t.id} className="flex items-center gap-2 border-b border-[#f1efeb] dark:border-[#26262a] py-1.5 text-[13px] last:border-b-0">
+                <li key={t.id} className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0">
                   <span className="min-w-0 flex-1 truncate font-medium">{t.name}</span>
                   <span className="mono shrink-0 tabular-nums">{formatUSD(Math.abs(t.amount))}</span>
                 </li>

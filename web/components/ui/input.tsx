@@ -1,19 +1,21 @@
-import * as React from "react"
-import { Input as InputPrimitive } from "@base-ui/react/input"
-import { cn } from "cn"
+import * as React from "react";
+import { Input as HeroInput } from "@heroui/react";
+import { cn } from "cn";
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+function Input({ className, type, onChange, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <InputPrimitive
+    <HeroInput
       type={type}
+      variant="primary"
       data-slot="input"
       className={cn(
-        "h-7 w-full min-w-0 rounded-md border border-input bg-input/20 px-2 py-0.5 text-sm transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-xs/relaxed file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 md:text-xs/relaxed dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        "h-8 w-full min-w-0 rounded-md border border-input bg-card px-2.5 py-0.5 text-[13px] outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive",
         className
       )}
-      {...props}
+      onChange={onChange as React.ComponentProps<typeof HeroInput>["onChange"]}
+      {...(props as React.ComponentProps<typeof HeroInput>)}
     />
-  )
+  );
 }
 
-export { Input }
+export { Input };

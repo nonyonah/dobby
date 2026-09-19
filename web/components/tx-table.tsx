@@ -8,14 +8,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "./ui/popover";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table";
+import { Table as HeroTable } from "@heroui/react";
 import { Button } from "./ui/button";
 import { ConfirmButton } from "./confirm-button";
 import {
@@ -47,6 +40,7 @@ import {
   type TxFull,
 } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
+import { detectRecurringTransactions, MOCK_RECURRING_HISTORY } from "@/lib/recurring";
 import { CardIcon, EmailIcon, ManualIcon, WalletIcon } from "./icons";
 
 const PAGE_SIZE = 12;
@@ -178,6 +172,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
   const [tax, setTax] = useState<TaxFilter>("all");
   const [source, setSource] = useState<SourceFilter>("all");
   const [dateRange, setDateRange] = useState<DateFilter>("all");
+  const [recurringOnly, setRecurringOnly] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
@@ -185,10 +180,15 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
   const [menu, setMenu] = useState<MenuDim>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const reduce = useReducedMotion() ?? false;
+  const recurringPatterns = useMemo(() => detectRecurringTransactions([...MOCK_RECURRING_HISTORY, ...rows]), [rows]);
+  const recurringByTransactionId = useMemo(
+    () => new Map(recurringPatterns.flatMap((pattern) => pattern.transactions.map((transaction) => [transaction.id, pattern] as const))),
+    [recurringPatterns]
+  );
 
   useEffect(() => {
     setPage(1);
-  }, [query, categories, tax, source, dateRange]);
+  }, [query, categories, tax, source, dateRange, recurringOnly]);
 
   // Prune selections for rows that no longer exist (e.g. after delete).
   useEffect(() => {
@@ -208,6 +208,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
       if (tax === "taxable" && !t.taxable) return false;
       if (tax === "nontaxable" && t.taxable) return false;
       if (source !== "all" && t.source !== source) return false;
+      if (recurringOnly && !recurringByTransactionId.has(t.id)) return false;
       if (cut && t.date < cut) return false;
       return true;
     });
@@ -217,7 +218,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
       if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
       return (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) * dir;
     });
-  }, [rows, query, categories, tax, source, dateRange, sortKey, sortDir]);
+  }, [rows, query, categories, tax, source, dateRange, recurringOnly, recurringByTransactionId, sortKey, sortDir]);
 
   const totals = useMemo(() => {
     let spent = 0;
@@ -242,6 +243,8 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     pills.push({ key: "src", label: SOURCE_LABEL[source], clear: () => setSource("all") });
   if (dateRange !== "all")
     pills.push({ key: "date", label: DATE_LABEL[dateRange], clear: () => setDateRange("all") });
+  if (recurringOnly)
+    pills.push({ key: "recurring", label: "Recurring", clear: () => setRecurringOnly(false) });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -267,6 +270,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     setTax("all");
     setSource("all");
     setDateRange("all");
+    setRecurringOnly(false);
     setMenu(null);
   };
 
@@ -292,8 +296,6 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
 
   const from = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
   const to = Math.min(safePage * PAGE_SIZE, filtered.length);
-  let lastDay = "";
-
   return (
     <div>
       {/* Search with filters inside */}
@@ -334,6 +336,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   <p className="m-0 px-2 pt-1 pb-0.5 text-[12px] font-semibold text-[#8a8b91] dark:text-[#a2a3a8]">Filter by</p>
                   <MenuRow icon={TagIcon} label="Category" value={categories.length === 1 ? categoryMeta(categories[0]).label : categories.length > 1 ? `${categories.length} selected` : undefined} onClick={() => setMenu("category")} />
                   <MenuRow icon={CalendarIcon} label="Date" value={dateRange !== "all" ? DATE_LABEL[dateRange] : undefined} onClick={() => setMenu("date")} />
+                  <MenuRow icon={CalendarIcon} label="Recurring" value={recurringOnly ? "Detected" : undefined} onClick={() => setRecurringOnly((current) => !current)} />
                   <MenuRow icon={ReceiptIcon} label="Tax status" value={tax !== "all" ? (tax === "taxable" ? "Taxable" : "Non-taxable") : undefined} onClick={() => setMenu("tax")} />
                   <MenuRow icon={UploadIcon} label="Source" value={source !== "all" ? SOURCE_LABEL[source] : undefined} onClick={() => setMenu("source")} />
                   <div className="my-1 border-t border-[#f1efeb] dark:border-[#26262a]" />
@@ -448,132 +451,57 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
 
       {/* Table */}
       <div className="mt-3">
-        <Table className="text-[13px]">
-          <TableHeader>
-            <TableRow className="border-b border-[#e0ddd7] dark:border-[#2d2d31] bg-[#F9F9FA] dark:bg-[#1c1c1f] hover:bg-[#F9F9FA] dark:hover:bg-[#1c1c1f]">
-              <TableHead className="h-auto w-10 px-3 py-2" scope="col">
-                <input
-                  type="checkbox"
-                  checked={allChecked}
-                  onChange={toggleAll}
-                  aria-label="Select all transactions on this page"
-                  className="block size-4 accent-[#4a55c9]"
-                />
-              </TableHead>
-              <TableHead className="h-auto px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]" scope="col" aria-sort={sortKey === "name" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
-                <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">
-                  Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} />
-                </button>
-              </TableHead>
-              <TableHead className="h-auto px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]" scope="col">Category</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]" scope="col">Tax</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]" scope="col">Source</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]" scope="col">Parsing</TableHead>
-              <TableHead className="h-auto px-3 py-2 text-right text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]" scope="col" aria-sort={sortKey === "amount" ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
-                <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">
-                  Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} />
-                </button>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {slice.map((t) => {
+        <HeroTable variant="primary" className="text-[13px]">
+          <HeroTable.ScrollContainer>
+            <HeroTable.Content aria-label="Ledger transactions">
+          <HeroTable.Header>
+            <HeroTable.Column className="w-10 px-3 py-2">
+              <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all transactions on this page" className="block size-4 accent-[#4a55c9]" />
+            </HeroTable.Column>
+            <HeroTable.Column id="name" allowsSorting className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
+              <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} /></button>
+            </HeroTable.Column>
+            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Category</HeroTable.Column>
+            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Tax</HeroTable.Column>
+            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Source</HeroTable.Column>
+            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Parsing</HeroTable.Column>
+            <HeroTable.Column id="amount" allowsSorting className="px-3 py-2 text-right text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
+              <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} /></button>
+            </HeroTable.Column>
+          </HeroTable.Header>
+          <HeroTable.Body>
+            {slice.map((t, index) => {
               const meta = categoryMeta(t.category);
               const SIcon = SOURCE_ICON[t.source];
               const income = t.amount >= 0;
               const selected = t.id === selectedId;
               const day = dayLabel(t.date);
-              const showDay = sortKey === "date" && day !== lastDay;
-              lastDay = day;
+              const previousDay = index > 0 ? dayLabel(slice[index - 1].date) : null;
+              const showDay = sortKey === "date" && day !== previousDay;
               return (
                 <Fragment key={t.id}>
                   {showDay ? (
-                    <TableRow className="border-b border-[#e0ddd7] dark:border-[#2d2d31] bg-[#F9F9FA] dark:bg-[#1c1c1f] hover:bg-[#F9F9FA] dark:hover:bg-[#1c1c1f]">
-                      <TableCell colSpan={7} className="px-3 py-1.5 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
-                        {day}
-                      </TableCell>
-                    </TableRow>
+                    <HeroTable.Row id={`${t.id}-date`} className="border-b border-line bg-background hover:bg-background">
+                      <HeroTable.Cell colSpan={7} className="px-3 py-1.5 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">{day}</HeroTable.Cell>
+                    </HeroTable.Row>
                   ) : null}
-                  <TableRow
-                    onClick={() => onSelect(t.id)}
-                    onDoubleClick={() => onEdit(t.id)}
-                    className={`cursor-pointer border-b border-[#f1efeb] dark:border-[#26262a] hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] ${
-                      selected ? "bg-[#eceefb]/60 dark:bg-[#23264a]/60 hover:bg-[#eceefb] dark:hover:bg-[#23264a]" : ""
-                    }`}
-                  >
-                    <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={checked.has(t.id)}
-                        onChange={() => toggleCheck(t.id)}
-                        aria-label={`Select row: ${t.name}`}
-                        className="block size-4 accent-[#4a55c9]"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-56 px-3 py-2.5">
-                      <span className="block truncate font-medium text-[#1c1d20] dark:text-[#eceef0]">{t.name}</span>
-                      <span className="block truncate text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
-                        {t.account} · {t.date.slice(5).replace("-", "/")}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-3 py-2.5">
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase ${meta.pill}`}>
-                        <span aria-hidden="true" className="text-[11px]">{meta.emoji}</span>
-                        {meta.label}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-3 py-2.5">
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium whitespace-nowrap ${
-                          t.taxable
-                            ? "border-[#d5dcf5] bg-[#eceefb] text-[#3a44a8]"
-                            : "border-[#e0ddd7] dark:border-[#2d2d31] bg-[#f1efeb] dark:bg-[#26262a] text-[#8a8b91] dark:text-[#a2a3a8]"
-                        }`}
-                      >
-                        {t.taxable ? "Taxable" : "Non-tax"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-3 py-2.5">
-                      <span
-                        title={SOURCE_LABEL[t.source]}
-                        aria-label={SOURCE_LABEL[t.source]}
-                        className="flex size-7 items-center justify-center rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]"
-                      >
-                        <SIcon />
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-3 py-2.5 text-[12px] whitespace-nowrap">
-                      {t.parse.state === "parsed" ? (
-                        <span className="inline-flex items-center gap-1.5 text-[#35754e] dark:text-[#4cc38a]">
-                          <span aria-hidden="true" className="size-1.5 rounded-full bg-[#22C55E]" />
-                          Parsed {t.parse.confidence}%
-                        </span>
-                      ) : t.parse.state === "review" ? (
-                        <span className="inline-flex items-center gap-1.5 text-[#ad7f22] dark:text-[#d9a441]">
-                          <span aria-hidden="true" className="size-1.5 rounded-full bg-[#ad7f22]" />
-                          Needs review
-                        </span>
-                      ) : (
-                        <span className="text-[#8a8b91] dark:text-[#a2a3a8]">Manual</span>
-                      )}
-                    </TableCell>
-                    <TableCell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-[#35754e] dark:text-[#4cc38a]" : "text-[#1c1d20] dark:text-[#eceef0]"}`}>
-                      {income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}
-                    </TableCell>
-                  </TableRow>
+                  <HeroTable.Row id={t.id} onClick={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-[#f1efeb] dark:border-[#26262a] hover:bg-secondary ${selected ? "bg-[#eceefb]/60 dark:bg-[#23264a]/60 hover:bg-[#eceefb] dark:hover:bg-[#23264a]" : ""}`}>
+                    <HeroTable.Cell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-[#4a55c9]" /></HeroTable.Cell>
+                    <HeroTable.Cell className="max-w-56 px-3 py-2.5"><span className="block truncate font-medium text-[#1c1d20] dark:text-[#eceef0]">{t.name}</span><span className="block truncate text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-[#4a55c9] dark:text-[#9aa1f0]">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase ${meta.pill}`}><span aria-hidden="true" className="text-[11px]">{meta.emoji}</span>{meta.label}</span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium whitespace-nowrap ${t.taxable ? "border-[#d5dcf5] bg-[#eceefb] text-[#3a44a8]" : "border-line bg-[#f1efeb] dark:bg-[#26262a] text-[#8a8b91] dark:text-[#a2a3a8]"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]"><SIcon /></span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5 text-[12px] whitespace-nowrap">{t.parse.state === "parsed" ? <span className="inline-flex items-center gap-1.5 text-[#35754e] dark:text-[#4cc38a]"><span aria-hidden="true" className="size-1.5 rounded-full bg-[#22C55E]" />Parsed {t.parse.confidence}%</span> : t.parse.state === "review" ? <span className="inline-flex items-center gap-1.5 text-[#ad7f22] dark:text-[#d9a441]"><span aria-hidden="true" className="size-1.5 rounded-full bg-[#ad7f22]" />Needs review</span> : <span className="text-[#8a8b91] dark:text-[#a2a3a8]">Manual</span>}</HeroTable.Cell>
+                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-[#35754e] dark:text-[#4cc38a]" : "text-[#1c1d20] dark:text-[#eceef0]"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
+                  </HeroTable.Row>
                 </Fragment>
               );
             })}
-            {slice.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="px-3 py-10 text-center">
-                  <p className="m-0 text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">No transactions match</p>
-                  <p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Try widening the search or clearing a filter</p>
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
+            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={7} className="px-3 py-10 text-center"><p className="m-0 text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">No transactions match</p><p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Try widening the search or clearing a filter</p></HeroTable.Cell></HeroTable.Row> : null}
+          </HeroTable.Body>
+            </HeroTable.Content>
+          </HeroTable.ScrollContainer>
+        </HeroTable>
       </div>
 
       {/* Pagination */}

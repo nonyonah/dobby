@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PlusIcon } from "@/components/icons";
+
 import { INITIAL_BUDGETS, type BudgetDef } from "@/lib/budgets";
 
 export default function BudgetPage() {
@@ -33,6 +34,7 @@ function BudgetInner() {
   const isMobile = useIsMobile();
   const params = useSearchParams();
   const router = useRouter();
+
 
   useEffect(() => {
     if (params.get("create") === "1") {
@@ -71,12 +73,14 @@ function BudgetInner() {
   return (
     <>
       <div className="w-full px-6 pt-6 pb-10">
-        <div className="mb-4 flex items-center justify-end">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <span className="text-[12px] text-muted-foreground">September 2026</span>
           <Button variant="primary" onClick={() => setDialog({ mode: "create" })}>
             <PlusIcon />
             Create budget
           </Button>
         </div>
+
         <BudgetBoard budgets={budgets} selectedId={selectedId} onSelect={openDetail} />
       </div>
       <Drawer
@@ -92,7 +96,7 @@ function BudgetInner() {
               Budget, tracked sources and transactions for the selected category.
             </DrawerDescription>
           </DrawerHeader>
-          <div className="flex-1 overflow-y-auto px-6 pt-2 pb-6">
+          <div className="scrollbar-hide flex-1 overflow-y-auto px-6 pt-2 pb-6">
             {selectedId ? (
               <BudgetDrawer
                 catId={selectedId}
@@ -106,6 +110,7 @@ function BudgetInner() {
         </DrawerContent>
       </Drawer>
       <BudgetDialog
+        key={dialog?.mode === "edit" ? `edit-${dialog.catId}` : dialog?.mode ?? "closed"}
         open={dialog !== null}
         onOpenChange={(open) => {
           if (!open) setDialog(null);

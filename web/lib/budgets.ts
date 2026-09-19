@@ -7,6 +7,7 @@ export interface BudgetDef {
   /** dollars when fixed, percent number when percent */
   value: number;
   excluded?: boolean;
+  emoji?: string;
 }
 
 export const INITIAL_BUDGETS: Record<string, BudgetDef> = {

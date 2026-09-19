@@ -67,9 +67,9 @@ export function TopBar({ title }: { title: string }) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 rounded-t-[10px] border-b border-[#e0ddd7] dark:border-[#2d2d31] bg-white dark:bg-[#121213] px-4">
-        <SidebarTrigger className="shrink-0 text-[#55565c] dark:text-[#a2a3a8]" />
-        <h1 className="m-0 text-[14px] font-semibold tracking-[-0.01em] text-[#1c1d20] dark:text-[#eceef0]">
+      <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 rounded-t-xl border-b border-line bg-background px-4">
+        <SidebarTrigger className="shrink-0 text-muted-foreground" />
+        <h1 className="m-0 text-[14px] font-semibold tracking-[-0.01em] text-foreground">
           {title}
         </h1>
 
@@ -79,10 +79,10 @@ export function TopBar({ title }: { title: string }) {
             onClick={() => setPaletteOpen(true)}
             aria-label="Search or run a command"
             title="Search or run a command (⌘K)"
-            className="flex h-8 w-auto cursor-pointer items-center gap-1.5 rounded-md border border-[#e9e7e2] dark:border-[#2d2d31] bg-white dark:bg-[#232327] px-2 text-[#8a8b91] dark:text-[#a2a3a8] transition-colors outline-none hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-[#4a55c9] focus-visible:outline-offset-2"
+            className="flex h-8 w-auto cursor-pointer items-center gap-1.5 rounded-md border border-line bg-card px-2 text-muted-foreground transition-colors outline-none hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-[#4a55c9] focus-visible:outline-offset-2"
           >
             <SearchIcon />
-            <kbd className="rounded border border-[#e0ddd7] dark:border-[#2d2d31] bg-[#EFEFF0] dark:bg-[#26262a] px-1 font-sans text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">
+            <kbd className="rounded border border-line bg-secondary px-1 font-sans text-[11px] text-muted-foreground">
               ⌘K
             </kbd>
           </button>
@@ -115,10 +115,10 @@ export function TopBar({ title }: { title: string }) {
                     className="mt-1.5 size-1.5 shrink-0 rounded-full bg-[#4a55c9]"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">
+                    <span className="block truncate text-[13px] font-medium text-foreground">
                       {n.title}
                     </span>
-                    <span className="block text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
+                    <span className="block text-[12px] text-muted-foreground">
                       {n.time} ago
                     </span>
                   </span>
@@ -136,7 +136,7 @@ export function TopBar({ title }: { title: string }) {
                   className="flex size-8 cursor-pointer items-center justify-center rounded-full outline-none focus-visible:outline-2 focus-visible:outline-[#4a55c9] focus-visible:outline-offset-2"
                 >
                   <Avatar className="size-7">
-                    <AvatarFallback className="bg-[#e9e7e2] dark:bg-[#26262a] text-[11px] font-semibold text-[#55565c] dark:text-[#a2a3a8]">
+                    <AvatarFallback className="bg-secondary text-[11px] font-semibold text-muted-foreground">
                       AR
                     </AvatarFallback>
                   </Avatar>

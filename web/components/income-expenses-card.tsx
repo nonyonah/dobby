@@ -25,20 +25,20 @@ export function IncomeExpensesCard() {
     <ModuleCard title={`${MONTH.label} income vs expenses`} linkLabel="Transactions">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Income</p>
+          <p className="m-0 text-[12px] text-muted-foreground">Income</p>
           <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
             {formatUSD(MONTH.income)}
           </p>
         </div>
         <div>
-          <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Expenses</p>
+          <p className="m-0 text-[12px] text-muted-foreground">Expenses</p>
           <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
             {formatUSD(MONTH.expenses)}
           </p>
         </div>
       </div>
       <div className="mt-2">
-        <span className="inline-flex items-center rounded-full border border-[#A7F3D0] bg-[#D1FAE5] px-2 py-0.5 text-[12px] font-semibold text-[#047857] dark:border-[#047857] dark:bg-[#064e3b] dark:text-[#6ee7b7]">
+        <span className="inline-flex items-center rounded-full border border-success/40 bg-success-soft px-2 py-0.5 text-[12px] font-semibold text-success-soft-foreground">
           +{formatUSD(net)} saved
         </span>
       </div>
@@ -48,7 +48,7 @@ export function IncomeExpensesCard() {
           <YAxis hide />
           <ChartTooltip
             cursor={{ fill: "var(--chart-cursor)", fillOpacity: 0.6 }}
-            content={<ChartTooltipContent className="bg-white dark:bg-[#1a1a1d]" formatter={(value) => formatUSD(Number(value))} />}
+            content={<ChartTooltipContent className="bg-card" formatter={(value) => formatUSD(Number(value))} />}
           />
           <Bar dataKey="v" radius={[6, 6, 0, 0]}>
             {data.map((d) => (

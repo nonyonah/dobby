@@ -1,14 +1,15 @@
 @import "tailwindcss";
+@import "@heroui/styles";
 
 :root {
   /* Rift Labs palette (source of visual truth) */
   --ink-900: #17181c;
   --ink-700: #2b2d33;
   --ink-500: #6b6d72;
-  --paper-000: #F9FAFB;
-  --paper-100: #f1efeb;
-  --paper-200: #e9e7e2;
-  --line: #e0ddd7;
+  --paper-000: #F9F9FA;
+  --paper-100: #f4f5f6;
+  --paper-200: #e8eaed;
+  --line: #e3e5e8;
   --text: #1c1d20;
   --text-muted: #6b6d72;
   --accent: #4a55c9;
@@ -16,9 +17,15 @@
   --accent-100: #eceefb;
   --green: #35754e;
   --green-100: #e4efe7;
+  --green-vivid: #22C55E;
   --red: #b0402f;
   --red-100: #f7e6e2;
-  --input-border: #d8d6d0;
+  --red-vivid: #F04438;
+  --warning: #ad7f22;
+  --warning-100: #f6ecd6;
+  --faint: #8a8b91;
+  --input-border: #d7dade;
+  --input-border-soft: #e8eaed;
 
   /* shadcn / beUI semantic tokens, mapped to Rift values */
   --background: var(--paper-000);
@@ -41,10 +48,50 @@
   --input: var(--input-border);
   --ring: var(--accent);
 
+  /* HeroUI surface tokens — keep native HeroUI components on Dobby's palette. */
+  --surface: #ffffff;
+  --surface-foreground: var(--text);
+  --surface-hover: #ffffff;
+  --surface-secondary: var(--paper-100);
+  --surface-secondary-foreground: var(--text);
+  --surface-tertiary: var(--paper-200);
+  --surface-tertiary-foreground: var(--text);
+  --overlay: #ffffff;
+  --overlay-foreground: var(--text);
+  --default: var(--paper-100);
+  --default-foreground: var(--text);
+  --default-hover: var(--paper-200);
+  --field-background: #ffffff;
+  --field-foreground: var(--text);
+  --field-placeholder: var(--text-muted);
+  --field-border: var(--line);
+  --field-border-hover: var(--input-border);
+  --field-border-focus: var(--accent);
+  --separator: var(--line);
+  --separator-secondary: var(--line);
+  --separator-tertiary: var(--line);
+  --focus: var(--accent);
+  --accent-foreground: #ffffff;
+  --accent-hover: var(--accent-600);
+  --accent-soft: var(--accent-100);
+  --accent-soft-foreground: var(--accent-600);
+  --success-foreground: #ffffff;
+  --success-hover: var(--green);
+  --success-soft: var(--green-100);
+  --success-soft-foreground: var(--green);
+  --warning-foreground: var(--text);
+  --warning-hover: var(--warning);
+  --warning-soft: var(--warning-100);
+  --warning-soft-foreground: var(--warning);
+  --danger: var(--red);
+  --danger-foreground: #ffffff;
+  --danger-hover: var(--red);
+  --danger-soft: var(--red-100);
+  --danger-soft-foreground: var(--red);
+  --backdrop: rgb(0 0 0 / 0.45);
+
   /* beUI status extensions */
   --success: var(--green);
-  --warning: #ad7f22;
-
   /* shadcn sidebar tokens, mapped to Rift values */
   --sidebar-background: transparent;
   --sidebar-foreground: #55565c;
@@ -67,12 +114,23 @@
   --color-ink-700: #2b2d33;
   --color-ink-500: #6b6d72;
   --color-paper-000: #F9FAFB;
-  --color-paper-100: #f1efeb;
-  --color-paper-200: #e9e7e2;
-  --color-line: #e0ddd7;
+  --color-paper-100: var(--paper-100);
+  --color-paper-200: var(--paper-200);
+  --color-line: var(--line);
   --color-accent: #4a55c9;
   --color-accent-600: #3a44a8;
   --color-accent-100: #eceefb;
+  --color-faint: var(--faint);
+  --color-input-soft: var(--input-border-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--green-100);
+  --color-success-vivid: var(--green-vivid);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-100);
+  --color-danger: var(--destructive);
+  --color-danger-soft: var(--red-100);
+  --color-danger-vivid: var(--red-vivid);
+
   --font-sans: var(--font-sans-flex);
   --font-mono: var(--font-jetbrains-mono);
 
@@ -101,8 +159,7 @@
   --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
+
   --color-sidebar-background: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -115,12 +172,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper-000: #09090a;
+    --paper-000: #121213;
+    --paper-100: #1c1c1f;
+    --paper-200: #252529;
     --text: #eceef0;
     --text-muted: #a2a3a8;
-    --background: #09090a;
+    --background: #121213;
     --foreground: #eceef0;
-    --card: #161617;
+    --card: #1A1A1B;
     --card-foreground: #eceef0;
     --popover: #1a1a1d;
     --popover-foreground: #eceef0;
@@ -133,15 +192,57 @@
     --accent-token: #23264a;
     --accent-token-foreground: #c7cbf5;
     --destructive: #d06853;
-    --border: #2d2d31;
-    --border-strong: #3a3a40;
-    --input: #2d2d31;
+    --line: #252529;
+    --border: #252529;
+    --border-strong: #303036;
+    --input: #252529;
     --ring: #4a55c9;
+    /* HeroUI dark surfaces. Cards intentionally stay #1A1A1B. */
+    --surface: #1A1A1B;
+    --surface-foreground: #eceef0;
+    --surface-hover: #1A1A1B;
+    --surface-secondary: #1c1c1f;
+    --surface-secondary-foreground: #eceef0;
+    --surface-tertiary: #252529;
+    --surface-tertiary-foreground: #eceef0;
+    --overlay: #1A1A1B;
+    --overlay-foreground: #eceef0;
+    --default: #1c1c1f;
+    --default-foreground: #eceef0;
+    --default-hover: #252529;
+    --field-background: #1A1A1B;
+    --field-foreground: #eceef0;
+    --field-placeholder: #a2a3a8;
+    --field-border: #252529;
+    --field-border-hover: #303036;
+    --field-border-focus: #4a55c9;
+    --separator: #252529;
+    --separator-secondary: #252529;
+    --separator-tertiary: #252529;
+    --focus: #4a55c9;
+    --accent-foreground: #ffffff;
+    --accent-hover: #5b66d8;
+    --accent-soft: #23264a;
+    --accent-soft-foreground: #c7cbf5;
+    --success-foreground: #07130b;
+    --success-hover: #4cc38a;
+    --success-soft: #153526;
+    --success-soft-foreground: #6ee7b7;
+    --warning-foreground: #17130a;
+    --warning-hover: #d9a441;
+    --warning-soft: #3b2c12;
+    --warning-soft-foreground: #fcd34d;
+    --danger: #d06853;
+    --danger-foreground: #ffffff;
+    --danger-hover: #e07861;
+    --danger-soft: #3a1f18;
+    --danger-soft-foreground: #f1997f;
+    --backdrop: rgb(0 0 0 / 0.65);
     --sidebar-background: transparent;
     --sidebar-foreground: #8a8b91;
     --sidebar-accent: #18181a;
     --sidebar-accent-foreground: #ffffff;
-    --sidebar-border: #2d2d31;
+    --sidebar-border: #252529;
     --sidebar-ring: #4a55c9;
     --chart-grid: #26262a;
     --chart-cursor: #26262a;
@@ -174,11 +275,11 @@ body {
   outline: none;
 }
 
-/* Rift Labs primitives: border-only cards, no shadow */
+/* Shared Rift Labs primitives. Embedded modules use the same flat surface and outline everywhere. */
 .rl-card {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: none;
 }
 
@@ -187,6 +288,12 @@ body {
 }
 
 @layer utilities {
+  .border-soft-line {
+    border-color: color-mix(in srgb, var(--line) 42%, transparent);
+  }
+  .divide-soft-line > :not([hidden]) ~ :not([hidden]) {
+    border-color: color-mix(in srgb, var(--line) 42%, transparent);
+  }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }

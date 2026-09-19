@@ -27,6 +27,7 @@ import {
 import {
   BudgetIcon,
   DashboardIconFull,
+  GoalsIcon,
   PlusIcon,
   ReportsIcon,
   SettingsIcon,
@@ -49,6 +50,7 @@ const MAIN_NAV: NavItem[] = [
   { id: "transactions", label: "Transactions", href: "/transactions", icon: TransactionsIcon, count: 8, countLabel: "8 pending" },
   { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon, count: 3, countLabel: "3 unread" },
   { id: "budget", label: "Budget", href: "/budget", icon: BudgetIcon },
+  { id: "goals", label: "Goals", href: "/budget/goals", icon: GoalsIcon },
 ];
 
 function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: string; onNavigate?: () => void }) {
@@ -74,7 +76,7 @@ function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: 
             <span className="flex-1">{item.label}</span>
           </SidebarMenuButton>
           {item.count !== undefined && (
-            <SidebarMenuBadge className="bg-transparent text-[12px] font-normal text-[#8a8b91] dark:text-[#a2a3a8]">
+            <SidebarMenuBadge className="bg-transparent text-[12px] font-normal text-muted-foreground">
               {item.count > 99 ? "99+" : item.count}
             </SidebarMenuBadge>
           )}
@@ -125,7 +127,7 @@ function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () =>
             >
               RL
             </span>
-            <span className="truncate text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">
+            <span className="truncate text-[13px] font-medium text-foreground">
               Rift labs
             </span>
           </div>
@@ -145,7 +147,9 @@ function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () =>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              render={<a href="#" />}
+              render={<Link href="/settings" />}
+              isActive={active === "settings"}
+              aria-current={active === "settings" ? "page" : undefined}
               className="h-[28px] rounded-md px-2 text-[13px] font-medium"
             >
               <SettingsIcon />
@@ -205,7 +209,7 @@ export function AppSidebar({ active, peek, onPeekChange }: AppSidebarProps) {
             exit={reduce ? { opacity: 0 } : { opacity: 0, x: -12 }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             onMouseLeave={() => onPeekChange(false)}
-            className="fixed top-2 bottom-2 left-2 z-50 hidden w-[248px] flex-col overflow-hidden rounded-[12px] border border-[#e0ddd7] dark:border-[#2d2d31] bg-[#F9FAFB] dark:bg-[#121213] shadow-[0_16px_48px_rgba(23,24,28,0.18),0_4px_12px_rgba(23,24,28,0.1)] md:flex"
+            className="fixed top-2 bottom-2 left-2 z-50 hidden w-[248px] flex-col overflow-hidden rounded-[12px] border border-line bg-background shadow-[0_16px_48px_rgb(23_24_28/0.18),0_4px_12px_rgb(23_24_28/0.1)] md:flex"
             aria-label="Sidebar preview"
           >
             <SidebarNav active={active} onNavigate={() => onPeekChange(false)} />

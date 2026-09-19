@@ -27,23 +27,23 @@ export function TransactionsCard() {
           return (
             <li
               key={t.id}
-              className="flex items-center gap-2.5 border-b border-[#f1efeb] dark:border-[#26262a] py-2 last:border-b-0 last:pb-0 first:pt-0"
+              className="flex items-center gap-2.5 border-b border-soft-line py-2 last:border-b-0 last:pb-0 first:pt-0"
             >
               <span
                 title={SOURCE_LABEL[t.source]}
                 aria-label={SOURCE_LABEL[t.source]}
-                className="flex size-7 shrink-0 items-center justify-center rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"
               >
                 <Icon />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">
+                <span className="block truncate text-[13px] font-medium text-foreground">
                   {t.name}
                 </span>
-                <span className="block text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{t.date}</span>
+                <span className="block text-[12px] text-muted-foreground">{t.date}</span>
               </span>
               <span
-                className={`mono shrink-0 text-[13px] font-medium tabular-nums ${income ? "text-[#35754e] dark:text-[#4cc38a]" : "text-[#1c1d20] dark:text-[#eceef0]"}`}
+                className={`mono shrink-0 text-[13px] font-medium tabular-nums ${income ? "text-success" : "text-foreground"}`}
               >
                 {income ? "+" : "−"}
                 {formatUSD(Math.abs(t.amount))}

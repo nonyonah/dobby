@@ -35,7 +35,7 @@ export function CashflowArea({ range }: { range: DayRange }) {
 
   return (
     <div>
-      <div className="mb-1 flex flex-wrap items-center gap-4 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
+      <div className="mb-1 flex flex-wrap items-center gap-4 text-[12px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden="true" className="size-2 rounded-full bg-[#22C55E]" /> Money in
         </span>
@@ -65,11 +65,11 @@ export function CashflowArea({ range }: { range: DayRange }) {
             tickFormatter={(v: number) => (Math.abs(v) >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`)}
           />
           <ChartTooltip
-            cursor={{ stroke: "#8a8b91", strokeOpacity: 0.35, strokeDasharray: "3 3" }}
-            content={<ChartTooltipContent className="bg-white dark:bg-[#1a1a1d]" formatter={(v) => formatUSD(Number(v))} />}
+            cursor={{ stroke: "var(--chart-tick)", strokeOpacity: 0.35, strokeDasharray: "3 3" }}
+            content={<ChartTooltipContent className="bg-card" formatter={(v) => formatUSD(Number(v))} />}
           />
-          <Area dataKey="income" type="monotone" stroke="var(--color-income)" strokeWidth={2} fill="url(#riftCashIn)" dot={false} activeDot={{ r: 3.5, fill: "var(--color-income)", stroke: "#fff", strokeWidth: 2 }} />
-          <Area dataKey="expenses" type="monotone" stroke="var(--color-expenses)" strokeWidth={2} fill="url(#riftCashOut)" dot={false} activeDot={{ r: 3.5, fill: "var(--color-expenses)", stroke: "#fff", strokeWidth: 2 }} />
+          <Area dataKey="income" type="monotone" stroke="var(--color-income)" strokeWidth={2} fill="url(#riftCashIn)" dot={false} activeDot={{ r: 3.5, fill: "var(--color-income)", stroke: "var(--card)", strokeWidth: 2 }} />
+          <Area dataKey="expenses" type="monotone" stroke="var(--color-expenses)" strokeWidth={2} fill="url(#riftCashOut)" dot={false} activeDot={{ r: 3.5, fill: "var(--color-expenses)", stroke: "var(--card)", strokeWidth: 2 }} />
         </AreaChart>
       </ChartContainer>
     </div>
