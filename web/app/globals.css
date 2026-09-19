@@ -1,0 +1,205 @@
+@import "tailwindcss";
+
+:root {
+  /* Rift Labs palette (source of visual truth) */
+  --ink-900: #17181c;
+  --ink-700: #2b2d33;
+  --ink-500: #6b6d72;
+  --paper-000: #F9FAFB;
+  --paper-100: #f1efeb;
+  --paper-200: #e9e7e2;
+  --line: #e0ddd7;
+  --text: #1c1d20;
+  --text-muted: #6b6d72;
+  --accent: #4a55c9;
+  --accent-600: #3a44a8;
+  --accent-100: #eceefb;
+  --green: #35754e;
+  --green-100: #e4efe7;
+  --red: #b0402f;
+  --red-100: #f7e6e2;
+  --input-border: #d8d6d0;
+
+  /* shadcn / beUI semantic tokens, mapped to Rift values */
+  --background: var(--paper-000);
+  --foreground: var(--text);
+  --card: #ffffff;
+  --card-foreground: var(--text);
+  --popover: #ffffff;
+  --popover-foreground: var(--text);
+  --primary: var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--paper-100);
+  --secondary-foreground: var(--text);
+  --muted: var(--paper-100);
+  --muted-foreground: var(--text-muted);
+  --accent-token: var(--accent-100);
+  --accent-token-foreground: var(--accent-600);
+  --destructive: var(--red);
+  --border: var(--line);
+  --border-strong: var(--input-border);
+  --input: var(--input-border);
+  --ring: var(--accent);
+
+  /* beUI status extensions */
+  --success: var(--green);
+  --warning: #ad7f22;
+
+  /* shadcn sidebar tokens, mapped to Rift values */
+  --sidebar-background: transparent;
+  --sidebar-foreground: #55565c;
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgb(0 0 0 / 0.06);
+  --sidebar-accent-foreground: var(--text);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent);
+
+  /* chart element tokens (recharts reads these so plots follow the theme) */
+  --chart-grid: #e9e7e2;
+  --chart-cursor: #f1efeb;
+  --chart-tick: #6b6d72;
+}
+
+@theme inline {
+  /* Rift names */
+  --color-ink-900: #17181c;
+  --color-ink-700: #2b2d33;
+  --color-ink-500: #6b6d72;
+  --color-paper-000: #F9FAFB;
+  --color-paper-100: #f1efeb;
+  --color-paper-200: #e9e7e2;
+  --color-line: #e0ddd7;
+  --color-accent: #4a55c9;
+  --color-accent-600: #3a44a8;
+  --color-accent-100: #eceefb;
+  --font-sans: var(--font-sans-flex);
+  --font-mono: var(--font-jetbrains-mono);
+
+  /* beUI motion easings */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* shadcn / beUI semantic colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent-token);
+  --color-accent-foreground: var(--accent-token-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-sidebar-background: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper-000: #09090a;
+    --text: #eceef0;
+    --text-muted: #a2a3a8;
+    --background: #09090a;
+    --foreground: #eceef0;
+    --card: #161617;
+    --card-foreground: #eceef0;
+    --popover: #1a1a1d;
+    --popover-foreground: #eceef0;
+    --primary: #4a55c9;
+    --primary-foreground: #ffffff;
+    --secondary: #26262a;
+    --secondary-foreground: #eceef0;
+    --muted: #1f1f22;
+    --muted-foreground: #a2a3a8;
+    --accent-token: #23264a;
+    --accent-token-foreground: #c7cbf5;
+    --destructive: #d06853;
+    --border: #2d2d31;
+    --border-strong: #3a3a40;
+    --input: #2d2d31;
+    --ring: #4a55c9;
+    --sidebar-background: transparent;
+    --sidebar-foreground: #8a8b91;
+    --sidebar-accent: #18181a;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #2d2d31;
+    --sidebar-ring: #4a55c9;
+    --chart-grid: #26262a;
+    --chart-cursor: #26262a;
+    --chart-tick: #8a8b91;
+  }
+}
+
+body {
+  background: var(--paper-000);
+  color: var(--text);
+  font-family: var(--font-sans-flex), "Google Sans Flex", Inter, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Overlay containers take focus on open — never ring the whole surface. */
+[data-slot="drawer-popup"]:focus,
+[data-slot="drawer-popup"]:focus-visible,
+[data-slot="sheet-content"]:focus,
+[data-slot="sheet-content"]:focus-visible,
+[data-slot="dialog-content"]:focus,
+[data-slot="dialog-content"]:focus-visible {
+  outline: none;
+}
+
+/* Rift Labs primitives: border-only cards, no shadow */
+.rl-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.mono {
+  font-family: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    scrollbar-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

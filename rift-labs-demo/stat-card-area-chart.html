@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Rift Labs — Income Stat Card + Area Chart (shadcn/ui)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+  :root {
+    --ink-900: #17181c;
+    --ink-700: #2b2d33;
+    --ink-500: #6b6d72;
+    --paper-000: #faf9f7;
+    --paper-100: #f1efeb;
+    --paper-200: #e9e7e2;
+    --line: #e0ddd7;
+    --text: #1c1d20;
+    --text-muted: #6b6d72;
+    --accent: #4a55c9;
+    --accent-600: #3a44a8;
+    --accent-100: #eceefb;
+    --green: #35754e;
+    --green-100: #e4efe7;
+    --red: #b0402f;
+    --red-100: #f7e6e2;
+    --input-border: #d8d6d0;
+    --radius-card: 10px;
+    --radius-control: 6px;
+    --radius-dialog: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper-000);
+    color: var(--text);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 32px 24px 48px;
+  }
+  .page-head h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .page-head p { margin: 0 0 24px; color: var(--text-muted); font-size: 14px; }
+  .stack { display: grid; gap: 24px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 720px) { .stat-grid { grid-template-columns: 1fr; } }
+
+  /* ——— Rift Labs Card: border-only, no shadow ——— */
+  .rl-card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: none;
+  }
+  .rl-card-pad { padding: 16px; }
+  .rl-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin: 0;
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+
+  /* ——— Stat card ——— */
+  .stat-value {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 26px;
+    line-height: 1.2;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 8px 0;
+  }
+  .stat-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .trend {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+  }
+  .trend i { font-size: 14px; }
+  .trend-up { background: var(--green-100); color: var(--green); border-color: #cfe3d5; }
+  .trend-down { background: var(--red-100); color: var(--red); border-color: #eed2cc; }
+  .stat-sub { font-size: 12px; color: var(--text-muted); }
+
+  /* ——— Chart card header ——— */
+  .chart-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 16px 0;
+  }
+  .chart-title { font-size: 12px; color: var(--text-muted); font-weight: 500; margin: 0; }
+  .chart-value { font-family: "JetBrains Mono", monospace; font-size: 20px; font-weight: 600; margin: 4px 0 0; }
+  .chart-foot {
+    border-top: 1px solid var(--line);
+    margin-top: 12px;
+    padding: 8px 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  /* ——— shadcn/ui Select-pattern trigger + menu, Rift-themed ——— */
+  .select-wrap { position: relative; }
+  .select-trigger {
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 13px;
+    font-weight: 500;
+    background: #fff;
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-control);
+    cursor: pointer;
+    min-width: 96px;
+    justify-content: space-between;
+  }
+  .select-trigger:hover { background: var(--paper-100); }
+  .select-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 160px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(23,24,28,.12), 0 2px 6px rgba(23,24,28,.08);
+    padding: 4px;
+    margin: 0;
+    list-style: none;
+    z-index: 20;
+  }
+  .select-menu[hidden] { display: none; }
+  .select-menu li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .select-menu li[aria-selected="true"] { background: var(--accent-100); font-weight: 600; }
+  .select-menu li:hover { background: var(--paper-100); }
+  .select-menu .check { visibility: hidden; color: var(--accent); }
+  .select-menu li[aria-selected="true"] .check { visibility: visible; }
+
+  /* ——— Chart ——— */
+  .chart-body { padding: 8px 8px 0; }
+  .chart-svg-wrap { position: relative; }
+  svg.chart { display: block; width: 100%; height: 260px; }
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--ink-900);
+    color: #fff;
+    font-size: 12px;
+    border-radius: 6px;
+    padding: 6px 8px;
+    transform: translate(-50%, -110%);
+    white-space: nowrap;
+    display: none;
+  }
+  .chart-tooltip .mono { font-size: 12px; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="page" aria-labelledby="page-title">
+  <div class="page-head">
+    <h1 id="page-title">Income overview</h1>
+    <p>shadcn/ui patterns styled with Rift Labs tokens. Border-only cards, JetBrains Mono values, Phosphor icons.</p>
+  </div>
+
+  <div class="stack">
+    <!-- STAT KPI ROW: Income / Expenses / Taxable income -->
+    <div class="stat-grid">
+    <!-- STAT CARD: Income -->
+    <section class="rl-card rl-card-pad" aria-label="Income stat" id="stat-card">
+      <p class="rl-label">Income</p>
+      <p class="stat-value mono" id="stat-amount" aria-live="polite">$48,290.00</p>
+      <div class="stat-row">
+        <span class="trend trend-up" id="stat-trend">
+          <i class="ph-regular ph-trend-up" id="stat-trend-icon" aria-hidden="true"></i>
+          <span id="stat-trend-text">+8.2%</span>
+        </span>
+        <span class="stat-sub" id="stat-sub">vs previous 30 days</span>
+      </div>
+      <span class="sr-only" id="stat-sr">Income $48,290.00, up 8.2 percent versus previous 30 days</span>
+    </section>
+
+    <!-- STAT CARD: Expenses -->
+    <section class="rl-card rl-card-pad" aria-label="Expenses stat" id="stat-card-expenses">
+      <p class="rl-label">Expenses</p>
+      <p class="stat-value mono" id="exp-amount" aria-live="polite">$18,340.00</p>
+      <div class="stat-row">
+        <span class="trend trend-up" id="exp-trend" style="background:var(--green-100);color:var(--green);border-color:#cfe3d5;">
+          <i class="ph-regular ph-trend-down" id="exp-trend-icon" aria-hidden="true"></i>
+          <span id="exp-trend-text">−3.2%</span>
+        </span>
+        <span class="stat-sub" id="exp-sub">vs previous 30 days</span>
+      </div>
+      <span class="sr-only" id="exp-sr">Expenses $18,340.00, down 3.2 percent versus previous 30 days</span>
+    </section>
+
+    <!-- STAT CARD: Taxable income -->
+    <section class="rl-card rl-card-pad" aria-label="Taxable income stat" id="stat-card-taxable">
+      <p class="rl-label">Taxable income</p>
+      <p class="stat-value mono" id="tax-amount" aria-live="polite">$29,950.00</p>
+      <div class="stat-row">
+        <span class="trend trend-up" id="tax-trend">
+          <i class="ph-regular ph-trend-up" id="tax-trend-icon" aria-hidden="true"></i>
+          <span id="tax-trend-text">+14.6%</span>
+        </span>
+        <span class="stat-sub" id="tax-sub">vs previous 30 days</span>
+      </div>
+      <span class="sr-only" id="tax-sr">Taxable income $29,950.00, up 14.6 percent versus previous 30 days</span>
+    </section>
+    </div>
+
+    <!-- AREA CHART CARD -->
+    <section class="rl-card" aria-labelledby="chart-title">
+      <div class="chart-head">
+        <div>
+          <h2 class="chart-title" id="chart-title">Income over time</h2>
+          <p class="chart-value mono" id="chart-value">$48,290.00</p>
+        </div>
+        <div class="select-wrap">
+          <button class="select-trigger" id="range-trigger"
+            aria-haspopup="listbox" aria-expanded="false" aria-controls="range-menu">
+            <span id="range-label">30D</span>
+            <i class="ph-regular ph-caret-down" aria-hidden="true"></i>
+          </button>
+          <ul class="select-menu" id="range-menu" role="listbox" aria-label="Timeline range" hidden>
+            <li role="option" data-range="7D" aria-selected="false" tabindex="-1">Last 7 days <span class="check" aria-hidden="true"><i class="ph-regular ph-check"></i></span></li>
+            <li role="option" data-range="30D" aria-selected="true" tabindex="-1">Last 30 days <span class="check" aria-hidden="true"><i class="ph-regular ph-check"></i></span></li>
+            <li role="option" data-range="90D" aria-selected="false" tabindex="-1">Last 90 days <span class="check" aria-hidden="true"><i class="ph-regular ph-check"></i></span></li>
+            <li role="option" data-range="12M" aria-selected="false" tabindex="-1">Last 12 months <span class="check" aria-hidden="true"><i class="ph-regular ph-check"></i></span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="chart-body">
+        <div class="chart-svg-wrap">
+          <svg class="chart" id="chart" role="img" aria-label="Area chart of income over selected range"></svg>
+          <div class="chart-tooltip mono" id="tooltip" role="status"></div>
+        </div>
+      </div>
+
+      <div class="chart-foot">
+        <span id="chart-range-text">Showing last 30 days</span>
+        <span id="chart-delta-text">+8.2% vs prior period</span>
+      </div>
+      <table class="sr-only" id="chart-table">
+        <caption>Income data for selected range</caption>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<script>
+const DATA = {
+  "7D":  { labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"], values: [4200,5100,4800,6200,5900,7100,7480], total: 40780, delta: 12.4, prior: "previous 7 days", expTotal: 15230, expDelta: -3.2, taxTotal: 25550, taxDelta: 16.2 },
+  "30D": { labels: Array.from({length:30},(_,i)=>"D"+(i+1)), values: [2800,3100,2950,3400,3600,3300,3900,4100,3800,4300,4500,4200,4800,5100,4900,5300,5600,5400,5900,6100,5800,6300,6600,6400,6900,7100,6800,7300,7600,7480], total: 48290, delta: 8.2, prior: "previous 30 days", expTotal: 18340, expDelta: -3.2, taxTotal: 29950, taxDelta: 14.6 },
+  "90D": { labels: Array.from({length:90},(_,i)=>"W"+(i+1)), values: Array.from({length:90},(_,i)=> Math.round(5000 + Math.sin(i/8)*900 - i*12 + (i%7)*120)), total: 138400, delta: -2.1, prior: "previous 90 days", expTotal: 58900, expDelta: 4.1, taxTotal: 79500, taxDelta: -5.4 },
+  "12M": { labels: ["Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb"], values: [32000,34500,33800,37200,39500,38100,42000,44500,43800,47200,48900,51200], total: 51200, delta: 18.6, prior: "previous 12 months", expTotal: 19800, expDelta: 2.8, taxTotal: 31400, taxDelta: 22.3, isMonthly: true }
+};
+let current = "30D";
+
+const svg = document.getElementById("chart");
+const tooltip = document.getElementById("tooltip");
+const NS = "http://www.w3.org/2000/svg";
+const fmt = n => "$" + n.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+function render(range) {
+  current = range;
+  const d = DATA[range];
+  const W = 880, H = 260, P = {l: 8, r: 8, t: 12, b: 28};
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+  const max = Math.max(...d.values) * 1.1, min = Math.min(...d.values) * 0.85;
+  const X = i => P.l + (i / (d.values.length - 1)) * (W - P.l - P.r);
+  const Y = v => P.t + (1 - (v - min) / (max - min)) * (H - P.t - P.b);
+
+  const defs = document.createElementNS(NS, "defs");
+  defs.innerHTML = `<linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#4a55c9" stop-opacity="0.22"/>
+    <stop offset="1" stop-color="#4a55c9" stop-opacity="0"/></linearGradient>`;
+  svg.appendChild(defs);
+
+  // subtle gridlines (Paper 200)
+  for (let g = 0; g < 4; g++) {
+    const y = P.t + (g / 3) * (H - P.t - P.b);
+    const line = document.createElementNS(NS, "line");
+    line.setAttribute("x1", P.l); line.setAttribute("x2", W - P.r);
+    line.setAttribute("y1", y); line.setAttribute("y2", y);
+    line.setAttribute("stroke", "#e9e7e2"); line.setAttribute("stroke-width", "1");
+    svg.appendChild(line);
+  }
+
+  const pts = d.values.map((v, i) => `${X(i)},${Y(v)}`).join(" ");
+  const area = document.createElementNS(NS, "polygon");
+  area.setAttribute("points", `${P.l},${H - P.b} ${pts} ${W - P.r},${H - P.b}`);
+  area.setAttribute("fill", "url(#fill)");
+  svg.appendChild(area);
+
+  const path = document.createElementNS(NS, "polyline");
+  path.setAttribute("points", pts);
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "#4a55c9");
+  path.setAttribute("stroke-width", "2");
+  path.setAttribute("stroke-linejoin", "round");
+  path.setAttribute("stroke-linecap", "round");
+  svg.appendChild(path);
+
+  // hover dots + tooltip
+  d.values.forEach((v, i) => {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", X(i)); c.setAttribute("cy", Y(v)); c.setAttribute("r", "9");
+    c.setAttribute("fill", "transparent");
+    c.style.cursor = "crosshair";
+    c.tabIndex = 0;
+    c.setAttribute("aria-label", `${d.labels[i]}: ${fmt(v)}`);
+    c.addEventListener("mouseenter", e => {
+      tooltip.style.display = "block";
+      tooltip.style.left = (e.target.cx.baseVal.value / W * 100) + "%";
+      tooltip.style.top = (e.target.cy.baseVal.value / H * 100) + "%";
+      tooltip.textContent = `${d.labels[i]} · ${fmt(v)}`;
+    });
+    c.addEventListener("mouseleave", () => tooltip.style.display = "none");
+    c.addEventListener("focus", () => {
+      tooltip.style.display = "block";
+      tooltip.style.left = (X(i) / W * 100) + "%";
+      tooltip.style.top = (Y(i) / H * 100) + "%";
+      tooltip.textContent = `${d.labels[i]} · ${fmt(v)}`;
+    });
+    c.addEventListener("blur", () => tooltip.style.display = "none");
+    svg.appendChild(c);
+  });
+
+  // x labels (first / mid / last to stay quiet)
+  const labelIdx = [0, Math.floor(d.values.length / 2), d.values.length - 1];
+  labelIdx.forEach(i => {
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", X(i)); t.setAttribute("y", H - 8);
+    t.setAttribute("text-anchor", "middle");
+    t.setAttribute("font-size", "11"); t.setAttribute("fill", "#6b6d72");
+    t.textContent = d.labels[i];
+    svg.appendChild(t);
+  });
+
+  // — update stat cards + chart header/footer (single readable phrase, tone never color-alone) —
+  const up = d.delta >= 0;
+  document.getElementById("stat-amount").textContent = fmt(d.total);
+  document.getElementById("chart-value").textContent = fmt(d.total);
+  const trend = document.getElementById("stat-trend");
+  trend.className = "trend " + (up ? "trend-up" : "trend-down");
+  document.getElementById("stat-trend-icon").className = up ? "ph-regular ph-trend-up" : "ph-regular ph-trend-down";
+  document.getElementById("stat-trend-text").textContent = `${up ? "+" : ""}${d.delta}%`;
+  document.getElementById("stat-sub").textContent = `vs ${d.prior}`;
+  document.getElementById("stat-sr").textContent =
+    `Income ${fmt(d.total)}, ${up ? "up" : "down"} ${Math.abs(d.delta)} percent versus ${d.prior}`;
+
+  // Expenses: down = good (green), up = bad (red) — tone carries meaning
+  const expUp = d.expDelta >= 0;
+  const expGood = !expUp;
+  document.getElementById("exp-amount").textContent = fmt(d.expTotal);
+  const expTrend = document.getElementById("exp-trend");
+  expTrend.className = "trend " + (expGood ? "trend-up" : "trend-down");
+  // keep class names for CSS, but override to success/danger by goodness:
+  expTrend.classList.remove("trend-up", "trend-down");
+  expTrend.classList.add(expGood ? "trend-up" : "trend-down");
+  document.getElementById("exp-trend-icon").className = expUp ? "ph-regular ph-trend-up" : "ph-regular ph-trend-down";
+  document.getElementById("exp-trend-text").textContent = `${expUp ? "+" : "−"}${Math.abs(d.expDelta)}%`;
+  document.getElementById("exp-sub").textContent = `vs ${d.prior}`;
+  document.getElementById("exp-sr").textContent =
+    `Expenses ${fmt(d.expTotal)}, ${expUp ? "up" : "down"} ${Math.abs(d.expDelta)} percent versus ${d.prior}`;
+
+  // Taxable income: up = good (green), down = bad (red)
+  const taxUp = d.taxDelta >= 0;
+  document.getElementById("tax-amount").textContent = fmt(d.taxTotal);
+  const taxTrend = document.getElementById("tax-trend");
+  taxTrend.className = "trend " + (taxUp ? "trend-up" : "trend-down");
+  document.getElementById("tax-trend-icon").className = taxUp ? "ph-regular ph-trend-up" : "ph-regular ph-trend-down";
+  document.getElementById("tax-trend-text").textContent = `${taxUp ? "+" : ""}${d.taxDelta}%`;
+  document.getElementById("tax-sub").textContent = `vs ${d.prior}`;
+  document.getElementById("tax-sr").textContent =
+    `Taxable income ${fmt(d.taxTotal)}, ${taxUp ? "up" : "down"} ${Math.abs(d.taxDelta)} percent versus ${d.prior}`;
+  document.getElementById("chart-range-text").textContent =
+    range === "12M" ? "Showing last 12 months" : `Showing last ${range.replace("D"," days")}`;
+  const deltaEl = document.getElementById("chart-delta-text");
+  deltaEl.textContent = `${up ? "+" : ""}${d.delta}% vs prior period`;
+
+  const tbody = document.querySelector("#chart-table tbody");
+  tbody.innerHTML = d.labels.map((l, i) => `<tr><td>${l}</td><td>${fmt(d.values[i])}</td></tr>`).join("");
+}
+
+// ——— Timeline dropdown (shadcn Select behavior, Rift styling) ———
+const trigger = document.getElementById("range-trigger");
+const menu = document.getElementById("range-menu");
+const label = document.getElementById("range-label");
+function setOpen(open) {
+  menu.hidden = !open;
+  trigger.setAttribute("aria-expanded", String(open));
+  if (open) menu.querySelector('[aria-selected="true"]').focus();
+}
+trigger.addEventListener("click", () => setOpen(menu.hidden));
+document.addEventListener("click", e => {
+  if (!e.target.closest(".select-wrap")) setOpen(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { setOpen(false); trigger.focus(); }
+});
+menu.addEventListener("click", e => {
+  const opt = e.target.closest('[role="option"]');
+  if (!opt) return;
+  menu.querySelectorAll('[role="option"]').forEach(o => o.setAttribute("aria-selected", "false"));
+  opt.setAttribute("aria-selected", "true");
+  label.textContent = opt.dataset.range;
+  setOpen(false); trigger.focus();
+  render(opt.dataset.range);
+});
+menu.addEventListener("keydown", e => {
+  const opts = [...menu.querySelectorAll('[role="option"]')];
+  const idx = opts.indexOf(document.activeElement);
+  if (e.key === "ArrowDown") { e.preventDefault(); opts[(idx + 1) % opts.length].focus(); }
+  if (e.key === "ArrowUp") { e.preventDefault(); opts[(idx - 1 + opts.length) % opts.length].focus(); }
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); document.activeElement.click(); }
+});
+
+render("30D");
+</script>
+</body>
+</html>
