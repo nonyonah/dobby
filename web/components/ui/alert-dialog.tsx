@@ -11,7 +11,14 @@ interface AlertDialogProps {
 }
 
 function AlertDialog({ open, onOpenChange, children }: AlertDialogProps) {
-  return <HeroAlertDialog.Root isOpen={open} onOpenChange={onOpenChange}>{children}</HeroAlertDialog.Root>;
+  return (
+    <HeroAlertDialog.Root isOpen={open} onOpenChange={onOpenChange}>
+      <HeroAlertDialog.Trigger>
+        <button type="button" tabIndex={-1} aria-hidden="true" className="hidden" />
+      </HeroAlertDialog.Trigger>
+      {children}
+    </HeroAlertDialog.Root>
+  );
 }
 
 function AlertDialogTrigger(props: React.ComponentProps<typeof HeroAlertDialog.Trigger>) {

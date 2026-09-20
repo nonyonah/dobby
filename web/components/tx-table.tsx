@@ -458,13 +458,13 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             <HeroTable.Column className="w-10 px-3 py-2">
               <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all transactions on this page" className="block size-4 accent-[#4a55c9]" />
             </HeroTable.Column>
-            <HeroTable.Column id="name" allowsSorting className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
+            <HeroTable.Column id="name" isRowHeader allowsSorting className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
               <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} /></button>
             </HeroTable.Column>
             <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Category</HeroTable.Column>
             <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Tax</HeroTable.Column>
             <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Source</HeroTable.Column>
-            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Parsing</HeroTable.Column>
+
             <HeroTable.Column id="amount" allowsSorting className="px-3 py-2 text-right text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
               <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} /></button>
             </HeroTable.Column>
@@ -482,22 +482,22 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                 <Fragment key={t.id}>
                   {showDay ? (
                     <HeroTable.Row id={`${t.id}-date`} className="border-b border-line bg-background hover:bg-background">
-                      <HeroTable.Cell colSpan={7} className="px-3 py-1.5 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">{day}</HeroTable.Cell>
+                      <HeroTable.Cell colSpan={6} className="px-3 py-1.5 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">{day}</HeroTable.Cell>
                     </HeroTable.Row>
                   ) : null}
-                  <HeroTable.Row id={t.id} onClick={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-[#f1efeb] dark:border-[#26262a] hover:bg-secondary ${selected ? "bg-[#eceefb]/60 dark:bg-[#23264a]/60 hover:bg-[#eceefb] dark:hover:bg-[#23264a]" : ""}`}>
+                  <HeroTable.Row id={t.id} onAction={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-[#f1efeb] dark:border-[#26262a] hover:bg-secondary ${selected ? "bg-[#eceefb]/60 dark:bg-[#23264a]/60 hover:bg-[#eceefb] dark:hover:bg-[#23264a]" : ""}`}>
                     <HeroTable.Cell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-[#4a55c9]" /></HeroTable.Cell>
                     <HeroTable.Cell className="max-w-56 px-3 py-2.5"><span className="block truncate font-medium text-[#1c1d20] dark:text-[#eceef0]">{t.name}</span><span className="block truncate text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-[#4a55c9] dark:text-[#9aa1f0]">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap uppercase ${meta.pill}`}><span aria-hidden="true" className="text-[11px]">{meta.emoji}</span>{meta.label}</span></HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium whitespace-nowrap ${t.taxable ? "border-[#d5dcf5] bg-[#eceefb] text-[#3a44a8]" : "border-line bg-[#f1efeb] dark:bg-[#26262a] text-[#8a8b91] dark:text-[#a2a3a8]"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap ${meta.pill}`}><span aria-hidden="true" className="text-[11px]">{meta.emoji}</span>{meta.label}</span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-[#a2d2ff] text-white" : "border-transparent bg-[#cdb4db] text-white"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
                     <HeroTable.Cell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]"><SIcon /></span></HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5 text-[12px] whitespace-nowrap">{t.parse.state === "parsed" ? <span className="inline-flex items-center gap-1.5 text-[#35754e] dark:text-[#4cc38a]"><span aria-hidden="true" className="size-1.5 rounded-full bg-[#22C55E]" />Parsed {t.parse.confidence}%</span> : t.parse.state === "review" ? <span className="inline-flex items-center gap-1.5 text-[#ad7f22] dark:text-[#d9a441]"><span aria-hidden="true" className="size-1.5 rounded-full bg-[#ad7f22]" />Needs review</span> : <span className="text-[#8a8b91] dark:text-[#a2a3a8]">Manual</span>}</HeroTable.Cell>
-                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-[#35754e] dark:text-[#4cc38a]" : "text-[#1c1d20] dark:text-[#eceef0]"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
+
+                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-[#00afb9]" : "text-[#ef476f]"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
                   </HeroTable.Row>
                 </Fragment>
               );
             })}
-            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={7} className="px-3 py-10 text-center"><p className="m-0 text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">No transactions match</p><p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Try widening the search or clearing a filter</p></HeroTable.Cell></HeroTable.Row> : null}
+            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">No transactions match</p><p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Try widening the search or clearing a filter</p></HeroTable.Cell></HeroTable.Row> : null}
           </HeroTable.Body>
             </HeroTable.Content>
           </HeroTable.ScrollContainer>

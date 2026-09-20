@@ -98,7 +98,7 @@ export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps)
   return (
     <>
     <div>
-      <div className="rounded-xl border border-line bg-card px-6 py-5">
+      <div className="rounded-2xl border-0 bg-card px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="text-center">
             <p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatUSD(summarySpent)}</p>
@@ -125,7 +125,7 @@ export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps)
         {chartView === "month" ? <p className={`m-0 mt-4 text-center text-[12px] ${projectedDifference >= 0 ? "text-muted-foreground" : "text-destructive"}`}>At the current pace, you’re projected to finish {projectedDifference >= 0 ? `${formatUSD(projectedDifference)} under` : `${formatUSD(Math.abs(projectedDifference))} over`} this month’s budget.</p> : null}
       </div>
 
-      <div className="mt-4 rounded-xl border border-line bg-card px-3 py-3">
+      <div className="mt-4 rounded-2xl border-0 bg-card px-3 py-3">
         <div className="grid h-9 grid-cols-[1.5rem_minmax(0,9rem)_5rem_minmax(0,1fr)_5rem_2.5rem] items-center gap-3 px-3 text-[12px] font-semibold text-foreground">
           <span />
           <button

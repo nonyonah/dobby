@@ -1,7 +1,7 @@
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="mono mx-0.5 inline-block rounded bg-secondary px-1.5 py-px text-[12px] font-medium tabular-nums">
+    <span className="mono mx-0.5 inline-block rounded bg-[#ffafcc] px-1.5 py-px text-[12px] font-medium text-white tabular-nums">
       {children}
     </span>
   );

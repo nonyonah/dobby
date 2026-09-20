@@ -31,7 +31,7 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <p className="m-0 text-[12px] text-muted-foreground">Estimated owed</p>
-            <span className="rounded-full border border-warning/40 bg-warning-soft px-2 py-0.5 text-[12px] font-semibold text-warning-soft-foreground">
+            <span className="rounded-full border-transparent bg-[#ffc8dd] px-2 py-0.5 text-[12px] font-semibold text-white">
               {TAX_DUE.sub}
             </span>
           </div>

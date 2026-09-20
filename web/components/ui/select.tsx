@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ListBox, Select as HeroSelect } from "@heroui/react";
 import { cn } from "cn";
+import { CaretDownIcon } from "../icons";
 
 /**
  * Compatibility surface for the app's existing Select API. The implementation
@@ -24,7 +25,8 @@ type SelectItemProps = {
   disabled?: boolean;
 };
 
-function SelectItem(_props: SelectItemProps) {
+function SelectItem(props: SelectItemProps) {
+  void props;
   return null;
 }
 
@@ -32,8 +34,8 @@ function SelectContent({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function SelectTrigger({ className, children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { size?: "sm" | "default" }) {
-  return <HeroSelect.Trigger className={cn("h-8 min-w-32 rounded-lg border border-line bg-card px-2.5 text-[13px] text-foreground", className)} {...(props as any)}>{children}</HeroSelect.Trigger>;
+function SelectTrigger({ className, children, ...props }: React.ComponentProps<typeof HeroSelect.Trigger> & { size?: "sm" | "default" }) {
+  return <HeroSelect.Trigger className={cn("flex h-8 min-w-32 items-center gap-2 rounded-lg border border-line bg-card px-2.5 text-[13px] text-foreground", className)} {...props}>{children}</HeroSelect.Trigger>;
 }
 
 function SelectValue({ children, className }: { children?: React.ReactNode; className?: string }) {
@@ -60,6 +62,9 @@ function Select({ value, defaultValue, onValueChange, children, className, disab
   const items = collectItems(content?.props.children);
   const triggerProps = trigger?.props ?? {};
   const triggerClassName = triggerProps.className;
+  const triggerChildren = React.Children.toArray(triggerProps.children as React.ReactNode).filter(
+    (child) => !React.isValidElement(child) || child.type !== SelectValue
+  );
 
   return (
     <HeroSelect
@@ -73,14 +78,22 @@ function Select({ value, defaultValue, onValueChange, children, className, disab
       <HeroSelect.Trigger
         id={triggerProps.id}
         aria-label={triggerProps["aria-label"]}
-        className={cn("h-8 min-w-32 rounded-lg border border-line bg-card px-2.5 text-[13px] text-foreground", triggerClassName)}
+        className={cn("flex h-8 min-w-32 items-center gap-2 rounded-lg border border-line bg-card px-2.5 text-[13px] text-foreground", triggerClassName)}
       >
-        <HeroSelect.Value />
+        {triggerChildren}
+        <HeroSelect.Value className="min-w-0 flex-1" />
+        <CaretDownIcon className="ml-auto shrink-0 text-muted-foreground" />
       </HeroSelect.Trigger>
-      <HeroSelect.Popover>
-        <ListBox>
+      <HeroSelect.Popover className="p-1">
+        <ListBox className="max-h-72 min-w-[var(--trigger-width)] overflow-y-auto">
           {items.map((item) => (
-            <ListBox.Item key={item.value} id={item.value} textValue={typeof item.children === "string" ? item.children : item.value} isDisabled={item.disabled}>
+            <ListBox.Item
+              key={item.value}
+              id={item.value}
+              textValue={typeof item.children === "string" ? item.children : item.value}
+              isDisabled={item.disabled}
+              className="h-8 min-h-8 rounded-md px-2.5 text-[13px] font-medium"
+            >
               {item.children}
             </ListBox.Item>
           ))}

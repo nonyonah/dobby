@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmojiPickerField } from "@/components/ui/emoji-picker";
 
 const categoryOptions = ["Home", "Food & dining", "Transport", "Subscriptions", "Income", "Uncategorized"];
+const categoryEmojis: Record<string, string> = { Home: "🏠", "Food & dining": "🍽", Transport: "🚕", Subscriptions: "🔁", Income: "↗️", Uncategorized: "📦" };
 type Rule = { id: number; matcher: string; category: string; taxable: boolean };
 
 export function CategoriesRulesPage() {
@@ -67,11 +68,16 @@ export function CategoriesRulesPage() {
 
       <div className="grid max-w-4xl gap-5">
         <Card>
-          <CardHeader><CardTitle>Custom categories</CardTitle><CardDescription>Create categories for your own reporting language. Archived categories stay on historical transactions.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Custom categories</CardTitle><CardDescription className="font-medium">Create categories for your own reporting language. Archived categories stay on historical transactions.</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); addCategory(); }}><label htmlFor="new-category" className="sr-only">New category name</label><EmojiPickerField value={newCategoryEmoji} onChange={setNewCategoryEmoji} label="Choose a category emoji" /><Input id="new-category" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="e.g. Professional development" className="h-8 min-w-0 max-w-sm flex-1" /><Button type="submit" variant="primary" size="small"><Plus /> Create category</Button></form>
             <div className="divide-y divide-[#e9e7e2] dark:divide-[#2d2d31]">
-              {categories.map((category) => <div key={category} className="flex items-center justify-between gap-3 py-2.5 first:pt-1"><span className="text-[13px] font-medium">{category}</span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Rename ${category}`} title={`Rename ${category}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${category}`} title={`Archive ${category}`} onClick={() => { setCategories((current) => current.filter((item) => item !== category)); showNotice("Category archived"); }}><Archive /></Button></div></div>)}
+              {categories.map((category) => {
+                const customEmoji = category.startsWith("✨ ") ? category.match(/^(\S+)\s(.+)$/) : null;
+                const emoji = customEmoji?.[1] ?? categoryEmojis[category] ?? "✨";
+                const displayName = customEmoji?.[2] ?? category;
+                return <div key={category} className="flex items-center justify-between gap-3 py-2.5 first:pt-1"><span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary" aria-hidden="true">{emoji}</span><span className="truncate">{displayName}</span></span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Rename ${displayName}`} title={`Rename ${displayName}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${displayName}`} title={`Archive ${displayName}`} onClick={() => { setCategories((current) => current.filter((item) => item !== category)); showNotice("Category archived"); }}><Archive /></Button></div></div>;
+              })}
             </div>
           </CardContent>
         </Card>

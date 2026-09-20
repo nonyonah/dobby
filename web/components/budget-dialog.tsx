@@ -153,31 +153,30 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
       }}
       className="space-y-4"
     >
-      <fieldset>
-        <legend className="mb-2 text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">Choose a category</legend>
-        <div className="grid grid-cols-5 gap-2" aria-label="Category emoji picker">
-          {CATEGORIES.map((category) => {
-            const selected = category.id === picked;
-            return (
-              <button
-                key={category.id}
-                type="button"
-                onClick={() => { setPicked(category.id); setBudgetEmoji(category.emoji); }}
-                aria-pressed={selected}
-                aria-label={`Choose ${category.name}`}
-                className={`flex h-10 cursor-pointer items-center justify-center rounded-lg border text-lg outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 ${
-                  selected
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-card hover:bg-secondary"
-                }`}
-              >
-                <span aria-hidden="true">{category.emoji}</span>
-              </button>
-            );
-          })}
+      <div className="space-y-1.5">
+        <label htmlFor="budget-category" className="text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">Choose a category</label>
+        <Select
+          value={picked}
+          onValueChange={(nextCategory) => {
+            const next = CATEGORIES.find((category) => category.id === nextCategory);
+            if (next) {
+              setPicked(next.id);
+              setBudgetEmoji(next.emoji);
+            }
+          }}
+        >
+          <SelectTrigger id="budget-category" aria-label="Choose a category" className="h-8 w-full bg-card text-[13px] text-foreground">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((category) => <SelectItem key={category.id} value={category.id}>{category.emoji} {category.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-2 pt-1">
+          <EmojiPickerField value={budgetEmoji} onChange={setBudgetEmoji} label="Choose a budget emoji" />
+          <span className="text-[12px] font-medium text-muted-foreground">Customize the category emoji</span>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3"><p className="m-0 text-[12px] text-muted-foreground">{budgetEmoji} {cat?.name}</p><EmojiPickerField value={budgetEmoji} onChange={setBudgetEmoji} label="Choose a budget emoji" /></div>
-      </fieldset>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Budget type">
           <Select value={type} onValueChange={(nextType) => setType((nextType as "fixed" | "percent") ?? "fixed")}>

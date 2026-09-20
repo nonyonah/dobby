@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -10,9 +10,10 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
+
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
@@ -24,7 +25,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { AISidebar, type SidebarResource } from "./agents/ai-sidebar";
+import { SignOut } from "@phosphor-icons/react/dist/ssr";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import {
+  AccountsIcon,
+  BookmarkIcon,
   BudgetIcon,
   DashboardIconFull,
   GoalsIcon,
@@ -41,16 +47,37 @@ interface NavItem {
   label: string;
   href: string;
   icon: (props: { className?: string }) => React.ReactNode;
-  count?: number;
-  countLabel?: string;
+
 }
 
 const MAIN_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/", icon: DashboardIconFull },
-  { id: "transactions", label: "Transactions", href: "/transactions", icon: TransactionsIcon, count: 8, countLabel: "8 pending" },
-  { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon, count: 3, countLabel: "3 unread" },
+  { id: "transactions", label: "Transactions", href: "/transactions", icon: TransactionsIcon },
+  { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon },
   { id: "budget", label: "Budget", href: "/budget", icon: BudgetIcon },
   { id: "goals", label: "Goals", href: "/budget/goals", icon: GoalsIcon },
+];
+
+const SIDEBAR_RESOURCES: SidebarResource[] = [
+  {
+    id: "connected-accounts",
+    label: "Connected accounts",
+    kind: "folder",
+    children: [
+      { id: "wallet-activity", label: "Wallet activity", kind: "bookmark" },
+      { id: "business-account", label: "Business account", kind: "bookmark" },
+    ],
+  },
+  {
+    id: "bookmarks",
+    label: "Bookmarks",
+    kind: "folder",
+    children: [
+      { id: "category-rules", label: "Category rules", kind: "bookmark" },
+      { id: "recent-insights", label: "Recent insights", kind: "bookmark" },
+      { id: "monthly-budget", label: "Monthly budget", kind: "bookmark" },
+    ],
+  },
 ];
 
 function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: string; onNavigate?: () => void }) {
@@ -65,27 +92,20 @@ function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: 
             render={internal ? <Link href={item.href} onClick={onNavigate} /> : <a href={item.href} />}
             isActive={active}
             aria-current={active ? "page" : undefined}
-            aria-label={
-              item.count !== undefined
-                ? `${item.label}, ${item.countLabel}`
-                : item.label
-            }
+            aria-label={item.label}
             className="h-[28px] rounded-md px-2 text-[13px] font-medium"
           >
             <item.icon />
             <span className="flex-1">{item.label}</span>
           </SidebarMenuButton>
-          {item.count !== undefined && (
-            <SidebarMenuBadge className="bg-transparent text-[12px] font-normal text-muted-foreground">
-              {item.count > 99 ? "99+" : item.count}
-            </SidebarMenuBadge>
-          )}
+
         </SidebarMenuItem>
         );
       })}
     </SidebarMenu>
   );
 }
+
 
 function QuickCreate() {
   const router = useRouter();
@@ -113,23 +133,23 @@ function QuickCreate() {
 }
 
 function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () => void }) {
+  const [logoutOpen, setLogoutOpen] = useState(false);
+
   return (
     <>
       <SidebarHeader className="px-3 pt-3 pb-1">
         <div className="flex items-center gap-1.5">
           <div
             className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-1"
-            aria-label="Workspace: Rift labs"
+            aria-label="Brand logo"
           >
             <span
               aria-hidden="true"
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#c8b93c] text-[10px] font-bold text-white"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#83c5be] text-[10px] font-bold text-white"
             >
               RL
             </span>
-            <span className="truncate text-[13px] font-medium text-foreground">
-              Rift labs
-            </span>
+
           </div>
           <QuickCreate />
         </div>
@@ -139,6 +159,37 @@ function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () =>
         <SidebarGroup className="px-0 py-1">
           <SidebarGroupContent>
             <NavMenu items={MAIN_NAV} activeId={active} onNavigate={onNavigate} />
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="px-0 py-1">
+          <SidebarGroupLabel className="h-7 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Workspace</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <AISidebar
+              defaultItems={SIDEBAR_RESOURCES}
+              defaultExpandedIds={["connected-accounts", "bookmarks"]}
+              defaultActiveId={active}
+              ariaLabel="Connected accounts and bookmarks"
+              className="gap-0.5"
+              renderIcon={(item) => {
+                if (item.id === "connected-accounts") return <AccountsIcon />;
+                if (item.id === "bookmarks") return <BookmarkIcon />;
+                if (item.id === "wallet-activity") return <WalletIcon />;
+                if (item.id === "business-account") return <AccountsIcon />;
+                if (item.id === "recent-insights") return <ReportsIcon />;
+                return <BookmarkIcon />;
+              }}
+              onActiveChange={(id) => {
+                const hrefs: Record<string, string> = {
+                  "wallet-activity": "/transactions?source=wallet",
+                  "business-account": "/insights?account=business",
+                  "category-rules": "/settings/categories-rules",
+                  "recent-insights": "/insights",
+                  "monthly-budget": "/budget",
+                };
+                const href = hrefs[id];
+                if (href) window.location.assign(href);
+              }}
+            />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -156,7 +207,31 @@ function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () =>
               <span className="flex-1">Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem>
+            <button
+              type="button"
+              onClick={() => setLogoutOpen(true)}
+              className="flex h-7 w-full items-center gap-2 overflow-hidden rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <SignOut className="size-4 shrink-0" />
+              <span className="flex-1 truncate">Log out</span>
+            </button>
+          </SidebarMenuItem>
         </SidebarMenu>
+        <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+          <AlertDialogContent className="z-[100]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Log out of Dobby?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to log out? You can reconnect your HeroUI account later.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => setLogoutOpen(false)}>Log out</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </SidebarFooter>
     </>
   );

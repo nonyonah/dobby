@@ -9,7 +9,7 @@ function Card({ className, size = "default", ...props }: React.ComponentProps<ty
       data-size={size}
       variant="default"
       className={cn(
-        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-xl border border-line bg-card py-(--card-spacing) text-xs/relaxed text-card-foreground shadow-none ring-0 [--card-spacing:--spacing(4)] data-[size=sm]:[--card-spacing:--spacing(3)]",
+        "group/card flex flex-col gap-(--card-spacing) overflow-hidden rounded-2xl border-0 bg-card py-(--card-spacing) text-xs/relaxed text-card-foreground shadow-none ring-0 [--card-spacing:--spacing(4)] data-[size=sm]:[--card-spacing:--spacing(3)]",
         className
       )}
       {...props}

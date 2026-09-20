@@ -12,15 +12,15 @@
   --line: #e3e5e8;
   --text: #1c1d20;
   --text-muted: #6b6d72;
-  --accent: #4a55c9;
-  --accent-600: #3a44a8;
-  --accent-100: #eceefb;
+  --accent: #83c5be;
+  --accent-600: #5f9f98;
+  --accent-100: #e2f3f1;
   --green: #35754e;
   --green-100: #e4efe7;
-  --green-vivid: #22C55E;
+  --green-vivid: #00afb9;
   --red: #b0402f;
   --red-100: #f7e6e2;
-  --red-vivid: #F04438;
+  --red-vivid: #ef476f;
   --warning: #ad7f22;
   --warning-100: #f6ecd6;
   --faint: #8a8b91;
@@ -117,9 +117,9 @@
   --color-paper-100: var(--paper-100);
   --color-paper-200: var(--paper-200);
   --color-line: var(--line);
-  --color-accent: #4a55c9;
-  --color-accent-600: #3a44a8;
-  --color-accent-100: #eceefb;
+  --color-accent: #83c5be;
+  --color-accent-600: #5f9f98;
+  --color-accent-100: #e2f3f1;
   --color-faint: var(--faint);
   --color-input-soft: var(--input-border-soft);
   --color-success: var(--success);
@@ -131,8 +131,8 @@
   --color-danger-soft: var(--red-100);
   --color-danger-vivid: var(--red-vivid);
 
-  --font-sans: var(--font-sans-flex);
-  --font-mono: var(--font-jetbrains-mono);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-inter);
 
   /* beUI motion easings */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -183,20 +183,20 @@
     --card-foreground: #eceef0;
     --popover: #1a1a1d;
     --popover-foreground: #eceef0;
-    --primary: #4a55c9;
+    --primary: #83c5be;
     --primary-foreground: #ffffff;
     --secondary: #26262a;
     --secondary-foreground: #eceef0;
     --muted: #1f1f22;
     --muted-foreground: #a2a3a8;
-    --accent-token: #23264a;
-    --accent-token-foreground: #c7cbf5;
+    --accent-token: #214341;
+    --accent-token-foreground: #b9e3df;
     --destructive: #d06853;
     --line: #252529;
     --border: #252529;
     --border-strong: #303036;
     --input: #252529;
-    --ring: #4a55c9;
+    --ring: #83c5be;
     /* HeroUI dark surfaces. Cards intentionally stay #1A1A1B. */
     --surface: #1A1A1B;
     --surface-foreground: #eceef0;
@@ -215,15 +215,15 @@
     --field-placeholder: #a2a3a8;
     --field-border: #252529;
     --field-border-hover: #303036;
-    --field-border-focus: #4a55c9;
+    --field-border-focus: #83c5be;
     --separator: #252529;
     --separator-secondary: #252529;
     --separator-tertiary: #252529;
-    --focus: #4a55c9;
+    --focus: #83c5be;
     --accent-foreground: #ffffff;
-    --accent-hover: #5b66d8;
-    --accent-soft: #23264a;
-    --accent-soft-foreground: #c7cbf5;
+    --accent-hover: #9bd4ce;
+    --accent-soft: #214341;
+    --accent-soft-foreground: #b9e3df;
     --success-foreground: #07130b;
     --success-hover: #4cc38a;
     --success-soft: #153526;
@@ -243,7 +243,7 @@
     --sidebar-accent: #18181a;
     --sidebar-accent-foreground: #ffffff;
     --sidebar-border: #252529;
-    --sidebar-ring: #4a55c9;
+    --sidebar-ring: #83c5be;
     --chart-grid: #26262a;
     --chart-cursor: #26262a;
     --chart-tick: #8a8b91;
@@ -261,7 +261,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
   outline-offset: 2px;
 }
 

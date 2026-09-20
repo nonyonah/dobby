@@ -1,19 +1,13 @@
 import type { Metadata } from "next";
-import { Google_Sans_Flex, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import { ThemeSync } from "@/components/theme-sync";
 import "./globals.css";
 
-const googleSansFlex = Google_Sans_Flex({
-  variable: "--font-sans-flex",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
   weight: "variable",
   display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -28,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${googleSansFlex.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${inter.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col"><ThemeSync />{children}</body>
     </html>
   );

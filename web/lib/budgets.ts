@@ -94,7 +94,7 @@ export function budgetStatus(spent: number, budget: number): "ok" | "near" | "ov
 }
 
 export const STATUS_BAR: Record<ReturnType<typeof budgetStatus>, string> = {
-  ok: "#22C55E",
+  ok: "#00afb9",
   near: "#F59E0B",
-  over: "#F04438",
+  over: "#ef476f",
 };

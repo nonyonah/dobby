@@ -15,16 +15,16 @@ export interface CategoryMeta {
 }
 
 export const TX_CATEGORIES: CategoryMeta[] = [
-  { id: "groceries", label: "Groceries", emoji: "🛒", pill: "border-[#ecdfc2] bg-[#f6ecd6] text-[#ad7f22]", dot: "#ad7f22" },
-  { id: "housing", label: "Housing", emoji: "🏠", pill: "border-[#e3d5f5] bg-[#f1e9fb] text-[#7c3aed]", dot: "#7c3aed" },
-  { id: "utilities", label: "Utilities", emoji: "💡", pill: "border-[#cfe3d5] bg-[#e4efe7] text-[#35754e]", dot: "#0d9488" },
-  { id: "transport", label: "Transport", emoji: "🚕", pill: "border-[#d5dcf5] bg-[#eceefb] text-[#4a55c9]", dot: "#4a55c9" },
-  { id: "dining", label: "Dining", emoji: "🍽", pill: "border-[#eed2cc] bg-[#f7e6e2] text-[#b0402f]", dot: "#b0402f" },
-  { id: "shopping", label: "Shopping", emoji: "🛍", pill: "border-[#ecdfc2] bg-[#f6ecd6] text-[#ad7f22]", dot: "#ad7f22" },
-  { id: "education", label: "Education", emoji: "📚", pill: "border-[#d5dcf5] bg-[#eceefb] text-[#3a44a8]", dot: "#3a44a8" },
-  { id: "income", label: "Income", emoji: "💵", pill: "border-[#cfe3d5] bg-[#e4efe7] text-[#35754e]", dot: "#35754e" },
-  { id: "investments", label: "Investments", emoji: "📈", pill: "border-[#e3d5f5] bg-[#f1e9fb] text-[#7c3aed]", dot: "#7c3aed" },
-  { id: "other", label: "Other", emoji: "📦", pill: "border-[#e0ddd7] bg-[#f1efeb] text-[#55565c]", dot: "#8a8b91" },
+  { id: "groceries", label: "Groceries", emoji: "🛒", pill: "border-transparent bg-[#ffafcc] text-white", dot: "#ad7f22" },
+  { id: "housing", label: "Housing", emoji: "🏠", pill: "border-transparent bg-[#a2d2ff] text-white", dot: "#7c3aed" },
+  { id: "utilities", label: "Utilities", emoji: "💡", pill: "border-transparent bg-[#cdb4db] text-white", dot: "#0d9488" },
+  { id: "transport", label: "Transport", emoji: "🚕", pill: "border-transparent bg-[#ffc8dd] text-white", dot: "#4a55c9" },
+  { id: "dining", label: "Dining", emoji: "🍽", pill: "border-transparent bg-[#a2d2ff] text-white", dot: "#b0402f" },
+  { id: "shopping", label: "Shopping", emoji: "🛍", pill: "border-transparent bg-[#ffafcc] text-white", dot: "#ad7f22" },
+  { id: "education", label: "Education", emoji: "📚", pill: "border-transparent bg-[#ffc8dd] text-white", dot: "#3a44a8" },
+  { id: "income", label: "Income", emoji: "💵", pill: "border-transparent bg-[#cdb4db] text-white", dot: "#35754e" },
+  { id: "investments", label: "Investments", emoji: "📈", pill: "border-transparent bg-[#a2d2ff] text-white", dot: "#7c3aed" },
+  { id: "other", label: "Other", emoji: "📦", pill: "border-transparent bg-[#cdb4db] text-white", dot: "#8a8b91" },
 ];
 
 export const categoryMeta = (id: string): CategoryMeta =>

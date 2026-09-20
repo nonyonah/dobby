@@ -65,7 +65,7 @@ export function TxDetail({ tx, onEdit }: TxDetailProps) {
         <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{date}</p>
         <div className="mt-1 flex items-start justify-between gap-3">
           <h2 className="m-0 text-[16px] font-semibold tracking-[-0.01em]">{tx.name}</h2>
-          <p className={`mono m-0 shrink-0 text-[16px] font-semibold tabular-nums ${income ? "text-[#35754e] dark:text-[#4cc38a]" : "text-[#1c1d20] dark:text-[#eceef0]"}`}>
+          <p className={`mono m-0 shrink-0 text-[16px] font-semibold tabular-nums ${income ? "text-[#00afb9]" : "text-[#ef476f]"}`}>
             {income ? "+" : "−"}{formatUSD(Math.abs(tx.amount))}
           </p>
         </div>
@@ -74,7 +74,7 @@ export function TxDetail({ tx, onEdit }: TxDetailProps) {
 
       <div className="px-4 py-2">
         <Row label="Category">
-          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase ${meta.pill}`}>
+          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${meta.pill}`}>
             <span aria-hidden="true" className="text-[11px]">{meta.emoji}</span>
             {meta.label}
           </span>
@@ -83,8 +83,8 @@ export function TxDetail({ tx, onEdit }: TxDetailProps) {
           <span
             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium ${
               tx.taxable
-                ? "border-[#d5dcf5] bg-[#eceefb] text-[#3a44a8]"
-                : "border-[#e0ddd7] dark:border-[#2d2d31] bg-[#f1efeb] dark:bg-[#26262a] text-[#8a8b91] dark:text-[#a2a3a8]"
+                ? "border-transparent bg-[#a2d2ff] text-white"
+                : "border-transparent bg-[#cdb4db] text-white"
             }`}
           >
             {tx.taxable ? "Taxable" : "Non-tax"}
@@ -98,7 +98,7 @@ export function TxDetail({ tx, onEdit }: TxDetailProps) {
         </Row>
         <Row label="Parsing">
           {tx.parse.state === "parsed" ? (
-            <span className="text-[13px] text-[#35754e] dark:text-[#4cc38a]">Parsed · {tx.parse.confidence}% confidence</span>
+            <span className="text-[13px] text-[#00afb9]">Parsed · {tx.parse.confidence}% confidence</span>
           ) : tx.parse.state === "review" ? (
             <span className="text-[13px] text-[#ad7f22] dark:text-[#d9a441]">Needs review · {tx.parse.confidence}% confidence</span>
           ) : (
