@@ -1,3 +1,8 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useApi } from "@/hooks/use-api";
 import { formatUSD } from "@/lib/format";
 import { TRANSACTIONS, type TxSource } from "@/lib/finance";
 import { ModuleCard } from "./module-card";
@@ -18,10 +23,18 @@ const SOURCE_LABEL: Record<TxSource, string> = {
 };
 
 export function TransactionsCard() {
+  const [rows, setRows] = useState(TRANSACTIONS);
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void api.get<{ data: Array<{ id: string; description: string; merchant?: string | null; amount: number | string; type: "INCOME" | "EXPENSE"; occurredAt: string; source?: string | null }> }>("/v1/transactions?page=1&pageSize=5&sort=occurredAt&direction=desc").then((response) => setRows(response.data.map((item) => ({ id: item.id, name: item.merchant || item.description, date: item.occurredAt.slice(5, 10).replace("-", "/"), amount: item.type === "INCOME" ? Number(item.amount) : -Math.abs(Number(item.amount)), source: item.source === "email" || item.source === "card" || item.source === "wallet" ? item.source : "manual" })))).catch(() => { /* fixture fallback */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
   return (
     <ModuleCard title="Last transactions" linkLabel="View all">
       <ul className="m-0 list-none p-0">
-        {TRANSACTIONS.map((t) => {
+        {rows.map((t) => {
           const Icon = SOURCE_ICON[t.source];
           const income = t.amount >= 0;
           return (

@@ -24,7 +24,7 @@ import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 interface TxImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImport: (rows: TxFull[]) => void;
+  onImport: (rows: TxFull[], file?: File) => void;
 }
 
 type Mode = "choose" | "statement" | "receipt" | "manual";
@@ -107,6 +107,7 @@ function parseStatement(text: string, filename: string): TxFull[] {
 export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogProps) {
   const [mode, setMode] = useState<Mode>("choose");
   const [fileName, setFileName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsed, setParsed] = useState<TxFull[]>([]);
   const [parseError, setParseError] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -119,6 +120,7 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
   const reset = () => {
     setMode("choose");
     setFileName("");
+    setSelectedFile(null);
     setParsed([]);
     setParseError("");
     setParsing(false);
@@ -134,6 +136,7 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
 
   const pickStatement = async (file: File) => {
     setFileName(file.name);
+    setSelectedFile(file);
     setParseError("");
     try {
       const text = await file.text();
@@ -331,7 +334,7 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
             </Button>
           )}
           {mode === "statement" ? (
-            <Button variant="primary" disabled={parsed.length === 0} onClick={() => { onImport(parsed); close(false); }}>
+            <Button variant="primary" disabled={parsed.length === 0} onClick={() => { onImport(parsed, selectedFile ?? undefined); close(false); }}>
               Import {parsed.length > 0 ? `${parsed.length} ` : ""}transactions
             </Button>
           ) : null}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -16,6 +17,7 @@ import { formatUSD } from "@/lib/format";
 import { INITIAL_GOALS, type Goal, type GoalFundingSource, type GoalStatus } from "@/lib/goals";
 import { CheckIcon, MoreIcon, PlusIcon, SettingsIcon } from "./icons";
 import { EmojiPickerField } from "./ui/emoji-picker";
+import { useApi } from "@/hooks/use-api";
 const sourceOptions: { value: GoalFundingSource; label: string; source: string }[] = [
   { value: "wallet", label: "Main wallet + Business account", source: "Main wallet + Business account" },
   { value: "account", label: "Business account", source: "Business account" },
@@ -56,6 +58,31 @@ export function GoalsSection() {
   const [error, setError] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const isMobile = useIsMobile();
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void api.get<{ data: Array<{ id: string; name: string; targetAmount: number | string; deadline?: string | null; status: "ACTIVE" | "ARCHIVED"; currentAmount?: number | string; contributions: Array<{ id: string; contributedAt: string; amount: number | string; note?: string | null }> }> }>("/v1/goals").then((response) => {
+      setGoals(response.data.map((goal) => ({
+        id: goal.id,
+        name: goal.name,
+        emoji: "🎯",
+        target: Number(goal.targetAmount),
+        tracked: Number(goal.currentAmount ?? 0),
+        source: "Personal account",
+        fundingSource: "account",
+        targetDate: goal.deadline?.slice(0, 10),
+        monthlyRate: 0,
+        status: Number(goal.currentAmount ?? 0) >= Number(goal.targetAmount) ? "ready" : goal.status === "ARCHIVED" ? "archived" : "active",
+        reactivateOnSpend: true,
+        contributions: goal.contributions.map((contribution) => ({ id: contribution.id, date: contribution.contributedAt.slice(0, 10), name: contribution.note ?? "Goal contribution", amount: Number(contribution.amount) })),
+      })));
+    }).catch(() => {
+      // Keep local seed goals as a development fallback.
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
 
   const selected = goals.find((goal) => goal.id === selectedId) ?? null;
   const activeGoals = goals.filter((goal) => goal.status === "active");
@@ -100,7 +127,7 @@ export function GoalsSection() {
     setCreateOpen(true);
   };
 
-  const saveGoal = () => {
+  const saveGoal = async () => {
     const targetAmount = Number(target);
     const monthlyAmount = Number(monthly || 0);
     if (!name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0 || !Number.isFinite(monthlyAmount) || monthlyAmount < 0) {
@@ -108,12 +135,22 @@ export function GoalsSection() {
       return;
     }
     const sourceDetails = sourceOptions.find((option) => option.value === source)!;
-    if (editingId) {
-      setGoals((current) => current.map((goal) => goal.id === editingId ? { ...goal, name: name.trim(), emoji, target: targetAmount, monthlyRate: monthlyAmount, source: sourceDetails.source, fundingSource: source, targetDate: timing === "date" ? targetDate || undefined : undefined } : goal));
-    } else {
-      const id = `goal-${Date.now()}`;
-      setGoals((current) => [...current, { id, name: name.trim(), emoji, target: targetAmount, tracked: 0, monthlyRate: monthlyAmount, source: sourceDetails.source, fundingSource: source, targetDate: timing === "date" ? targetDate || undefined : undefined, status: "active", reactivateOnSpend: true, contributions: [] }]);
-      setSelectedId(id);
+    try {
+      if (editingId) {
+        const response = await api.patch<{ data: { id: string; name: string; targetAmount: number | string; deadline?: string | null; status: "ACTIVE" | "ARCHIVED"; currentAmount?: number | string; contributions: Array<{ id: string; contributedAt: string; amount: number | string; note?: string | null }> } }>(`/v1/goals/${editingId}`, { name: name.trim(), targetAmount, deadline: timing === "date" ? targetDate || null : null });
+        const updated = response.data;
+        setGoals((current) => current.map((goal) => goal.id === editingId ? { ...goal, name: updated.name, target: Number(updated.targetAmount), targetDate: updated.deadline?.slice(0, 10), monthlyRate: monthlyAmount, source: sourceDetails.source, fundingSource: source } : goal));
+      } else {
+        const response = await api.post<{ data: { id: string; name: string; targetAmount: number | string; deadline?: string | null; currentAmount?: number | string; contributions: [] } }>("/v1/goals", { name: name.trim(), targetAmount, currency: "USD", deadline: timing === "date" ? targetDate || null : null });
+        const created = response.data;
+        const id = created.id;
+        setGoals((current) => [...current, { id, name: created.name, emoji, target: Number(created.targetAmount), tracked: 0, monthlyRate: monthlyAmount, source: sourceDetails.source, fundingSource: source, targetDate: created.deadline?.slice(0, 10), status: "active", reactivateOnSpend: true, contributions: [] }]);
+        setSelectedId(id);
+      }
+    } catch {
+      const id = editingId ?? `goal-${Date.now()}`;
+      setGoals((current) => editingId ? current.map((goal) => goal.id === editingId ? { ...goal, name: name.trim(), emoji, target: targetAmount, monthlyRate: monthlyAmount } : goal) : [...current, { id, name: name.trim(), emoji, target: targetAmount, tracked: 0, monthlyRate: monthlyAmount, source: sourceDetails.source, fundingSource: source, targetDate: timing === "date" ? targetDate || undefined : undefined, status: "active", reactivateOnSpend: true, contributions: [] }]);
+      if (!editingId) setSelectedId(id);
     }
     setCreateOpen(false);
   };
@@ -133,22 +170,24 @@ export function GoalsSection() {
     setGoals((current) => current.map((item) => item.id === goal.id ? { ...item, tracked: item.tracked - amount, status: item.status === "ready" && item.reactivateOnSpend ? "active" : item.status } : item));
   };
 
-  const recordContribution = (goal: Goal) => {
+  const recordContribution = async (goal: Goal) => {
     const amount = 250;
-    setGoals((current) => current.map((item) => {
-      if (item.id !== goal.id) return item;
-      const tracked = item.tracked + amount;
-      return {
-        ...item,
-        tracked,
-        status: tracked >= item.target ? "ready" : item.status,
-        contributions: [{ id: `contribution-${Date.now()}`, date: "2026-09-18", name: "Manual goal contribution", amount }, ...item.contributions],
-      };
-    }));
+    try {
+      const response = await api.post<{ data: { goal: { currentAmount?: number | string; contributions: Array<{ id: string; contributedAt: string; amount: number | string; note?: string | null }> } } }>(`/v1/goals/${goal.id}/contributions`, { amount, note: "Manual goal contribution" });
+      const updated = response.data.goal;
+      setGoals((current) => current.map((item) => item.id === goal.id ? { ...item, tracked: Number(updated.currentAmount ?? item.tracked + amount), status: Number(updated.currentAmount ?? 0) >= item.target ? "ready" : item.status, contributions: updated.contributions.map((contribution) => ({ id: contribution.id, date: contribution.contributedAt.slice(0, 10), name: contribution.note ?? "Goal contribution", amount: Number(contribution.amount) })) } : item));
+    } catch {
+      setGoals((current) => current.map((item) => item.id === goal.id ? { ...item, tracked: item.tracked + amount, contributions: [{ id: `contribution-${Date.now()}`, date: new Date().toISOString().slice(0, 10), name: "Manual goal contribution", amount }, ...item.contributions] } : item));
+    }
   };
 
-  const updateGoal = (id: string, changes: Partial<Goal>) => setGoals((current) => current.map((goal) => goal.id === id ? { ...goal, ...changes } : goal));
-  const deleteGoal = (id: string) => { setGoals((current) => current.filter((goal) => goal.id !== id)); setSelectedId(null); setDeleteConfirmId(null); };
+  const updateGoal = async (id: string, changes: Partial<Goal>) => {
+    if (changes.status === "archived" || changes.status === "active") {
+      try { await api.post(`/v1/goals/${id}/${changes.status === "archived" ? "archive" : "reactivate"}`, {}); } catch { /* local fallback */ }
+    }
+    setGoals((current) => current.map((goal) => goal.id === id ? { ...goal, ...changes } : goal));
+  };
+  const deleteGoal = async (id: string) => { try { await api.delete(`/v1/goals/${id}`); } catch { /* local fallback */ } setGoals((current) => current.filter((goal) => goal.id !== id)); setSelectedId(null); setDeleteConfirmId(null); };
 
   const listRow = (goal: Goal) => {
     const goalProgress = Math.min(100, (goal.tracked / goal.target) * 100);

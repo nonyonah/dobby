@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { Line, LineChart, ReferenceArea, XAxis, YAxis } from "recharts";
 import { MoneyStats } from "@/components/money-stats";
 import { CashflowViz } from "@/components/cashflow-viz";
@@ -11,6 +12,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { ExportMenu } from "@/components/export-menu";
 import { TRANSACTIONS_FULL } from "@/lib/transactions";
 import { formatUSD } from "@/lib/format";
+import { useApi } from "@/hooks/use-api";
 import {
   DEDUCTIONS_FULL,
   MONTH_LABELS,
@@ -62,8 +64,19 @@ export default function InsightsPage() {
   const [section, setSection] = useState<Section>("cashflow");
   const [range, setRange] = useState<DayRange>({ from: new Date(2026, 8, 1), to: new Date(2026, 8, 30) });
   const [jurisdiction, setJurisdiction] = useState("nigeria");
+  const [liveSummary, setLiveSummary] = useState<{ income: number; expenses: number; net: number; savingRate: number } | null>(null);
+  const [taxEstimate, setTaxEstimate] = useState<{ estimatedTaxOwed: number; filingDeadline: string; quarterly?: { required: boolean; nextPayment: number; nextDueDate: string | null }; notes: string[] } | null>(null);
+  const [taxChecklist, setTaxChecklist] = useState<Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> | null>(null);
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
 
   useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      void Promise.all([
+        api.get<{ data: typeof taxEstimate }>("/v1/tax/estimate"),
+        api.get<{ data: { items: Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> } }>("/v1/tax/checklist"),
+      ]).then(([estimate, checklist]) => { setTaxEstimate(estimate.data); setTaxChecklist(checklist.data.items); }).catch(() => { /* fixture fallback */ });
+    }
     const stored = window.localStorage.getItem("dobby-tax-jurisdiction");
     // Browser preference is read after hydration to keep server markup stable.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -71,11 +84,18 @@ export default function InsightsPage() {
   }, []);
 
 
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    const params = new URLSearchParams({ from: range.from.toISOString(), to: range.to.toISOString() });
+    void api.get<{ data: { totals: { income: number; expenses: number; net: number; savingRate: number } } }>(`/v1/insights/summary?${params.toString()}`).then((response) => setLiveSummary(response.data.totals)).catch(() => setLiveSummary(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn, range.from.getTime(), range.to.getTime()]);
+
   const prior = priorDayRange(range.from, range.to);
   const incomeVals = YEAR.map((m) => m.income);
   const expenseVals = YEAR.map((m) => m.expenses);
-  const income = sumDays(incomeVals, range.from, range.to);
-  const expenses = sumDays(expenseVals, range.from, range.to);
+  const income = liveSummary?.income ?? sumDays(incomeVals, range.from, range.to);
+  const expenses = liveSummary?.expenses ?? sumDays(expenseVals, range.from, range.to);
   const expenseDelta = prior ? pctChange(expenses, sumDays(expenseVals, prior.from, prior.to)) : null;
   const netDelta = prior
     ? pctChange(
@@ -93,12 +113,17 @@ export default function InsightsPage() {
     () => TAX_TREND.map((t) => ({ label: t.label, value: t.value })),
     []
   );
-  const taxNow = TAX_TREND[Math.min(11, range.to.getMonth())].value;
+  const taxNow = taxEstimate?.estimatedTaxOwed ?? TAX_TREND[Math.min(11, range.to.getMonth())].value;
   const taxThen = range.from.getMonth() > 0 ? TAX_TREND[range.from.getMonth() - 1].value : 0;
   const month = Math.max(0, Math.min(8, range.to.getMonth()));
   const setMonth = (m: number) => {
     const last = new Date(2026, m + 1, 0).getDate();
     setRange({ from: new Date(2026, m, 1), to: new Date(2026, m, Math.min(last, m === 8 ? 30 : last)) });
+  };
+  const toggleChecklist = async (key: string, status: "READY" | "OUTSTANDING") => {
+    const next = status === "READY" ? "OUTSTANDING" : "READY";
+    try { await api.patch(`/v1/tax/checklist/${key}`, { status: next }); } catch { /* local fallback */ }
+    setTaxChecklist((current) => current?.map((item) => item.key === key ? { ...item, status: next } : item) ?? current);
   };
   const exportRows = TRANSACTIONS_FULL.filter((transaction) => {
     const monthPrefix = `2026-${String(month + 1).padStart(2, "0")}`;
@@ -209,20 +234,20 @@ export default function InsightsPage() {
               <section aria-label="Filing checklist">
                 <h2 className="m-0 text-[13px] font-semibold">Filing checklist</h2>
                 <ul className="m-0 mt-1 list-none p-0">
-                  {["W-2 — Acme Retail", "1099-NEC — Northwind", "1099-INT — Mercury", "Charitable receipts", "Home office worksheet", "Prior-year return"].map((label, i) => {
-                    const ready = i !== 2 && i !== 3;
+                  {(taxChecklist ?? ["W-2 — Acme Retail", "1099-NEC — Northwind", "1099-INT — Mercury", "Charitable receipts", "Home office worksheet", "Prior-year return"].map((label, i) => ({ key: String(i), label, status: i !== 2 && i !== 3 ? "READY" as const : "OUTSTANDING" as const }))).map((item) => {
+                    const label = item.label;
+                    const ready = item.status === "READY";
                     return (
-                      <li key={label} className="flex items-center gap-2 border-b border-line py-1.5 text-[13px] last:border-b-0">
+                      <li key={item.key} className="flex items-center gap-2 border-b border-line py-1.5 text-[13px] last:border-b-0">
                         <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
-                        <span
-                          className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[12px] font-medium ${
+                        <button type="button" onClick={() => toggleChecklist(item.key, item.status)} className={`inline-flex shrink-0 cursor-pointer items-center rounded-full border px-2 py-0.5 text-[12px] font-medium ${
                             ready
                               ? "border-success/40 bg-success-soft text-success"
                               : "border-warning/40 bg-warning-soft text-warning"
                           }`}
                         >
                           {ready ? "Ready" : "Outstanding"}
-                        </span>
+                        </button>
                       </li>
                     );
                   })}

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { ArrowRight, Briefcase, Check, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, type AccentColor } from "@/lib/theme";
+import { useApi } from "@/hooks/use-api";
 import {
   Select,
   SelectContent,
@@ -79,7 +81,7 @@ function Toggle({ label, description, initial = true }: { label: string; descrip
 function SelectField({ id, label, value, options, onValueChange }: { id: string; label: string; value: string; options: Array<{ value: string; label: string }>; onValueChange?: (value: string | null) => void }) {
   return (
     <div className="flex justify-end">
-      <Select className="w-fit" defaultValue={value} onValueChange={onValueChange}>
+      <Select className="w-fit" value={value} onValueChange={onValueChange}>
         <SelectTrigger id={id} aria-label={label} className={selectClass}><SelectValue /></SelectTrigger>
         <SelectContent>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
       </Select>
@@ -136,7 +138,30 @@ function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: 
 export function SettingsPage() {
   const [walletConnected, setWalletConnected] = useState(true);
   const [accentColor, setAccentColor] = useState<AccentColor>(DEFAULT_ACCENT);
+  const [country, setCountry] = useState("nigeria");
+  const [currency, setCurrency] = useState("ngn");
+  const [theme, setTheme] = useState("system");
+  const [jurisdiction, setJurisdiction] = useState("nigeria");
   const [saved, setSaved] = useState(false);
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void api.get<{ data: { profile?: { country?: string | null; currency?: string; theme?: string | null; taxJurisdiction?: string | null; accentColor?: string | null } | null } }>("/v1/me").then((response) => {
+      const profile = response.data.profile;
+      if (!profile) return;
+      if (profile.country) setCountry(profile.country.toLowerCase() === "ng" ? "nigeria" : profile.country.toLowerCase() === "us" ? "united-states" : "other");
+      if (profile.currency) setCurrency(profile.currency.toLowerCase());
+      if (profile.theme) setTheme(profile.theme);
+      if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction);
+      const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
+      if (accent) setAccentColor(accent.id);
+    }).catch(() => {
+      // Keep local defaults when the API is unavailable.
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
 
   const handleAccentChange = (next: AccentColor) => {
     setAccentColor(next);
@@ -144,9 +169,20 @@ export function SettingsPage() {
     window.localStorage.setItem(ACCENT_STORAGE_KEY, next);
   };
 
-  const saveChanges = () => {
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2200);
+  const saveChanges = async () => {
+    try {
+      await api.patch("/v1/me", {
+        country: country === "nigeria" ? "NG" : country === "united-states" ? "US" : null,
+        currency: currency.toUpperCase(),
+        theme,
+        taxJurisdiction: jurisdiction,
+        accentColor: ACCENT_COLORS.find((item) => item.id === accentColor)?.value,
+      });
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2200);
+    } catch {
+      setSaved(false);
+    }
   };
 
   return (
@@ -167,7 +203,7 @@ export function SettingsPage() {
           <Section label="Profile">
             <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" defaultValue="Ada Lovelace" /></Row>
             <Row label="Email address" description="Used for account messages and notifications."><TextField id="profile-email" label="Email address" defaultValue="ada@riftlabs.co" type="email" /></Row>
-            <Row label="Country"><SelectField id="country" label="Country" value="nigeria" options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "ghana", label: "🇬🇭 Ghana" }, { value: "kenya", label: "🇰🇪 Kenya" }, { value: "other", label: "🌐 Other" }]} /></Row>
+            <Row label="Country"><SelectField id="country" label="Country" value={country} onValueChange={(value) => setCountry(value ?? "nigeria")} options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "ghana", label: "🇬🇭 Ghana" }, { value: "kenya", label: "🇰🇪 Kenya" }, { value: "other", label: "🌐 Other" }]} /></Row>
           </Section>
 
           <Section label="Connections">
@@ -192,10 +228,10 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Preferences">
-            <Row label="Theme"><SelectField id="theme" label="Theme" value="system" options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></Row>
+            <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => setTheme(value ?? "system")} options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
-            <Row label="Currency"><SelectField id="currency" label="Currency" value="ngn" options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }, { value: "gbp", label: "GBP 🇬🇧" }]} /></Row>
-            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value="nigeria" options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-kingdom", label: "United Kingdom" }, { value: "united-states", label: "United States" }]} onValueChange={(value) => { window.localStorage.setItem("dobby-tax-jurisdiction", value ?? "nigeria"); }} /></Row>
+            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }, { value: "gbp", label: "GBP 🇬🇧" }]} /></Row>
+            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-kingdom", label: "United Kingdom" }, { value: "united-states", label: "United States" }]} onValueChange={(value) => { const next = value ?? "nigeria"; setJurisdiction(next); window.localStorage.setItem("dobby-tax-jurisdiction", next); }} /></Row>
           </Section>
 
           <Section label="Categories & rules">

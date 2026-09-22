@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { useApi } from "@/hooks/use-api";
 import { AlertIcon, CaretDownIcon, CheckIcon, CloseSmallIcon } from "./icons";
 import { ATTENTION } from "@/lib/finance";
 import { ModuleCard } from "./module-card";
@@ -13,7 +15,22 @@ const PROACTIVE = [
 
 export function AttentionCard() {
   const [dismissed, setDismissed] = useState<string[]>([]);
-  const items = [...ATTENTION, ...PROACTIVE].filter((item) => !dismissed.includes(item.id));
+  const [liveItems, setLiveItems] = useState<typeof ATTENTION | null>(null);
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void Promise.all([
+      api.get<{ data: Array<{ id: string; rowNumber: number; errorMessage?: string | null; status: string }> }>("/v1/reviews?status=PENDING"),
+      api.get<{ data: { items: Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> } }>("/v1/tax/checklist"),
+    ]).then(([reviews, checklist]) => {
+      const reviewItems = reviews.data.slice(0, 3).map((item) => ({ id: `review-${item.id}`, title: `CSV row ${item.rowNumber} needs review`, sub: item.errorMessage ?? "Confirm the imported transaction details", action: "Review" }));
+      const docs = checklist.data.items.filter((item) => item.status === "OUTSTANDING").slice(0, 2).map((item) => ({ id: `tax-${item.key}`, title: `Tax document outstanding`, sub: item.label, action: "Docs" }));
+      setLiveItems([...reviewItems, ...docs]);
+    }).catch(() => { /* fixture fallback */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
+  const items = [...(liveItems ?? ATTENTION), ...PROACTIVE].filter((item) => !dismissed.includes(item.id));
   const dismiss = (id: string) => setDismissed((current) => [...current, id]);
 
   return <ModuleCard title="Needs attention" linkLabel={`${items.length} open`}>

@@ -53,7 +53,7 @@ export function BreakdownPie({ title, items, month, months, onMonthChange }: Bre
           <p className="m-0 mt-1 text-sm font-bold text-foreground">{dateLabel}</p>
         </div>
         <div className="flex flex-nowrap items-center justify-end gap-2">
-          <Select value={catFilter} onValueChange={(value) => setCatFilter(value ?? "all")}>
+          <Select className="w-auto shrink-0" value={catFilter} onValueChange={(value) => setCatFilter(value ?? "all")}>
             <SelectTrigger aria-label="Filter by category" className="h-8 w-36 text-[12px]">
               <FilterIcon />
               <SelectValue />
@@ -63,7 +63,7 @@ export function BreakdownPie({ title, items, month, months, onMonthChange }: Bre
               {items.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={String(month)} onValueChange={(value) => onMonthChange(Number(value))}>
+          <Select className="w-auto shrink-0" value={String(month)} onValueChange={(value) => onMonthChange(Number(value))}>
             <SelectTrigger aria-label="Filter by month" className="h-8 w-28 text-[12px]">
               <CalendarIcon />
               <SelectValue />

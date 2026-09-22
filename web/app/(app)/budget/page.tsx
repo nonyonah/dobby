@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BudgetBoard } from "@/components/budget-board";
 import { BudgetDrawer } from "@/components/budget-drawer";
@@ -17,6 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PlusIcon } from "@/components/icons";
 
 import { INITIAL_BUDGETS, type BudgetDef } from "@/lib/budgets";
+import { useApi } from "@/hooks/use-api";
 
 export default function BudgetPage() {
   return (
@@ -31,7 +33,34 @@ function BudgetInner() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dialog, setDialog] = useState<null | { mode: "create" } | { mode: "edit"; catId: string }>(null);
+  const [budgetIds, setBudgetIds] = useState<Record<string, string>>({});
+  const [categoryIds, setCategoryIds] = useState<Record<string, string>>({});
   const isMobile = useIsMobile();
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void Promise.all([
+      api.get<{ data: Array<{ id: string; name: string; isArchived: boolean }> }>("/v1/categories"),
+      api.get<{ data: Array<{ id: string; category: { id: string; name: string }; type: "FIXED" | "PERCENTAGE"; value: number | string; isExcluded: boolean }> }>("/v1/budgets"),
+    ]).then(([categoryResponse, budgetResponse]) => {
+      const ids = Object.fromEntries(categoryResponse.data.filter((category) => !category.isArchived).map((category) => [category.name.toLowerCase(), category.id]));
+      setCategoryIds(ids);
+      const next: Record<string, BudgetDef> = {};
+      const nextBudgetIds: Record<string, string> = {};
+      for (const budget of budgetResponse.data) {
+        const key = budget.category.name.toLowerCase();
+        next[key] = { type: budget.type === "PERCENTAGE" ? "percent" : "fixed", value: Number(budget.value), excluded: budget.isExcluded };
+        nextBudgetIds[key] = budget.id;
+      }
+      if (Object.keys(next).length) setBudgets(next);
+      setBudgetIds(nextBudgetIds);
+    }).catch(() => {
+      // Keep fixture budgets as a development fallback.
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
   const params = useSearchParams();
   const router = useRouter();
 
@@ -49,23 +78,32 @@ function BudgetInner() {
     setDrawerOpen(true);
   };
 
-  const save = (catId: string, def: BudgetDef) => {
+  const save = async (catId: string, def: BudgetDef) => {
+    const categoryId = categoryIds[catId] ?? categoryIds[catId.toLowerCase()];
+    const payload = { categoryId, type: def.type === "percent" ? "PERCENTAGE" : "FIXED", value: def.value, isExcluded: false };
+    try {
+      if (budgetIds[catId]) {
+        await api.patch(`/v1/budgets/${budgetIds[catId]}`, payload);
+      } else if (categoryId) {
+        const response = await api.post<{ data: { id: string } }>("/v1/budgets", payload);
+        setBudgetIds((current) => ({ ...current, [catId]: response.data.id }));
+      }
+    } catch {
+      // Keep local fixture behavior if the API is unavailable.
+    }
     setBudgets((prev) => ({ ...prev, [catId]: { ...def, excluded: false } }));
   };
 
-  const toggleExclude = (catId: string) => {
-    setBudgets((prev) => {
-      const current = prev[catId] ?? { type: "fixed" as const, value: 0 };
-      return { ...prev, [catId]: { ...current, excluded: !current.excluded } };
-    });
+  const toggleExclude = async (catId: string) => {
+    const current = budgets[catId] ?? { type: "fixed" as const, value: 0 };
+    const excluded = !current.excluded;
+    try { if (budgetIds[catId]) await api.patch(`/v1/budgets/${budgetIds[catId]}`, { isExcluded: excluded }); } catch { /* local fallback */ }
+    setBudgets((prev) => ({ ...prev, [catId]: { ...current, excluded } }));
   };
 
-  const remove = (catId: string) => {
-    setBudgets((prev) => {
-      const next = { ...prev };
-      delete next[catId];
-      return next;
-    });
+  const remove = async (catId: string) => {
+    try { if (budgetIds[catId]) await api.delete(`/v1/budgets/${budgetIds[catId]}`); } catch { /* local fallback */ }
+    setBudgets((prev) => { const next = { ...prev }; delete next[catId]; return next; });
     setDrawerOpen(false);
     setSelectedId(null);
   };

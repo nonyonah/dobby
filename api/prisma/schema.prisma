@@ -1,0 +1,355 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum AccountType {
+  BANK
+  CASH
+  CREDIT_CARD
+  WALLET
+  INVESTMENT
+  OTHER
+}
+
+enum Chain {
+  BASE
+  SOLANA
+}
+
+enum WalletValidationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum ImportType {
+  CSV
+  OFX
+  QFX
+  RECEIPT
+}
+
+enum ImportStatus {
+  CREATED
+  PROCESSING
+  REVIEW
+  COMPLETED
+  FAILED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TaxCountry {
+  NIGERIA
+  US
+}
+
+enum TaxChecklistStatus {
+  READY
+  OUTSTANDING
+}
+
+model User {
+  clerkId              String                   @id
+  email                String?
+  firstName            String?
+  lastName             String?
+  imageUrl              String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  profile              Profile?
+  taxProfile           TaxProfile?
+  accounts             Account[]
+  wallets              WalletAccount[]
+  transactions         Transaction[]
+  imports              TransactionImport[]
+  reviewItems          TransactionReviewItem[]
+  categories           Category[]
+  categorizationRules  CategorizationRule[]
+  budgets              Budget[]
+  goals                Goal[]
+  goalContributions    GoalContribution[]
+  integrationConnections IntegrationConnection[]
+  auditEvents          AuditEvent[]
+}
+
+model Profile {
+  clerkId        String   @id
+  currency       String   @default("USD")
+  country        String?
+  taxJurisdiction String?
+  theme          String?
+  accentColor    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [clerkId], references: [clerkId], onDelete: Cascade)
+}
+
+model TaxProfile {
+  id                    String   @id @default(cuid())
+  ownerClerkId          String   @unique
+  country               TaxCountry @default(NIGERIA)
+  taxYear               Int
+  estimatedTaxOwed      Decimal  @default(0) @db.Decimal(19, 4)
+  taxableIncome         Decimal  @default(0) @db.Decimal(19, 4)
+  deductionsCaptured   Json?
+  lastCalculatedAt     DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  owner                 User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  checklistItems        TaxChecklistItem[]
+}
+
+model TaxChecklistItem {
+  id            String             @id @default(cuid())
+  taxProfileId  String
+  key           String
+  label         String
+  status        TaxChecklistStatus @default(OUTSTANDING)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  taxProfile    TaxProfile         @relation(fields: [taxProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([taxProfileId, key])
+  @@index([taxProfileId, status])
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  ownerClerkId String
+  name         String
+  type         AccountType
+  institution  String?
+  currency     String        @default("USD")
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  owner        User          @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([ownerClerkId, isActive])
+}
+
+model WalletAccount {
+  id               String                 @id @default(cuid())
+  ownerClerkId     String
+  chain            Chain
+  address          String
+  displayName      String
+  color            String
+  isActive         Boolean                @default(true)
+  isDefault        Boolean                @default(false)
+  validationStatus WalletValidationStatus @default(PENDING)
+  verifiedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  owner            User                   @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@unique([ownerClerkId, chain, address])
+  @@index([ownerClerkId, isActive])
+}
+
+model Category {
+  id           String        @id @default(cuid())
+  ownerClerkId String
+  name         String
+  color        String?
+  isTaxable    Boolean       @default(false)
+  isArchived   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  owner        User          @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  transactions Transaction[]
+  categorizationRules CategorizationRule[]
+  budgets      Budget[]
+
+  @@unique([ownerClerkId, name])
+  @@index([ownerClerkId, isArchived])
+}
+
+enum BudgetType {
+  FIXED
+  PERCENTAGE
+}
+
+model Budget {
+  id           String     @id @default(cuid())
+  ownerClerkId String
+  categoryId   String
+  type         BudgetType
+  value        Decimal    @db.Decimal(19, 4)
+  isExcluded   Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  owner        User       @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  category     Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerClerkId, categoryId])
+  @@index([ownerClerkId, isExcluded])
+}
+
+enum GoalStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Goal {
+  id           String       @id @default(cuid())
+  ownerClerkId String
+  name         String
+  targetAmount Decimal      @db.Decimal(19, 4)
+  currency     String       @default("USD")
+  deadline     DateTime?
+  status       GoalStatus   @default(ACTIVE)
+  archivedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  owner        User         @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  contributions GoalContribution[]
+
+  @@index([ownerClerkId, status, deadline])
+}
+
+model GoalContribution {
+  id            String   @id @default(cuid())
+  ownerClerkId  String
+  goalId        String
+  amount        Decimal  @db.Decimal(19, 4)
+  contributedAt DateTime @default(now())
+  note          String?
+  createdAt     DateTime @default(now())
+  owner         User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  goal          Goal     @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([ownerClerkId, goalId, contributedAt])
+}
+
+model CategorizationRule {
+  id           String    @id @default(cuid())
+  ownerClerkId String
+  matcher      String
+  categoryId   String?
+  isTaxable    Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  owner        User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  category     Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@unique([ownerClerkId, matcher])
+  @@index([ownerClerkId, categoryId])
+}
+
+model Transaction {
+  id              String          @id @default(cuid())
+  ownerClerkId    String
+  accountId       String?
+  categoryId      String?
+  type            TransactionType
+  amount          Decimal         @db.Decimal(19, 4)
+  currency        String          @default("USD")
+  description     String
+  merchant        String?
+  occurredAt      DateTime
+  source          String?
+  assetSymbol     String?
+  externalId      String?
+  fingerprint     String?
+  isRecurring     Boolean         @default(false)
+  isTaxable       Boolean         @default(false)
+  needsReview     Boolean         @default(false)
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  owner           User            @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  account         Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  import          TransactionImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  importId        String?
+
+  @@index([ownerClerkId, occurredAt])
+  @@index([ownerClerkId, categoryId, occurredAt])
+  @@index([ownerClerkId, fingerprint])
+}
+
+model TransactionImport {
+  id           String       @id @default(cuid())
+  ownerClerkId String
+  type         ImportType
+  status       ImportStatus @default(CREATED)
+  objectKey    String?
+  originalName String?
+  rowCount     Int?
+  errorMessage String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  owner        User         @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  transactions Transaction[]
+  reviewItems  TransactionReviewItem[]
+
+  @@index([ownerClerkId, status, createdAt])
+}
+
+model TransactionReviewItem {
+  id              String       @id @default(cuid())
+  ownerClerkId    String
+  importId        String
+  rowNumber       Int
+  status          ReviewStatus @default(PENDING)
+  rawData         Json
+  proposedData    Json?
+  fingerprint     String?
+  confidence      Decimal?     @db.Decimal(5, 4)
+  errorMessage    String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  owner           User         @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  import          TransactionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@unique([importId, rowNumber])
+  @@index([ownerClerkId, status, createdAt])
+}
+
+model IntegrationConnection {
+  id           String   @id @default(cuid())
+  ownerClerkId String
+  provider     String
+  status       String   @default("disconnected")
+  providerUserId String?
+  metadata     Json?
+  lastSyncedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@unique([ownerClerkId, provider])
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  ownerClerkId String
+  action       String
+  entityType   String
+  entityId     String?
+  requestId    String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  owner        User    @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@index([ownerClerkId, createdAt])
+}

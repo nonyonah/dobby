@@ -1,20 +1,34 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
 import { formatUSD } from "@/lib/format";
 import { MONTH } from "@/lib/finance";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { ModuleCard } from "./module-card";
+import { useApi } from "@/hooks/use-api";
 
 export function IncomeExpensesCard() {
-  const net = MONTH.income - MONTH.expenses;
+  const [summary, setSummary] = useState<{ income: number; expenses: number } | null>(null);
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    const from = new Date(2026, 8, 1).toISOString();
+    const to = new Date(2026, 8, 30, 23, 59, 59).toISOString();
+    void api.get<{ data: { totals: { income: number; expenses: number } } }>(`/v1/insights/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((response) => setSummary(response.data.totals)).catch(() => setSummary(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
+  const income = summary?.income ?? MONTH.income;
+  const expenses = summary?.expenses ?? MONTH.expenses;
+  const net = income - expenses;
   const data = useMemo(
     () => [
-      { k: "Income", v: MONTH.income, fill: "#00afb9" },
-      { k: "Expenses", v: MONTH.expenses, fill: "#ef476f" }
+      { k: "Income", v: income, fill: "#00afb9" },
+      { k: "Expenses", v: expenses, fill: "#ef476f" }
     ],
-    []
+    [income, expenses]
   );
   const config = useMemo(
     () => ({ v: { label: "Amount", color: "#4a55c9" } }) satisfies ChartConfig,
@@ -27,13 +41,13 @@ export function IncomeExpensesCard() {
         <div>
           <p className="m-0 text-[12px] text-muted-foreground">Income</p>
           <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
-            {formatUSD(MONTH.income)}
+            {formatUSD(income)}
           </p>
         </div>
         <div>
           <p className="m-0 text-[12px] text-muted-foreground">Expenses</p>
           <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
-            {formatUSD(MONTH.expenses)}
+            {formatUSD(expenses)}
           </p>
         </div>
       </div>

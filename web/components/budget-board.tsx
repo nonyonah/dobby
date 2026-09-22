@@ -45,6 +45,7 @@ export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps)
   const summaryLabel = chartView === "month" ? "in September" : "across all time";
   const projectedMonthSpend = Math.round((spent / 18) * 30);
   const projectedDifference = total - projectedMonthSpend;
+  const budgetProgress = summaryBudget > 0 ? Math.min(100, (summarySpent / summaryBudget) * 100) : 0;
 
   const row = (c: (typeof CATEGORIES)[number], isExcluded: boolean) => {
     const def = budgets[c.id];
@@ -99,13 +100,13 @@ export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps)
     <>
     <div>
       <div className="rounded-2xl border-0 bg-card px-6 py-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="grid grid-cols-[1fr_140px_1fr] items-center gap-4">
           <div className="text-center">
             <p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatUSD(summarySpent)}</p>
             <p className="m-0 text-[12px] text-muted-foreground">spent {summaryLabel}</p>
           </div>
-          <div className="relative">
-            <ChartContainer config={chartConfig} className="aspect-square h-30 w-30 shrink-0">
+          <div className="relative flex aspect-square h-30 w-30 items-center justify-center">
+            <ChartContainer config={chartConfig} className="absolute inset-0 h-full w-full">
               <PieChart>
                 <Tooltip content={<ChartTooltipContent className="bg-card" formatter={(v) => formatUSD(Number(v))} />} />
                 <Pie data={donut} dataKey="value" nameKey="name" innerRadius={36} outerRadius={52} paddingAngle={2} cornerRadius={6} strokeWidth={0}>
@@ -115,6 +116,10 @@ export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps)
                 </Pie>
               </PieChart>
             </ChartContainer>
+            <div className="pointer-events-none flex size-23 flex-col items-center justify-center rounded-full bg-card text-center" aria-hidden="true">
+              <span className="mono text-[16px] font-semibold">{budgetProgress.toFixed(0)}%</span>
+              <span className="text-[10px] text-muted-foreground">used</span>
+            </div>
             <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Budget chart settings" title="Budget chart settings" className="absolute right-0 bottom-0 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line bg-card text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><SettingsIcon /></button>
           </div>
           <div className="text-center">

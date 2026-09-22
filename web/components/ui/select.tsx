@@ -35,7 +35,7 @@ function SelectContent({ children }: { children: React.ReactNode }) {
 }
 
 function SelectTrigger({ className, children, ...props }: React.ComponentProps<typeof HeroSelect.Trigger> & { size?: "sm" | "default" }) {
-  return <HeroSelect.Trigger className={cn("flex h-8 min-w-32 items-center gap-2 rounded-lg border border-line bg-card px-2.5 text-[13px] text-foreground", className)} {...props}>{children}</HeroSelect.Trigger>;
+  return <HeroSelect.Trigger className={cn("flex !h-7 !min-h-7 min-w-32 items-center gap-1.5 rounded-lg border border-line !bg-[var(--dropdown-background)] !py-0 px-2 text-[12px] text-foreground", className)} {...props}>{children}</HeroSelect.Trigger>;
 }
 
 function SelectValue({ children, className }: { children?: React.ReactNode; className?: string }) {
@@ -78,13 +78,13 @@ function Select({ value, defaultValue, onValueChange, children, className, disab
       <HeroSelect.Trigger
         id={triggerProps.id}
         aria-label={triggerProps["aria-label"]}
-        className={cn("flex h-8 min-w-32 items-center gap-2 rounded-lg border border-line bg-card px-2.5 text-[13px] text-foreground", triggerClassName)}
+        className={cn("flex !h-7 !min-h-7 min-w-32 items-center gap-1.5 rounded-lg border border-line !bg-[var(--dropdown-background)] !py-0 px-2 text-[12px] text-foreground", triggerClassName)}
       >
         {triggerChildren}
-        <HeroSelect.Value className="min-w-0 flex-1" />
+        <HeroSelect.Value className="block w-full min-w-0 flex-1 truncate text-left" />
         <CaretDownIcon className="ml-auto shrink-0 text-muted-foreground" />
       </HeroSelect.Trigger>
-      <HeroSelect.Popover className="p-1">
+      <HeroSelect.Popover className="!bg-[var(--dropdown-background)] p-1">
         <ListBox className="max-h-72 min-w-[var(--trigger-width)] overflow-y-auto">
           {items.map((item) => (
             <ListBox.Item

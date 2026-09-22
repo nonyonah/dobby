@@ -1,0 +1,12 @@
+import type { TaxRuleModule } from "./types.js";
+const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+function quarterly(taxYear: number, estimatedTax: number, now: Date) { const dates = [`${taxYear}-04-15`, `${taxYear}-06-15`, `${taxYear}-09-15`, `${taxYear + 1}-01-15`]; const next = dates.find((date) => new Date(`${date}T23:59:59Z`) >= now) ?? null; return { required: estimatedTax >= 1_000, threshold: 1_000, currentPayment: estimatedTax >= 1_000 ? estimatedTax / 4 : 0, nextPayment: estimatedTax >= 1_000 ? estimatedTax / 4 : 0, nextDueDate: estimatedTax >= 1_000 ? next : null }; }
+export const usRules: TaxRuleModule = {
+  country: "US",
+  checklist: [{ key: "1099_forms", label: "All 1099-NEC and 1099-K forms received" }, { key: "expense_records", label: "Categorized expense records" }, { key: "estimated_payments", label: "Prior estimated payment records" }, { key: "home_office_area", label: "Home office square footage if claiming that deduction" }],
+  calculate({ taxYear, transactions, deductions, now }) {
+    const grossIncome = transactions.filter((item) => item.type === "INCOME").reduce((sum, item) => sum + item.amount, 0); const taxableReceipts = transactions.filter((item) => item.type === "INCOME" && item.isTaxable).reduce((sum, item) => sum + item.amount, 0); const taxableExpenses = transactions.filter((item) => item.type === "EXPENSE" && item.isTaxable).reduce((sum, item) => sum + item.amount, 0);
+    const homeOffice = deductions.homeOfficeMethod === "simplified" ? Math.min(number(deductions.homeOfficeSqFt), 300) * 5 : number(deductions.actualHomeOfficeExpenses); const retirement = number(deductions.retirementContributions); const profit = Math.max(0, taxableReceipts - taxableExpenses - homeOffice - retirement); const selfEmploymentTax = profit * .9235 * .153; const halfSelfEmploymentTax = selfEmploymentTax / 2; const taxableIncome = Math.max(0, profit - halfSelfEmploymentTax);
+    return { country: "US", taxYear, grossIncome, taxableIncome, deductions: { taxableExpenses, homeOffice, retirement, halfSelfEmploymentTax, total: taxableExpenses + homeOffice + retirement + halfSelfEmploymentTax }, estimatedTaxOwed: selfEmploymentTax, annualFiling: true, filingDeadline: `${taxYear + 1}-04-15`, quarterly: quarterly(taxYear, selfEmploymentTax, now), notes: ["Informational self-employment-tax estimate only; federal income tax brackets are not configured.", "Confirm Schedule C, FICA, retirement, and estimated-payment treatment with a US tax professional."] };
+  },
+};

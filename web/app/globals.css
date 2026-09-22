@@ -56,6 +56,7 @@
   --surface-secondary-foreground: var(--text);
   --surface-tertiary: var(--paper-200);
   --surface-tertiary-foreground: var(--text);
+  --dropdown-background: #f3f3f3;
   --overlay: #ffffff;
   --overlay-foreground: var(--text);
   --default: var(--paper-100);
@@ -205,6 +206,7 @@
     --surface-secondary-foreground: #eceef0;
     --surface-tertiary: #252529;
     --surface-tertiary-foreground: #eceef0;
+    --dropdown-background: #2c2d2f;
     --overlay: #1A1A1B;
     --overlay-foreground: #eceef0;
     --default: #1c1c1f;

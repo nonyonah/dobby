@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { Archive, ArrowLeft, Check, PencilSimple, Plus, Trash } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -8,13 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmojiPickerField } from "@/components/ui/emoji-picker";
+import { useApi } from "@/hooks/use-api";
 
 const categoryOptions = ["Home", "Food & dining", "Transport", "Subscriptions", "Income", "Uncategorized"];
 const categoryEmojis: Record<string, string> = { Home: "🏠", "Food & dining": "🍽", Transport: "🚕", Subscriptions: "🔁", Income: "↗️", Uncategorized: "📦" };
-type Rule = { id: number; matcher: string; category: string; taxable: boolean };
+type Rule = { id: string | number; matcher: string; category: string; categoryId?: string | null; taxable: boolean };
 
 export function CategoriesRulesPage() {
   const [categories, setCategories] = useState(categoryOptions);
+  const [categoryIds, setCategoryIds] = useState<Record<string, string>>({});
   const [newCategory, setNewCategory] = useState("");
   const [newCategoryEmoji, setNewCategoryEmoji] = useState("✨");
 
@@ -27,34 +30,71 @@ export function CategoriesRulesPage() {
   const [ruleCategory, setRuleCategory] = useState("Home");
   const [taxable, setTaxable] = useState(false);
   const [notice, setNotice] = useState("");
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void Promise.all([
+      api.get<{ data: Array<{ id: string; name: string; isArchived: boolean }> }>("/v1/categories"),
+      api.get<{ data: Array<{ id: string; matcher: string; categoryId?: string | null; category?: { name: string } | null; isTaxable: boolean }> }>("/v1/rules"),
+    ]).then(([categoryResponse, ruleResponse]) => {
+      const activeCategories = categoryResponse.data.filter((category) => !category.isArchived);
+      setCategories(activeCategories.map((category) => category.name));
+      setCategoryIds(Object.fromEntries(activeCategories.map((category) => [category.name, category.id])));
+      setRules(ruleResponse.data.map((rule) => ({ id: rule.id, matcher: rule.matcher, category: rule.category?.name ?? "Uncategorized", categoryId: rule.categoryId, taxable: rule.isTaxable })));
+      if (activeCategories[0]) setRuleCategory(activeCategories[0].name);
+    }).catch(() => {
+      // Keep local seed data as a development fallback.
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
 
   const showNotice = (message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 2200);
   };
 
-  const addCategory = () => {
+  const addCategory = async () => {
     const value = newCategory.trim();
     if (!value || categories.includes(value)) return;
-    setCategories((current) => [...current, `${newCategoryEmoji} ${value}`]);
+    try {
+      const response = await api.post<{ data: { id: string; name: string } }>("/v1/categories", { name: value, isTaxable: false });
+      setCategories((current) => [...current, response.data.name]);
+      setCategoryIds((current) => ({ ...current, [response.data.name]: response.data.id }));
+    } catch {
+      setCategories((current) => [...current, `${newCategoryEmoji} ${value}`]);
+    }
     setNewCategory("");
     setNewCategoryEmoji("✨");
     showNotice("Category created");
   };
 
-  const addRule = () => {
+  const addRule = async () => {
     const value = matcher.trim();
     if (!value) return;
-    setRules((current) => [...current, { id: Date.now(), matcher: value, category: ruleCategory, taxable }]);
+    try {
+      const response = await api.post<{ data: { id: string; matcher: string; category?: { name: string } | null; categoryId?: string | null; isTaxable: boolean } }>("/v1/rules", { matcher: value, categoryId: categoryIds[ruleCategory] ?? null, isTaxable: taxable });
+      setRules((current) => [...current, { id: response.data.id, matcher: response.data.matcher, category: response.data.category?.name ?? ruleCategory, categoryId: response.data.categoryId, taxable: response.data.isTaxable }]);
+    } catch {
+      setRules((current) => [...current, { id: Date.now(), matcher: value, category: ruleCategory, taxable }]);
+    }
     setMatcher("");
     setTaxable(false);
     showNotice("Rule created");
   };
 
-  const renameCategory = (category: string) => {
+  const renameCategory = async (category: string) => {
     const value = window.prompt("Rename category", category)?.trim();
     if (!value || value === category || categories.includes(value)) return;
+    const id = categoryIds[category];
+    try {
+      if (id) await api.patch(`/v1/categories/${id}`, { name: value });
+    } catch {
+      // Keep the local rename fallback.
+    }
     setCategories((current) => current.map((item) => item === category ? value : item));
+    setCategoryIds((current) => { const next = { ...current }; if (id) { delete next[category]; next[value] = id; } return next; });
     setRules((current) => current.map((rule) => rule.category === category ? { ...rule, category: value } : rule));
     showNotice("Category renamed");
   };
@@ -76,7 +116,7 @@ export function CategoriesRulesPage() {
                 const customEmoji = category.startsWith("✨ ") ? category.match(/^(\S+)\s(.+)$/) : null;
                 const emoji = customEmoji?.[1] ?? categoryEmojis[category] ?? "✨";
                 const displayName = customEmoji?.[2] ?? category;
-                return <div key={category} className="flex items-center justify-between gap-3 py-2.5 first:pt-1"><span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary" aria-hidden="true">{emoji}</span><span className="truncate">{displayName}</span></span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Rename ${displayName}`} title={`Rename ${displayName}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${displayName}`} title={`Archive ${displayName}`} onClick={() => { setCategories((current) => current.filter((item) => item !== category)); showNotice("Category archived"); }}><Archive /></Button></div></div>;
+                return <div key={category} className="flex items-center justify-between gap-3 py-2.5 first:pt-1"><span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary" aria-hidden="true">{emoji}</span><span className="truncate">{displayName}</span></span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Rename ${displayName}`} title={`Rename ${displayName}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${displayName}`} title={`Archive ${displayName}`} onClick={async () => { const id = categoryIds[category]; try { if (id) await api.delete(`/v1/categories/${id}`); } catch { /* local fallback */ } setCategories((current) => current.filter((item) => item !== category)); showNotice("Category archived"); }}><Archive /></Button></div></div>;
               })}
             </div>
           </CardContent>
@@ -92,8 +132,8 @@ export function CategoriesRulesPage() {
               <label className="flex items-center gap-2 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8] sm:col-span-2"><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} className="size-3.5 accent-[#4a55c9]" /> Mark matching transactions as taxable</label>
             </form>
 
-            <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-[12px]"><caption className="sr-only">Persistent categorization rules</caption><thead><tr className="border-b border-[#e0ddd7] text-[#6b6d72] dark:border-[#2d2d31] dark:text-[#a2a3a8]"><th scope="col" className="pb-2 font-medium">Contains</th><th scope="col" className="pb-2 font-medium">Category</th><th scope="col" className="pb-2 font-medium">Tax status</th><th scope="col" className="pb-2 text-right font-medium">Action</th></tr></thead><tbody>{rules.map((rule) => <tr key={rule.id} className="border-b border-[#e9e7e2] last:border-0 dark:border-[#2d2d31]"><td className="py-3 font-mono">{rule.matcher}</td><td className="py-3">{rule.category}</td><td className="py-3"><span className={`rounded-full px-2 py-1 text-[11px] ${rule.taxable ? "bg-[#eceefb] text-[#3a44a8]" : "bg-[#f1efeb] text-[#6b6d72] dark:bg-[#2d2d31] dark:text-[#a2a3a8]"}`}>{rule.taxable ? "Taxable" : "Non-tax"}</span></td><td className="py-3 text-right"><Button variant="ghost" size="icon-sm" aria-label={`Delete rule containing ${rule.matcher}`} title="Delete rule" onClick={() => setRules((current) => current.filter((item) => item.id !== rule.id))}><Trash /></Button></td></tr>)}</tbody></table></div>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e9e7e2] pt-4 dark:border-[#2d2d31]"><p className="text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]">Re-apply rules to your existing transaction history after making changes.</p><Button variant="secondary" onClick={() => showNotice("Re-apply queued (mock)")}>Re-apply past transactions</Button></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-[12px]"><caption className="sr-only">Persistent categorization rules</caption><thead><tr className="border-b border-[#e0ddd7] text-[#6b6d72] dark:border-[#2d2d31] dark:text-[#a2a3a8]"><th scope="col" className="pb-2 font-medium">Contains</th><th scope="col" className="pb-2 font-medium">Category</th><th scope="col" className="pb-2 font-medium">Tax status</th><th scope="col" className="pb-2 text-right font-medium">Action</th></tr></thead><tbody>{rules.map((rule) => <tr key={rule.id} className="border-b border-[#e9e7e2] last:border-0 dark:border-[#2d2d31]"><td className="py-3 font-mono">{rule.matcher}</td><td className="py-3">{rule.category}</td><td className="py-3"><span className={`rounded-full px-2 py-1 text-[11px] ${rule.taxable ? "bg-[#eceefb] text-[#3a44a8]" : "bg-[#f1efeb] text-[#6b6d72] dark:bg-[#2d2d31] dark:text-[#a2a3a8]"}`}>{rule.taxable ? "Taxable" : "Non-tax"}</span></td><td className="py-3 text-right"><Button variant="ghost" size="icon-sm" aria-label={`Delete rule containing ${rule.matcher}`} title="Delete rule" onClick={async () => { try { if (typeof rule.id === "string") await api.delete(`/v1/rules/${rule.id}`); } catch { /* local fallback */ } setRules((current) => current.filter((item) => item.id !== rule.id)); showNotice("Rule deleted"); }}><Trash /></Button></td></tr>)}</tbody></table></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e9e7e2] pt-4 dark:border-[#2d2d31]"><p className="text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]">Re-apply rules to your existing transaction history after making changes.</p><Button variant="secondary" onClick={async () => { try { const response = await api.post<{ data: { updatedCount: number } }>("/v1/rules/reapply", {}); showNotice(`${response.data.updatedCount} transactions updated`); } catch { showNotice("Could not re-apply rules"); } }}>Re-apply past transactions</Button></div>
           </CardContent>
         </Card>
       </div>
