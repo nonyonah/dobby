@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 import { CheckCircleIcon, CheckIcon } from "./icons";
 import { formatUSD } from "@/lib/format";
-import { TAX_DOCS, TAX_DUE, TAX_POSITION } from "@/lib/finance";
+
 import { Meter, ModuleCard } from "./module-card";
 
 export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
@@ -18,12 +18,12 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
     void Promise.all([
       api.get<{ data: { estimatedTaxOwed: number } }>("/v1/tax/estimate"),
       api.get<{ data: { items: Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> } }>("/v1/tax/checklist"),
-    ]).then(([tax, docs]) => { setEstimate(tax.data); setChecklist(docs.data.items); }).catch(() => { /* fixture fallback */ });
+    ]).then(([tax, docs]) => { setEstimate(tax.data); setChecklist(docs.data.items); }).catch(() => { setEstimate(null); setChecklist([]); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
-  const owed = (estimate?.estimatedTaxOwed ?? TAX_POSITION.estimated) - TAX_POSITION.paid;
-  const paidPct = (TAX_POSITION.paid / TAX_POSITION.estimated) * 100;
-  const docs = checklist ?? TAX_DOCS.map((item) => ({ key: item.id, label: item.label, status: item.done ? "READY" as const : "OUTSTANDING" as const }));
+  const owed = estimate?.estimatedTaxOwed ?? 0;
+  const paidPct = 0;
+  const docs = checklist ?? [];
   const done = docs.filter((d) => d.status === "READY").length;
   const readiness = docs.length ? Math.round((done / docs.length) * 100) : 0;
 
@@ -50,17 +50,15 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <p className="m-0 text-[12px] text-muted-foreground">Estimated owed</p>
             <span className="rounded-full border-transparent bg-[#ffc8dd] px-2 py-0.5 text-[12px] font-semibold text-white">
-              {TAX_DUE.sub}
+              Informational estimate
             </span>
           </div>
           <div className="mt-3">
             <Meter value={paidPct} tone="accent" />
           </div>
           <div className="mt-2 flex justify-between gap-3 text-[12px]">
-            <span className="text-[#8a8b91] dark:text-[#a2a3a8]">Paid {formatUSD(TAX_POSITION.paid)}</span>
-            <span className="mono text-[#1c1d20] dark:text-[#eceef0] tabular-nums">
-              {formatUSD(TAX_POSITION.estimated)} est.
-            </span>
+            <span className="text-[#8a8b91] dark:text-[#a2a3a8]">Paid data unavailable</span>
+            <span className="mono text-[#1c1d20] dark:text-[#eceef0] tabular-nums">{formatUSD(owed)} est.</span>
           </div>
         </>
       )}

@@ -24,7 +24,7 @@ import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 interface TxImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImport: (rows: TxFull[], file?: File) => void;
+  onImport: (rows: TxFull[], file?: File, importType?: "CSV" | "OFX" | "QFX" | "RECEIPT") => void;
 }
 
 type Mode = "choose" | "statement" | "receipt" | "manual";
@@ -138,6 +138,11 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
     setFileName(file.name);
     setSelectedFile(file);
     setParseError("");
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (extension === "ofx" || extension === "qfx") {
+      setParsed([]);
+      return;
+    }
     try {
       const text = await file.text();
       setParsed(parseStatement(text, file.name));
@@ -147,14 +152,11 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
     }
   };
 
-  const pickReceipt = async (file: File) => {
+  const pickReceipt = (file: File) => {
     setFileName(file.name);
-    setParsing(true);
-    setParseError("");
-    const base = file.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "Receipt";
-    await new Promise((r) => setTimeout(r, 1200));
+    setSelectedFile(file);
     setParsing(false);
-    setName(base.charAt(0).toUpperCase() + base.slice(1));
+    setParseError("");
     setParsed([]);
   };
 
@@ -179,6 +181,11 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
   };
 
   const addReceipt = () => {
+    if (selectedFile) {
+      onImport([], selectedFile, "RECEIPT");
+      close(false);
+      return;
+    }
     const value = Number.parseFloat(amount.replace(/[^0-9.-]/g, ""));
     if (!name.trim() || !Number.isFinite(value)) return;
     onImport([
@@ -235,11 +242,13 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
               {fileName || "Choose file"}
             </Button>
             {parseError ? <p className="m-0 text-[12px] text-[#b0402f]">{parseError}</p> : null}
-            {parsed.length > 0 ? (
+            {selectedFile && parsed.length > 0 ? (
               <p className="m-0 text-[13px]" aria-live="polite">
                 <span className="font-semibold">{parsed.length}</span>{" "}
                 <span className="text-[#8a8b91] dark:text-[#a2a3a8]">transactions ready from {fileName}</span>
               </p>
+            ) : selectedFile ? (
+              <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]" aria-live="polite">Ready to process {fileName} securely.</p>
             ) : null}
           </div>
         ) : null}
@@ -249,7 +258,7 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
             <input
               ref={fileRef}
               type="file"
-              accept="image/*,.pdf"
+              accept="image/jpeg,image/png,image/webp,.pdf"
               className="hidden"
               aria-label="Choose receipt file"
               onChange={(e) => {
@@ -334,12 +343,21 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
             </Button>
           )}
           {mode === "statement" ? (
-            <Button variant="primary" disabled={parsed.length === 0} onClick={() => { onImport(parsed, selectedFile ?? undefined); close(false); }}>
+            <Button
+              variant="primary"
+              disabled={!selectedFile || (parsed.length === 0 && !/\.(ofx|qfx)$/i.test(selectedFile.name))}
+              onClick={() => {
+                const extension = selectedFile?.name.split(".").pop()?.toLowerCase();
+                const importType = extension === "ofx" ? "OFX" : extension === "qfx" ? "QFX" : "CSV";
+                onImport(parsed, selectedFile ?? undefined, importType);
+                close(false);
+              }}
+            >
               Import {parsed.length > 0 ? `${parsed.length} ` : ""}transactions
             </Button>
           ) : null}
           {mode === "receipt" ? (
-            <Button variant="primary" disabled={!name.trim() || !amount.trim() || parsing} onClick={addReceipt}>
+            <Button variant="primary" disabled={parsing || (!selectedFile && (!name.trim() || !amount.trim()))} onClick={addReceipt}>
               Add transaction
             </Button>
           ) : null}

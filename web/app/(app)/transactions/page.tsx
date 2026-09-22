@@ -9,7 +9,7 @@ import { TxEditDialog } from "@/components/tx-edit-dialog";
 import { TxImportDialog } from "@/components/tx-import-dialog";
 import { ReviewQueue } from "@/components/review-queue";
 
-import { REVIEW_QUEUE } from "@/lib/review-queue";
+
 import {
   Drawer,
   DrawerContent,
@@ -18,7 +18,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { TRANSACTIONS_FULL, type TxFull } from "@/lib/transactions";
+import type { TxFull } from "@/lib/transactions";
 import { useApi } from "@/hooks/use-api";
 
 type ApiTransaction = {
@@ -87,10 +87,10 @@ function mapReview(item: ApiReview): TxFull {
 }
 
 function TransactionsInner() {
-  const [rows, setRows] = useState<TxFull[]>(TRANSACTIONS_FULL);
-  const [reviewRows, setReviewRows] = useState<TxFull[]>(REVIEW_QUEUE);
+  const [rows, setRows] = useState<TxFull[]>([]);
+  const [reviewRows, setReviewRows] = useState<TxFull[]>([]);
   const [view, setView] = useState<"ledger" | "review">("review");
-  const [selectedId, setSelectedId] = useState<string | null>(TRANSACTIONS_FULL[0].id);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -110,7 +110,8 @@ function TransactionsInner() {
       setReviewRows(reviewResponse.data.map(mapReview));
       setSelectedId(transactionResponse.data[0] ? transactionResponse.data[0].id : null);
     }).catch(() => {
-      // Keep the local fixtures as a development fallback when the API is unavailable.
+      setRows([]);
+      setReviewRows([]);
     });
     return () => {
       cancelled = true;
@@ -183,19 +184,22 @@ function TransactionsInner() {
     setDrawerOpen(false);
   };
 
-  const addRows = async (incoming: TxFull[], file?: File) => {
+  const addRows = async (incoming: TxFull[], file?: File, importType: "CSV" | "OFX" | "QFX" | "RECEIPT" = "CSV") => {
     if (!file || !isSignedIn) {
       setRows((prev) => [...incoming, ...prev]);
       return;
     }
     try {
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      const contentType = file.type || (extension === "ofx" ? "application/ofx" : extension === "qfx" ? "application/qfx" : extension === "pdf" ? "application/pdf" : importType === "RECEIPT" ? "image/jpeg" : "text/csv");
       const presigned = await api.post<{ data: { import: { id: string }; uploadUrl: string } }>("/v1/imports/presign", {
         originalName: file.name,
-        contentType: file.type || "text/csv",
+        type: importType,
+        contentType,
       });
       const upload = await fetch(presigned.data.uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": file.type || "text/csv" },
+        headers: { "Content-Type": contentType },
         body: file,
       });
       if (!upload.ok) throw new Error("R2 upload failed");
@@ -204,8 +208,7 @@ function TransactionsInner() {
       setReviewRows(reviews.data.map(mapReview));
       setView("review");
     } catch {
-      // Preserve the local parser fallback if storage or the API is unavailable.
-      setRows((prev) => [...incoming, ...prev]);
+      // Keep the ledger empty when the import API is unavailable; do not present unpersisted rows as real data.
     }
   };
 

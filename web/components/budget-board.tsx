@@ -4,25 +4,28 @@ import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Cell, Pie, PieChart, Tooltip } from "recharts";
 import { formatUSD } from "@/lib/format";
-import { CATEGORIES } from "@/lib/finance";
+
 import {
   budgetAmount,
-  categorySpent,
+
   type BudgetDef,
 } from "@/lib/budgets";
 import { ChartContainer, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { FilledChevronDownIcon, SettingsIcon } from "./icons";
 
+type BudgetCategory = { id: string; name: string; emoji: string; spent: number; budget: number; dot: string };
+
 interface BudgetBoardProps {
   budgets: Record<string, BudgetDef>;
+  categories: BudgetCategory[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }
 
 const chartConfig = { value: { label: "Spent", color: "#4a55c9" } } satisfies ChartConfig;
 
-export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps) {
+export function BudgetBoard({ budgets, categories, selectedId, onSelect }: BudgetBoardProps) {
   const [openRegular, setOpenRegular] = useState(true);
   const [openExcluded, setOpenExcluded] = useState(false);
   const [chartView, setChartView] = useState<"month" | "all">("month");
@@ -34,12 +37,12 @@ export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps)
     exit: reduce ? { opacity: 0 } : { height: 0, opacity: 0 },
     transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] as const },
   };
-  const regular = CATEGORIES.filter((c) => !budgets[c.id]?.excluded);
-  const excluded = CATEGORIES.filter((c) => budgets[c.id]?.excluded);
-  const spent = regular.reduce((s, c) => s + categorySpent(c.id), 0);
+  const regular = categories.filter((c) => !budgets[c.id]?.excluded);
+  const excluded = categories.filter((c) => budgets[c.id]?.excluded);
+  const spent = regular.reduce((s, c) => s + c.spent, 0);
   const total = regular.reduce((s, c) => s + (budgets[c.id] ? budgetAmount(budgets[c.id]) : 0), 0);
 
-  const donut = regular.filter((c) => categorySpent(c.id) > 0).map((c) => ({ name: c.name, value: categorySpent(c.id), fill: c.dot }));
+  const donut = regular.filter((c) => c.spent > 0).map((c) => ({ name: c.name, value: c.spent, fill: c.dot }));
   const summarySpent = chartView === "month" ? spent : spent * 7;
   const summaryBudget = chartView === "month" ? total : total * 7;
   const summaryLabel = chartView === "month" ? "in September" : "across all time";
@@ -47,10 +50,10 @@ export function BudgetBoard({ budgets, selectedId, onSelect }: BudgetBoardProps)
   const projectedDifference = total - projectedMonthSpend;
   const budgetProgress = summaryBudget > 0 ? Math.min(100, (summarySpent / summaryBudget) * 100) : 0;
 
-  const row = (c: (typeof CATEGORIES)[number], isExcluded: boolean) => {
+  const row = (c: BudgetCategory, isExcluded: boolean) => {
     const def = budgets[c.id];
     const amount = def ? budgetAmount(def) : 0;
-    const s = categorySpent(c.id);
+    const s = c.spent;
     const pct = amount > 0 ? Math.min(100, (s / amount) * 100) : 0;
     const over = amount > 0 && s > amount;
     const selected = c.id === selectedId;

@@ -30,7 +30,9 @@ const SAVINGS_COLOR = "#4a55c9";
 const MID_COLOR = "#16A34A";
 
 /** Build a Nivo-compatible three-column income → expenses/savings flow. */
-export function buildSankey(month: number): SankeyGraph {
+export function buildSankey(_month: number): SankeyGraph {
+  return { nodes: [], links: [] };
+  /*
   const income = YEAR[month]?.income ?? 0;
   const sources = SOURCE_SERIES.map((s, i) => ({
     id: s.id,
@@ -70,6 +72,7 @@ export function buildSankey(month: number): SankeyGraph {
         .map((item) => ({ source: "income", target: item.id, value: item.value, startColor: MID_COLOR, endColor: item.color })),
     ],
   };
+  */
 }
 
 
@@ -81,6 +84,8 @@ export interface StackDatum {
 
 /** Monthly stacked bars: top categories + savings remainder on top. */
 export function buildStacks(): StackDatum[] {
+  return [];
+  /*
   const months = ["Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"];
   const topIds = ["housing", "groceries", "investments", "shopping", "utilities"];
   const meta = (id: string) => CATEGORY_SERIES.find((c) => c.id === id)!;
@@ -94,4 +99,5 @@ export function buildStacks(): StackDatum[] {
     const save = Math.max(0, (YEAR[m]?.income ?? 0) - spent - others);
     return { month: months[i], segments: [...segments, { id: "rest", name: "Other", value: others, color: "#c4c2bc" }], savings: save };
   });
+  */
 }

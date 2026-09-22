@@ -17,7 +17,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PlusIcon } from "@/components/icons";
 
-import { INITIAL_BUDGETS, type BudgetDef } from "@/lib/budgets";
+import type { BudgetDef } from "@/lib/budgets";
 import { useApi } from "@/hooks/use-api";
 
 export default function BudgetPage() {
@@ -29,7 +29,8 @@ export default function BudgetPage() {
 }
 
 function BudgetInner() {
-  const [budgets, setBudgets] = useState<Record<string, BudgetDef>>(INITIAL_BUDGETS);
+  const [budgets, setBudgets] = useState<Record<string, BudgetDef>>({});
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; emoji: string; spent: number; budget: number; dot: string }>>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dialog, setDialog] = useState<null | { mode: "create" } | { mode: "edit"; catId: string }>(null);
@@ -45,7 +46,9 @@ function BudgetInner() {
       api.get<{ data: Array<{ id: string; name: string; isArchived: boolean }> }>("/v1/categories"),
       api.get<{ data: Array<{ id: string; category: { id: string; name: string }; type: "FIXED" | "PERCENTAGE"; value: number | string; isExcluded: boolean }> }>("/v1/budgets"),
     ]).then(([categoryResponse, budgetResponse]) => {
-      const ids = Object.fromEntries(categoryResponse.data.filter((category) => !category.isArchived).map((category) => [category.name.toLowerCase(), category.id]));
+      const activeCategories = categoryResponse.data.filter((category) => !category.isArchived).map((category) => ({ id: category.id, name: category.name, emoji: "📊", spent: 0, budget: 0, dot: "#4a55c9" }));
+      setCategories(activeCategories);
+      const ids = Object.fromEntries(activeCategories.map((category) => [category.name.toLowerCase(), category.id]));
       setCategoryIds(ids);
       const next: Record<string, BudgetDef> = {};
       const nextBudgetIds: Record<string, string> = {};
@@ -54,10 +57,12 @@ function BudgetInner() {
         next[key] = { type: budget.type === "PERCENTAGE" ? "percent" : "fixed", value: Number(budget.value), excluded: budget.isExcluded };
         nextBudgetIds[key] = budget.id;
       }
-      if (Object.keys(next).length) setBudgets(next);
+      setBudgets(next);
       setBudgetIds(nextBudgetIds);
     }).catch(() => {
-      // Keep fixture budgets as a development fallback.
+      setBudgets({});
+      setCategories([]);
+      setBudgetIds({});
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
@@ -89,7 +94,7 @@ function BudgetInner() {
         setBudgetIds((current) => ({ ...current, [catId]: response.data.id }));
       }
     } catch {
-      // Keep local fixture behavior if the API is unavailable.
+      return;
     }
     setBudgets((prev) => ({ ...prev, [catId]: { ...def, excluded: false } }));
   };
@@ -97,12 +102,12 @@ function BudgetInner() {
   const toggleExclude = async (catId: string) => {
     const current = budgets[catId] ?? { type: "fixed" as const, value: 0 };
     const excluded = !current.excluded;
-    try { if (budgetIds[catId]) await api.patch(`/v1/budgets/${budgetIds[catId]}`, { isExcluded: excluded }); } catch { /* local fallback */ }
+    try { if (budgetIds[catId]) await api.patch(`/v1/budgets/${budgetIds[catId]}`, { isExcluded: excluded }); else return; } catch { return; }
     setBudgets((prev) => ({ ...prev, [catId]: { ...current, excluded } }));
   };
 
   const remove = async (catId: string) => {
-    try { if (budgetIds[catId]) await api.delete(`/v1/budgets/${budgetIds[catId]}`); } catch { /* local fallback */ }
+    try { if (budgetIds[catId]) await api.delete(`/v1/budgets/${budgetIds[catId]}`); else return; } catch { return; }
     setBudgets((prev) => { const next = { ...prev }; delete next[catId]; return next; });
     setDrawerOpen(false);
     setSelectedId(null);
@@ -119,7 +124,7 @@ function BudgetInner() {
           </Button>
         </div>
 
-        <BudgetBoard budgets={budgets} selectedId={selectedId} onSelect={openDetail} />
+        {categories.length === 0 ? <div className="rounded-2xl bg-card px-6 py-10 text-center text-[13px] text-muted-foreground">No categories or budgets yet.</div> : <BudgetBoard categories={categories} budgets={budgets} selectedId={selectedId} onSelect={openDetail} />}
       </div>
       <Drawer
         open={drawerOpen}
@@ -142,6 +147,7 @@ function BudgetInner() {
                 onEdit={(id) => setDialog({ mode: "edit", catId: id })}
                 onToggleExclude={toggleExclude}
                 onDelete={remove}
+                categories={categories}
               />
             ) : null}
           </div>

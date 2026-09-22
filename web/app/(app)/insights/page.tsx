@@ -10,14 +10,12 @@ import { Meter } from "@/components/module-card";
 import { AlertIcon } from "@/components/icons";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { ExportMenu } from "@/components/export-menu";
-import { TRANSACTIONS_FULL } from "@/lib/transactions";
+
 import { formatUSD } from "@/lib/format";
+import type { TxFull } from "@/lib/transactions";
 import { useApi } from "@/hooks/use-api";
 import {
-  DEDUCTIONS_FULL,
   MONTH_LABELS,
-  TAX_TREND,
-  YEAR,
   pctChange,
   priorDayRange,
   sumDays,
@@ -75,7 +73,7 @@ export default function InsightsPage() {
       void Promise.all([
         api.get<{ data: typeof taxEstimate }>("/v1/tax/estimate"),
         api.get<{ data: { items: Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> } }>("/v1/tax/checklist"),
-      ]).then(([estimate, checklist]) => { setTaxEstimate(estimate.data); setTaxChecklist(checklist.data.items); }).catch(() => { /* fixture fallback */ });
+      ]).then(([estimate, checklist]) => { setTaxEstimate(estimate.data); setTaxChecklist(checklist.data.items); }).catch(() => { setTaxEstimate(null); setTaxChecklist([]); });
     }
     const stored = window.localStorage.getItem("dobby-tax-jurisdiction");
     // Browser preference is read after hydration to keep server markup stable.
@@ -92,8 +90,8 @@ export default function InsightsPage() {
   }, [isLoaded, isSignedIn, range.from.getTime(), range.to.getTime()]);
 
   const prior = priorDayRange(range.from, range.to);
-  const incomeVals = YEAR.map((m) => m.income);
-  const expenseVals = YEAR.map((m) => m.expenses);
+  const incomeVals: number[] = [];
+  const expenseVals: number[] = [];
   const income = liveSummary?.income ?? sumDays(incomeVals, range.from, range.to);
   const expenses = liveSummary?.expenses ?? sumDays(expenseVals, range.from, range.to);
   const expenseDelta = prior ? pctChange(expenses, sumDays(expenseVals, prior.from, prior.to)) : null;
@@ -109,12 +107,9 @@ export default function InsightsPage() {
     () => ({ v: { label: "Estimate", color: "#4a55c9" } }) satisfies ChartConfig,
     []
   );
-  const taxData = useMemo(
-    () => TAX_TREND.map((t) => ({ label: t.label, value: t.value })),
-    []
-  );
-  const taxNow = taxEstimate?.estimatedTaxOwed ?? TAX_TREND[Math.min(11, range.to.getMonth())].value;
-  const taxThen = range.from.getMonth() > 0 ? TAX_TREND[range.from.getMonth() - 1].value : 0;
+  const taxData = useMemo(() => [], []);
+  const taxNow = taxEstimate?.estimatedTaxOwed ?? 0;
+  const taxThen = 0;
   const month = Math.max(0, Math.min(8, range.to.getMonth()));
   const setMonth = (m: number) => {
     const last = new Date(2026, m + 1, 0).getDate();
@@ -122,13 +117,10 @@ export default function InsightsPage() {
   };
   const toggleChecklist = async (key: string, status: "READY" | "OUTSTANDING") => {
     const next = status === "READY" ? "OUTSTANDING" : "READY";
-    try { await api.patch(`/v1/tax/checklist/${key}`, { status: next }); } catch { /* local fallback */ }
+    try { await api.patch(`/v1/tax/checklist/${key}`, { status: next }); } catch { return; }
     setTaxChecklist((current) => current?.map((item) => item.key === key ? { ...item, status: next } : item) ?? current);
   };
-  const exportRows = TRANSACTIONS_FULL.filter((transaction) => {
-    const monthPrefix = `2026-${String(month + 1).padStart(2, "0")}`;
-    return transaction.date.startsWith(monthPrefix) && (section === "cashflow" ? true : section === "income" ? transaction.amount >= 0 : transaction.amount < 0);
-  });
+  const exportRows: TxFull[] = [];
   const exportFilename = section === "cashflow" ? "dobby-cashflow" : section === "income" ? "dobby-income" : "dobby-spending";
 
   return (
@@ -171,7 +163,7 @@ export default function InsightsPage() {
               <section aria-label="Deductions">
                 <h2 className="m-0 text-[13px] font-semibold">Deductions</h2>
                 <ul className="m-0 mt-1 list-none p-0">
-                  {DEDUCTIONS_FULL.map((d) => {
+                  {([] as Array<{ id: string; name: string; detail: string; captured: number; cap: number }>).map((d) => {
                     const pct = d.cap > 0 ? Math.min(100, (d.captured / d.cap) * 100) : 0;
                     const done = d.captured >= d.cap;
                     return (

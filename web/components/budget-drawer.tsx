@@ -3,13 +3,11 @@
 import { useState } from "react";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { formatUSD } from "@/lib/format";
-import { CATEGORIES } from "@/lib/finance";
-import { TRANSACTIONS_FULL, dayLabel } from "@/lib/transactions";
+import { dayLabel, type TxFull } from "@/lib/transactions";
 import {
   budgetAmount,
   budgetStatus,
-  feedTotals,
-  monthlyBars,
+
   FEED_LABEL,
   STATUS_BAR,
   type BudgetDef,
@@ -22,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import type { TxFull } from "@/lib/transactions";
+
 import { Button } from "./ui/button";
 
 function useMemoGroups(txns: TxFull[]): { day: string; items: TxFull[] }[] {
@@ -48,14 +46,15 @@ const GMAIL_LOGO = "https://www.gstatic.com/images/branding/product/1x/gmail_202
 interface BudgetDrawerProps {
   catId: string;
   budgets: Record<string, BudgetDef>;
+  categories: Array<{ id: string; name: string; emoji: string; spent: number; budget: number; dot: string }>;
   onEdit: (catId: string) => void;
   onToggleExclude: (catId: string) => void;
   onDelete: (catId: string) => void;
 }
 
-export function BudgetDrawer({ catId, budgets, onEdit, onToggleExclude, onDelete }: BudgetDrawerProps) {
+export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclude, onDelete }: BudgetDrawerProps) {
   const [confirming, setConfirming] = useState(false);
-  const cat = CATEGORIES.find((c) => c.id === catId);
+  const cat = categories.find((c) => c.id === catId);
   if (!cat) return null;
 
   const def = budgets[catId];
@@ -63,12 +62,10 @@ export function BudgetDrawer({ catId, budgets, onEdit, onToggleExclude, onDelete
   const spent = cat.spent;
   const left = Math.max(0, amount - spent);
   const status = budgetStatus(spent, amount);
-  const bars = monthlyBars(catId, Math.max(amount, spent, 1));
-  const year = bars.reduce((s, b) => s + b.spent, 0);
-  const feeds = feedTotals(catId);
-  const txns = TRANSACTIONS_FULL.filter((t) => t.category === catId && t.amount < 0)
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .slice(0, 8);
+  const bars = [{ month: "Current", spent }];
+  const year = spent;
+  const feeds = { cards: 0, wallets: 0, manual: 0, gmail: 0 };
+  const txns: TxFull[] = [];
   const groups = useMemoGroups(txns);
   const excluded = def?.excluded === true;
 

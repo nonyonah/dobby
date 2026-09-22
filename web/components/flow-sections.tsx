@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatUSD } from "@/lib/format";
-import { CATEGORY_SERIES, SOURCE_SERIES } from "@/lib/insights-data";
-import { TRANSACTIONS_FULL } from "@/lib/transactions";
+
 import { SOURCE_COLOR_MAP } from "@/lib/cashflow";
 import { BreakdownPie } from "./breakdown-pie";
 import { FlowTable } from "./flow-table";
@@ -25,12 +24,6 @@ const MONTHS = [
   { value: 8, label: "September" },
 ];
 
-function monthTxns(month: number, income: boolean) {
-  const prefix = `2026-${String(month + 1).padStart(2, "0")}`;
-  return TRANSACTIONS_FULL.filter(
-    (t) => t.date.startsWith(prefix) && (income ? t.amount >= 0 : t.amount < 0)
-  ).sort((a, b) => (a.date < b.date ? 1 : -1));
-}
 
 function momDelta(cur: number, prev: number): number | null {
   if (prev === 0) return null;
@@ -60,17 +53,12 @@ function useLiveMonth(month: number, income: boolean) {
 
 export function SpendingSection({ month, onMonthChange }: { month: number; onMonthChange: (m: number) => void }) {
   const live = useLiveMonth(month, false);
-  const items = (live?.items ?? CATEGORY_SERIES.map((c) => ({
-    id: c.id,
-    name: c.name,
-    amount: c.monthly[month] ?? 0,
-    color: c.dot ?? "#8a8b91",
-  }))).filter((i) => i.amount > 0);
+  const items = (live?.items ?? []).filter((i) => i.amount > 0);
   const total = items.reduce((s, i) => s + i.amount, 0);
-  const prev = CATEGORY_SERIES.reduce((s, c) => s + (c.monthly[month - 1] ?? 0), 0);
+  const prev = 0;
   const d = month > 0 ? momDelta(total, prev) : null;
   const top = [...items].sort((a, b) => b.amount - a.amount)[0];
-  const rows = live?.rows ?? monthTxns(month, false);
+  const rows = live?.rows ?? [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -109,17 +97,12 @@ export function SpendingSection({ month, onMonthChange }: { month: number; onMon
 
 export function IncomeSection({ month, onMonthChange }: { month: number; onMonthChange: (m: number) => void }) {
   const live = useLiveMonth(month, true);
-  const items = (live?.items ?? SOURCE_SERIES.map((s) => ({
-    id: s.id,
-    name: s.name,
-    amount: s.monthly[month] ?? 0,
-    color: SOURCE_COLOR_MAP[s.id] ?? "#8a8b91",
-  }))).filter((i) => i.amount > 0);
+  const items = (live?.items ?? []).filter((i) => i.amount > 0);
   const total = items.reduce((s, i) => s + i.amount, 0);
-  const prev = SOURCE_SERIES.reduce((s, x) => s + (x.monthly[month - 1] ?? 0), 0);
+  const prev = 0;
   const d = month > 0 ? momDelta(total, prev) : null;
   const top = [...items].sort((a, b) => b.amount - a.amount)[0];
-  const rows = live?.rows ?? monthTxns(month, true);
+  const rows = live?.rows ?? [];
 
   return (
     <div className="flex flex-col gap-4">

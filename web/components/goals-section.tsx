@@ -14,7 +14,7 @@ import { Switch } from "./ui/switch";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "./ui/drawer";
 import { Meter } from "./module-card";
 import { formatUSD } from "@/lib/format";
-import { INITIAL_GOALS, type Goal, type GoalFundingSource, type GoalStatus } from "@/lib/goals";
+import type { Goal, GoalFundingSource, GoalStatus } from "@/lib/goals";
 import { CheckIcon, MoreIcon, PlusIcon, SettingsIcon } from "./icons";
 import { EmojiPickerField } from "./ui/emoji-picker";
 import { useApi } from "@/hooks/use-api";
@@ -41,7 +41,7 @@ function StatusPill({ status }: { status: GoalStatus }) {
 }
 
 export function GoalsSection() {
-  const [goals, setGoals] = useState<Goal[]>(INITIAL_GOALS);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [chartView, setChartView] = useState<ChartView>("month");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -78,9 +78,7 @@ export function GoalsSection() {
         reactivateOnSpend: true,
         contributions: goal.contributions.map((contribution) => ({ id: contribution.id, date: contribution.contributedAt.slice(0, 10), name: contribution.note ?? "Goal contribution", amount: Number(contribution.amount) })),
       })));
-    }).catch(() => {
-      // Keep local seed goals as a development fallback.
-    });
+    }).catch(() => setGoals([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
@@ -100,7 +98,7 @@ export function GoalsSection() {
 
   const openCreate = () => {
     setEditingId(null);
-    setStep("suggestion");
+    setStep("manual");
     setName("");
     setEmoji("✨");
     setTarget("");
@@ -148,9 +146,8 @@ export function GoalsSection() {
         setSelectedId(id);
       }
     } catch {
-      const id = editingId ?? `goal-${Date.now()}`;
-      setGoals((current) => editingId ? current.map((goal) => goal.id === editingId ? { ...goal, name: name.trim(), emoji, target: targetAmount, monthlyRate: monthlyAmount } : goal) : [...current, { id, name: name.trim(), emoji, target: targetAmount, tracked: 0, monthlyRate: monthlyAmount, source: sourceDetails.source, fundingSource: source, targetDate: timing === "date" ? targetDate || undefined : undefined, status: "active", reactivateOnSpend: true, contributions: [] }]);
-      if (!editingId) setSelectedId(id);
+      setError("Could not save this goal. Please try again.");
+      return;
     }
     setCreateOpen(false);
   };

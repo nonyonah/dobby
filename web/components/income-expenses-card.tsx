@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
 import { formatUSD } from "@/lib/format";
-import { MONTH } from "@/lib/finance";
+
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { ModuleCard } from "./module-card";
 import { useApi } from "@/hooks/use-api";
@@ -20,8 +20,8 @@ export function IncomeExpensesCard() {
     void api.get<{ data: { totals: { income: number; expenses: number } } }>(`/v1/insights/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((response) => setSummary(response.data.totals)).catch(() => setSummary(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
-  const income = summary?.income ?? MONTH.income;
-  const expenses = summary?.expenses ?? MONTH.expenses;
+  const income = summary?.income ?? 0;
+  const expenses = summary?.expenses ?? 0;
   const net = income - expenses;
   const data = useMemo(
     () => [
@@ -36,7 +36,7 @@ export function IncomeExpensesCard() {
   );
 
   return (
-    <ModuleCard title={`${MONTH.label} income vs expenses`} linkLabel="Transactions">
+    <ModuleCard title="Income vs expenses" linkLabel="Transactions">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <p className="m-0 text-[12px] text-muted-foreground">Income</p>

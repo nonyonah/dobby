@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 import { formatUSD } from "@/lib/format";
-import { BUDGET_LIMIT, CATEGORIES, type Category } from "@/lib/finance";
+import type { Category } from "@/lib/finance";
 import { Meter, ModuleCard } from "./module-card";
 
 export function BudgetSnapshotCard() {
@@ -19,12 +19,12 @@ export function BudgetSnapshotCard() {
     ]).then(([budgets, insights]) => {
       const categories = budgets.data.map((budget) => { const spending = insights.data.spendingByCategory.find((item) => item.name.toLowerCase() === budget.category.name.toLowerCase())?.amount ?? 0; return { id: budget.category.id, name: budget.category.name, emoji: "📊", spent: spending, budget: Number(budget.value), dot: "#4a55c9" }; });
       setLive({ spent: categories.reduce((sum, item) => sum + item.spent, 0), limit: categories.reduce((sum, item) => sum + item.budget, 0), categories });
-    }).catch(() => { /* fixture fallback */ });
+    }).catch(() => setLive({ spent: 0, limit: 0, categories: [] }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
-  const displayedCategories = live?.categories ?? CATEGORIES;
-  const spent = live?.spent ?? CATEGORIES.reduce((sum, c) => sum + c.spent, 0);
-  const budgetLimit = live?.limit ?? BUDGET_LIMIT;
+  const displayedCategories = live?.categories ?? [];
+  const spent = live?.spent ?? 0;
+  const budgetLimit = live?.limit ?? 0;
 
   return (
     <ModuleCard title="Budget snapshot" linkLabel="View all">

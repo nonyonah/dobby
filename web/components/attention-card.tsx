@@ -4,18 +4,13 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 import { AlertIcon, CaretDownIcon, CheckIcon, CloseSmallIcon } from "./icons";
-import { ATTENTION } from "@/lib/finance";
+
 import { ModuleCard } from "./module-card";
 
-const PROACTIVE = [
-  { id: "unusual-dining", title: "Unusual dining spend", sub: "Dining is 38% above your recent pattern", action: "Review" },
-  { id: "budget-investments", title: "Budget nearing its limit", sub: "Investments is at 92% of its September budget", action: "Review" },
-  { id: "deduction-receipt", title: "Possible missed deduction", sub: "A recurring software charge may need a receipt", action: "Review" },
-];
 
 export function AttentionCard() {
   const [dismissed, setDismissed] = useState<string[]>([]);
-  const [liveItems, setLiveItems] = useState<typeof ATTENTION | null>(null);
+  const [liveItems, setLiveItems] = useState<Array<{ id: string; title: string; sub: string; action: string }>>([]);
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
   useEffect(() => {
@@ -27,10 +22,10 @@ export function AttentionCard() {
       const reviewItems = reviews.data.slice(0, 3).map((item) => ({ id: `review-${item.id}`, title: `CSV row ${item.rowNumber} needs review`, sub: item.errorMessage ?? "Confirm the imported transaction details", action: "Review" }));
       const docs = checklist.data.items.filter((item) => item.status === "OUTSTANDING").slice(0, 2).map((item) => ({ id: `tax-${item.key}`, title: `Tax document outstanding`, sub: item.label, action: "Docs" }));
       setLiveItems([...reviewItems, ...docs]);
-    }).catch(() => { /* fixture fallback */ });
+    }).catch(() => setLiveItems([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
-  const items = [...(liveItems ?? ATTENTION), ...PROACTIVE].filter((item) => !dismissed.includes(item.id));
+  const items = liveItems.filter((item) => !dismissed.includes(item.id));
   const dismiss = (id: string) => setDismissed((current) => [...current, id]);
 
   return <ModuleCard title="Needs attention" linkLabel={`${items.length} open`}>
