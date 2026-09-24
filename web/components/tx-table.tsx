@@ -4,6 +4,13 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Input } from "./ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -151,6 +158,11 @@ function MenuOption({
   );
 }
 
+export interface MonthOption {
+  value: string;
+  label: string;
+}
+
 interface TxTableProps {
   rows: TxFull[];
   selectedId: string | null;
@@ -158,6 +170,9 @@ interface TxTableProps {
   onEdit: (id: string) => void;
   onDelete: (ids: string[]) => void;
   onImport: () => void;
+  month: string;
+  monthOptions: MonthOption[];
+  onMonthChange: (value: string) => void;
 }
 
 /**
@@ -166,7 +181,7 @@ interface TxTableProps {
  * Filters live inside the search bar; active filters surface as pills
  * with live spent / income / net totals across the result set.
  */
-export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport }: TxTableProps) {
+export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport, month, monthOptions, onMonthChange }: TxTableProps) {
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [tax, setTax] = useState<TaxFilter>("all");
@@ -300,6 +315,18 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     <div>
       {/* Search with filters inside */}
       <div className="flex items-center justify-end gap-2">
+        <Select value={month} onValueChange={(v) => onMonthChange(v ?? "all")}>
+          <SelectTrigger aria-label="Filter by month" className="h-8 w-36 bg-white dark:bg-[#232327] text-[13px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {monthOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="relative w-44">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[#8a8b91] dark:text-[#a2a3a8]" />
           <Input

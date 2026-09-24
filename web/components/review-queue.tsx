@@ -28,13 +28,15 @@ const SOURCE_LABEL: Record<TxSource, string> = {
 interface ReviewQueueProps {
   rows: TxFull[];
   onApprove: (ids: string[]) => void;
+  onDecline: (ids: string[]) => void;
   onEdit: (id: string) => void;
 }
 
-export function ReviewQueue({ rows, onApprove, onEdit }: ReviewQueueProps) {
+export function ReviewQueue({ rows, onApprove, onDecline, onEdit }: ReviewQueueProps) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const reduce = useReducedMotion() ?? false;
   const allChecked = rows.length > 0 && rows.every((row) => checked.has(row.id));
+  const approvableRows = rows.filter((row) => !row.needsManualReview);
 
   const toggle = (id: string) => {
     setChecked((current) => {
@@ -46,8 +48,10 @@ export function ReviewQueue({ rows, onApprove, onEdit }: ReviewQueueProps) {
   };
 
   const approve = (ids: string[]) => {
-    onApprove(ids);
-    setChecked((current) => new Set([...current].filter((id) => !ids.includes(id))));
+    const approvableIds = ids.filter((id) => !rows.find((row) => row.id === id)?.needsManualReview);
+    if (approvableIds.length === 0) return;
+    onApprove(approvableIds);
+    setChecked((current) => new Set([...current].filter((id) => !approvableIds.includes(id))));
   };
 
   return (
@@ -63,7 +67,7 @@ export function ReviewQueue({ rows, onApprove, onEdit }: ReviewQueueProps) {
             <AlertDescription className="mt-1 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]">AI-suggested categories and tax treatment are ready for a quick decision.</AlertDescription>
           </div>
         </AlertContent>
-        {rows.length > 0 ? <Button variant="primary" size="small" onClick={() => approve(rows.map((row) => row.id))}>Approve all</Button> : null}
+        {rows.length > 0 ? <div className="flex shrink-0 gap-2"><Button variant="ghost" size="small" onClick={() => onDecline(rows.map((row) => row.id))}>Decline all</Button>{approvableRows.length > 0 ? <Button variant="primary" size="small" onClick={() => approve(approvableRows.map((row) => row.id))}>Approve all</Button> : null}</div> : null}
       </Alert>
       <div className="mb-4">
         {rows.length === 0 ? (
@@ -92,8 +96,8 @@ export function ReviewQueue({ rows, onApprove, onEdit }: ReviewQueueProps) {
                       <HeroTable.Cell className="px-2 py-3"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.account} · {row.date.slice(5).replace("-", "/")}</span></HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.pill}`}><span aria-hidden="true">{meta.emoji}</span>{meta.label}</span><span className="ml-2 text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%</span></HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
-                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.amount >= 0 ? "text-[#00afb9]" : "text-[#ef476f]"}`}>{row.amount >= 0 ? "+" : "−"}{formatUSD(Math.abs(row.amount))}</HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1"><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" onClick={() => approve([row.id])}><CheckIcon /> Approve</Button></div></HeroTable.Cell>
+                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#00afb9]" : "text-[#ef476f]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatUSD(Math.abs(row.amount))}</>}</HeroTable.Cell>
+                      <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" onClick={() => approve([row.id])}><CheckIcon /> Approve</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
                     </HeroTable.Row>;
                   })}
                 </HeroTable.Body>
@@ -117,6 +121,9 @@ export function ReviewQueue({ rows, onApprove, onEdit }: ReviewQueueProps) {
               <p className="m-0 text-[13px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>
+              <Button variant="ghost" size="small" onClick={() => { onDecline([...checked]); setChecked(new Set()); }} className="rounded-full text-white hover:bg-white/10 hover:text-white">
+                <CloseSmallIcon /> Decline
+              </Button>
               <Button variant="secondary" size="small" onClick={() => approve([...checked])} className="rounded-full">
                 <CheckIcon /> Approve
               </Button>

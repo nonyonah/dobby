@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
+import { convertCurrencyAmount } from "../providers/frankfurter.js";
 
 export const reviewsRouter = Router();
 reviewsRouter.use(requireAuth);
@@ -10,6 +11,8 @@ reviewsRouter.use(requireAuth);
 const proposedTransactionSchema = z.object({
   type: z.nativeEnum(TransactionType),
   amount: z.number().finite().positive(),
+  currency: z.string().trim().length(3).toUpperCase().optional(),
+  categoryId: z.string().trim().min(1).optional(),
   description: z.string().min(1).max(240),
   occurredAt: z.coerce.date(),
   merchant: z.string().max(160).nullable().optional(),
@@ -23,7 +26,17 @@ reviewsRouter.get("/", async (req, res) => {
     take: 200,
     include: { import: { select: { id: true, originalName: true, status: true } } },
   });
-  res.json({ data: items });
+  const profile = await prisma.profile.findUnique({ where: { clerkId: req.auth!.userId }, select: { currency: true } });
+  const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
+  const data = await Promise.all(items.map(async (item) => {
+    const proposed = item.proposedData && typeof item.proposedData === "object" && !Array.isArray(item.proposedData) ? item.proposedData as { amount?: number; currency?: string } : undefined;
+    const sourceCurrency = proposed?.currency ?? (item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined) ?? "USD";
+    const sourceAmount = Number(proposed?.amount ?? 0);
+    let displayAmount = sourceAmount;
+    try { displayAmount = await convertCurrencyAmount(sourceAmount, sourceCurrency, activeCurrency); } catch { /* Keep the source amount if the rate provider does not support the pair. */ }
+    return { ...item, displayAmount, displayCurrency: activeCurrency, sourceCurrency };
+  }));
+  res.json({ data });
 });
 
 reviewsRouter.post("/:id/approve", async (req, res) => {
@@ -43,6 +56,15 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
     return;
   }
 
+  const rawCurrency = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined;
+  const sourceCurrency = proposed.data.currency ?? rawCurrency ?? "USD";
+  if (proposed.data.categoryId) {
+    const category = await prisma.category.findFirst({ where: { id: proposed.data.categoryId, ownerClerkId, isArchived: false }, select: { id: true } });
+    if (!category) {
+      res.status(400).json({ error: { code: "INVALID_CATEGORY", message: "The suggested category is not available." } });
+      return;
+    }
+  }
   const result = await prisma.$transaction(async (tx) => {
     if (item.fingerprint) {
       const duplicate = await tx.transaction.findFirst({ where: { ownerClerkId, fingerprint: item.fingerprint } });
@@ -52,6 +74,8 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
       ownerClerkId,
       type: proposed.data.type,
       amount: proposed.data.amount,
+      currency: sourceCurrency,
+      categoryId: proposed.data.categoryId,
       description: proposed.data.description,
       merchant: proposed.data.merchant,
       occurredAt: proposed.data.occurredAt,

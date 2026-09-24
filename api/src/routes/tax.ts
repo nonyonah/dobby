@@ -4,6 +4,8 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getTaxRules } from "../tax/registry.js";
+import { generateGatewaySummary } from "../providers/ai-gateway.js";
+import { convertCurrencyAmount } from "../providers/frankfurter.js";
 
 export const taxRouter = Router();
 taxRouter.use(requireAuth);
@@ -31,10 +33,16 @@ async function calculate(ownerClerkId: string) {
   const profile = await ensureTaxProfile(ownerClerkId);
   const start = new Date(Date.UTC(profile.taxYear, 0, 1));
   const end = new Date(Date.UTC(profile.taxYear + 1, 0, 1));
-  const transactions = await prisma.transaction.findMany({ where: { ownerClerkId, occurredAt: { gte: start, lt: end } }, select: { type: true, amount: true, isTaxable: true, source: true, assetSymbol: true } });
+  const transactions = await prisma.transaction.findMany({ where: { ownerClerkId, occurredAt: { gte: start, lt: end } }, select: { type: true, amount: true, currency: true, isTaxable: true, source: true, assetSymbol: true } });
   const rules = getTaxRules(profile.country);
   const taxableWalletAssets = new Set(["USDC", "CNGN", "ETH"]);
-  const result = rules.calculate({ taxYear: profile.taxYear, transactions: transactions.map((item) => ({ type: item.type, amount: Number(item.amount), isTaxable: item.isTaxable || (item.source === "wallet" && Boolean(item.assetSymbol) && taxableWalletAssets.has(item.assetSymbol!.toUpperCase())) })), deductions: (profile.deductionsCaptured as Record<string, unknown> | null) ?? {}, now: new Date() });
+  const taxCurrency = profile.country === TaxCountry.US ? "USD" : "NGN";
+  const normalizedTransactions = await Promise.all(transactions.map(async (item) => {
+    let amount = Number(item.amount);
+    try { amount = await convertCurrencyAmount(amount, item.currency ?? "USD", taxCurrency); } catch { /* Preserve the stored amount if no rate is available. */ }
+    return { type: item.type, amount, isTaxable: item.isTaxable || (item.source === "wallet" && Boolean(item.assetSymbol) && taxableWalletAssets.has(item.assetSymbol!.toUpperCase())) };
+  }));
+  const result = rules.calculate({ taxYear: profile.taxYear, transactions: normalizedTransactions, deductions: (profile.deductionsCaptured as Record<string, unknown> | null) ?? {}, now: new Date() });
   await prisma.taxProfile.update({ where: { id: profile.id }, data: { estimatedTaxOwed: new Prisma.Decimal(result.estimatedTaxOwed), taxableIncome: new Prisma.Decimal(result.taxableIncome), lastCalculatedAt: new Date() } });
   return { profile, result };
 }
@@ -56,6 +64,12 @@ taxRouter.patch("/profile", async (req, res) => {
 taxRouter.get("/estimate", async (req, res) => {
   const { result } = await calculate(req.auth!.userId);
   res.json({ data: result });
+});
+
+taxRouter.get("/summary", async (req, res) => {
+  const { profile, result } = await calculate(req.auth!.userId);
+  const summary = await generateGatewaySummary(`Summarize this informational tax estimate for the user in 3 short bullet points. Country: ${profile.country}. Tax year: ${profile.taxYear}. Taxable income: ${result.taxableIncome}. Estimated tax owed: ${result.estimatedTaxOwed}. Deductions captured: ${JSON.stringify(profile.deductionsCaptured ?? {})}. Mention that the result is an estimate and should be verified with a qualified tax professional.`);
+  res.json({ data: { ...result, summary } });
 });
 
 taxRouter.get("/checklist", async (req, res) => {

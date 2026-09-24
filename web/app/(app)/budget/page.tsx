@@ -48,14 +48,18 @@ function BudgetInner() {
     ]).then(([categoryResponse, budgetResponse]) => {
       const activeCategories = categoryResponse.data.filter((category) => !category.isArchived).map((category) => ({ id: category.id, name: category.name, emoji: "📊", spent: 0, budget: 0, dot: "#4a55c9" }));
       setCategories(activeCategories);
-      const ids = Object.fromEntries(activeCategories.map((category) => [category.name.toLowerCase(), category.id]));
+      const ids = Object.fromEntries(activeCategories.flatMap((category) => [[category.name.toLowerCase(), category.id], [category.id, category.id]]));
       setCategoryIds(ids);
       const next: Record<string, BudgetDef> = {};
       const nextBudgetIds: Record<string, string> = {};
       for (const budget of budgetResponse.data) {
-        const key = budget.category.name.toLowerCase();
-        next[key] = { type: budget.type === "PERCENTAGE" ? "percent" : "fixed", value: Number(budget.value), excluded: budget.isExcluded };
+        const key = budget.category.id;
+        const alias = budget.category.name.toLowerCase();
+        const definition = { type: budget.type === "PERCENTAGE" ? "percent" as const : "fixed" as const, value: Number(budget.value), excluded: budget.isExcluded };
+        next[key] = definition;
+        next[alias] = definition;
         nextBudgetIds[key] = budget.id;
+        nextBudgetIds[alias] = budget.id;
       }
       setBudgets(next);
       setBudgetIds(nextBudgetIds);
@@ -70,13 +74,14 @@ function BudgetInner() {
   const router = useRouter();
 
 
+  const createBudget = params.get("create");
+
   useEffect(() => {
-    if (params.get("create") === "1") {
+    if (createBudget === "1") {
       setDialog({ mode: "create" });
       router.replace("/budget");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [createBudget, router]);
 
   const openDetail = (id: string) => {
     setSelectedId(id);
@@ -124,7 +129,7 @@ function BudgetInner() {
           </Button>
         </div>
 
-        {categories.length === 0 ? <div className="rounded-2xl bg-card px-6 py-10 text-center text-[13px] text-muted-foreground">No categories or budgets yet.</div> : <BudgetBoard categories={categories} budgets={budgets} selectedId={selectedId} onSelect={openDetail} />}
+        <BudgetBoard categories={categories} budgets={budgets} selectedId={selectedId} onSelect={openDetail} />
       </div>
       <Drawer
         open={drawerOpen}

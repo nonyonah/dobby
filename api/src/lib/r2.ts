@@ -33,6 +33,22 @@ export async function getPrivateObjectBytes(objectKey: string) {
   return Buffer.from(await response.Body.transformToByteArray());
 }
 
+export async function storePrivateObject(objectKey: string, contentType: string, body: Uint8Array) {
+  if (!allowedContentTypes.has(contentType)) {
+    throw new AppError(400, "Unsupported upload type.", "UNSUPPORTED_FILE_TYPE");
+  }
+  const { client, bucket } = getR2Client();
+  try {
+    await client.send(new PutObjectCommand({ Bucket: bucket, Key: objectKey, ContentType: contentType, Body: body }));
+  } catch (error) {
+    const code = error instanceof Error && "Code" in error ? String((error as { Code?: string }).Code) : "";
+    if (code === "AccessDenied" || code === "SignatureDoesNotMatch") {
+      throw new AppError(502, "Cloudflare R2 rejected the upload. Check that the S3 API token has Object Read & Write access to this bucket and that the endpoint, bucket, access key, and secret belong to the same R2 account.", "R2_UPLOAD_FORBIDDEN");
+    }
+    throw error;
+  }
+}
+
 export async function createUploadUrl(objectKey: string, contentType: string) {
   if (!allowedContentTypes.has(contentType)) {
     throw new AppError(400, "Only CSV or plain-text uploads are supported.", "UNSUPPORTED_FILE_TYPE");

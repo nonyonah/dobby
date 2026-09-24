@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "./ui/button";
@@ -60,6 +61,8 @@ export function GoalsSection() {
   const isMobile = useIsMobile();
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
+  const params = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -81,6 +84,14 @@ export function GoalsSection() {
     }).catch(() => setGoals([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
+
+  const createGoal = params.get("create");
+  useEffect(() => {
+    if (createGoal === "1") {
+      openCreate();
+      router.replace("/budget/goals");
+    }
+  }, [createGoal, router]);
 
   const selected = goals.find((goal) => goal.id === selectedId) ?? null;
   const activeGoals = goals.filter((goal) => goal.status === "active");

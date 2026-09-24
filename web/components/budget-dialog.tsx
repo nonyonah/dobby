@@ -22,6 +22,7 @@ import { CheckIcon } from "./icons";
 import { EmojiPickerField } from "./ui/emoji-picker";
 import { CATEGORIES, MONTH } from "@/lib/finance";
 import type { BudgetDef } from "@/lib/budgets";
+import { getAppCurrency } from "@/lib/format";
 
 export interface BudgetForm {
   catId: string;
@@ -44,7 +45,7 @@ type CreateStep = "suggestion" | "plan" | "manual";
 const AI_CATEGORY_ID = "utilities";
 const AI_BUDGET_AMOUNT = 300;
 const AI_RECURRING_PAYMENT = 40;
-const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const currency = { format: (value: number) => new Intl.NumberFormat(getAppCurrency() === "NGN" ? "en-NG" : "en-US", { style: "currency", currency: getAppCurrency(), maximumFractionDigits: 0 }).format(value) };
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

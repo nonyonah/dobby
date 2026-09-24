@@ -15,9 +15,7 @@ export function IncomeExpensesCard() {
   const { isLoaded, isSignedIn } = useAuth();
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
-    const from = new Date(2026, 8, 1).toISOString();
-    const to = new Date(2026, 8, 30, 23, 59, 59).toISOString();
-    void api.get<{ data: { totals: { income: number; expenses: number } } }>(`/v1/insights/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((response) => setSummary(response.data.totals)).catch(() => setSummary(null));
+    void api.get<{ data: { totals: { income: number; expenses: number } } }>("/v1/insights/summary").then((response) => setSummary(response.data.totals)).catch(() => setSummary(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
   const income = summary?.income ?? 0;

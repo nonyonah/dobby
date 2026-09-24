@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
+import { convertCurrencyAmount } from "../providers/frankfurter.js";
 
 export const transactionsRouter = Router();
 transactionsRouter.use(requireAuth);
@@ -75,7 +76,22 @@ transactionsRouter.get("/", async (req, res) => {
   const [items, total] = await prisma.$transaction([
     prisma.transaction.findMany({
       where,
-      include: { account: true, category: true },
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        currency: true,
+        description: true,
+        merchant: true,
+        occurredAt: true,
+        source: true,
+        assetSymbol: true,
+        isRecurring: true,
+        isTaxable: true,
+        needsReview: true,
+        account: { select: { name: true } },
+        category: { select: { id: true, name: true } },
+      },
       orderBy: { [filters.sort]: filters.direction },
       skip: (filters.page - 1) * filters.pageSize,
       take: filters.pageSize,
@@ -83,7 +99,28 @@ transactionsRouter.get("/", async (req, res) => {
     prisma.transaction.count({ where }),
   ]);
 
-  res.json({ data: items, meta: { page: filters.page, pageSize: filters.pageSize, total, pageCount: Math.ceil(total / filters.pageSize) } });
+  const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
+  const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
+  const factors = new Map<string, number>();
+  await Promise.all(
+    [...new Set(items.map((item) => item.currency.toUpperCase()))].map(async (code) => {
+      if (code === activeCurrency) {
+        factors.set(code, 1);
+        return;
+      }
+      try {
+        factors.set(code, await convertCurrencyAmount(1, code, activeCurrency));
+      } catch {
+        factors.set(code, 1);
+      }
+    }),
+  );
+  const displayItems = items.map((item) => ({
+    ...item,
+    displayAmount: Number(item.amount) * (factors.get(item.currency.toUpperCase()) ?? 1),
+    displayCurrency: activeCurrency,
+  }));
+  res.json({ data: displayItems, meta: { page: filters.page, pageSize: filters.pageSize, total, pageCount: Math.ceil(total / filters.pageSize), displayCurrency: activeCurrency } });
 });
 
 transactionsRouter.post("/", async (req, res) => {
@@ -94,9 +131,11 @@ transactionsRouter.post("/", async (req, res) => {
     res.status(400).json({ error: { code: "INVALID_RELATION", message: relationError } });
     return;
   }
+  const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
   const createData: Prisma.TransactionUncheckedCreateInput = {
     ...input,
     ownerClerkId,
+    currency: input.currency ?? profile?.currency ?? "USD",
     amount: input.amount,
     metadata: input.metadata === null ? Prisma.JsonNull : (input.metadata as Prisma.InputJsonValue | undefined),
   };

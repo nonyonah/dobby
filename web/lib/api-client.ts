@@ -11,11 +11,24 @@ export function createApiClient(
     if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
     if (token) headers.set("authorization", `Bearer ${token}`);
 
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
-      ...init,
-      headers,
-      credentials: "include",
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
+        ...init,
+        headers,
+        credentials: "include",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("The request timed out. Check your connection and try again.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -29,6 +42,7 @@ export function createApiClient(
   return {
     get: <T>(path: string) => request<T>(path),
     post: <T>(path: string, body: unknown) => request<T>(path, { method: "POST", body: JSON.stringify(body) }),
+    put: <T>(path: string, body: BodyInit, contentType: string) => request<T>(path, { method: "PUT", body, headers: { "content-type": contentType } }),
     patch: <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
     delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   };

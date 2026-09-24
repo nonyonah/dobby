@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { toast } from "./ui/toast";
 import {
   Dialog,
   DialogContent,
@@ -24,10 +25,10 @@ import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 interface TxImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImport: (rows: TxFull[], file?: File, importType?: "CSV" | "OFX" | "QFX" | "RECEIPT") => void;
+  onImport: (rows: TxFull[], file?: File, importType?: "CSV" | "OFX" | "QFX" | "RECEIPT") => Promise<void> | void;
 }
 
-type Mode = "choose" | "statement" | "receipt" | "manual";
+type Mode = "choose" | "document" | "manual";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -111,10 +112,13 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
   const [parsed, setParsed] = useState<TxFull[]>([]);
   const [parseError, setParseError] = useState("");
   const [parsing, setParsing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
+  const [transactionType, setTransactionType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [date, setDate] = useState("2026-09-18");
   const [category, setCategory] = useState("other");
+  const [documentType, setDocumentType] = useState<"statement" | "receipt">("statement");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const reset = () => {
@@ -124,9 +128,12 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
     setParsed([]);
     setParseError("");
     setParsing(false);
+    setSubmitting(false);
     setName("");
     setAmount("");
+    setTransactionType("EXPENSE");
     setCategory("other");
+    setDocumentType("statement");
   };
 
   const close = (v: boolean) => {
@@ -139,7 +146,7 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
     setSelectedFile(file);
     setParseError("");
     const extension = file.name.split(".").pop()?.toLowerCase();
-    if (extension === "ofx" || extension === "qfx") {
+    if (extension === "ofx" || extension === "qfx" || extension === "pdf") {
       setParsed([]);
       return;
     }
@@ -148,7 +155,7 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
       setParsed(parseStatement(text, file.name));
     } catch {
       setParsed([]);
-      setParseError("Couldn't read that file — export CSV with date, description and amount columns.");
+      toast.error("Could not read the statement. PDF statements are sent for secure OCR review; CSV files need date, description and amount columns.");
     }
   };
 
@@ -163,27 +170,27 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
   const addManual = () => {
     const value = Number.parseFloat(amount.replace(/[^0-9.-]/g, ""));
     if (!name.trim() || !Number.isFinite(value)) return;
-    onImport([
+    setSubmitting(true);
+    void Promise.resolve(onImport([
       {
         id: `imp-${Date.now()}`,
         name: name.trim(),
         account: "Manual",
         date: date || "2026-09-18",
-        amount: value,
+        amount: transactionType === "INCOME" ? Math.abs(value) : -Math.abs(value),
         category,
         taxable: false,
         source: "manual",
         parse: { state: "manual" },
         note: "",
       },
-    ]);
-    close(false);
+    ])).then(() => { toast.success("Transaction added"); close(false); }).catch((error: unknown) => { toast.error(error instanceof Error ? error.message : "Could not save transaction."); }).finally(() => setSubmitting(false));
   };
 
   const addReceipt = () => {
     if (selectedFile) {
-      onImport([], selectedFile, "RECEIPT");
-      close(false);
+      setSubmitting(true);
+      void Promise.resolve(onImport([], selectedFile, "RECEIPT")).then(() => { toast.success("Receipt processed and added to review"); close(false); }).catch((error: unknown) => { toast.error(error instanceof Error ? error.message : "Could not process receipt."); }).finally(() => setSubmitting(false));
       return;
     }
     const value = Number.parseFloat(amount.replace(/[^0-9.-]/g, ""));
@@ -210,7 +217,7 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
       open={open}
       onOpenChange={close}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Import transaction</DialogTitle>
           <DialogDescription>Bring in a statement, snap a receipt, or type it in.</DialogDescription>
@@ -218,88 +225,36 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
 
         {mode === "choose" ? (
           <div className="grid gap-2">
-            <ModeButton icon={<FileIcon />} title="Bank statement" sub="CSV with date, description, amount" onClick={() => setMode("statement")} />
-            <ModeButton icon={<ReceiptIcon />} title="Receipt" sub="Photo or PDF, parsed for review" onClick={() => setMode("receipt")} />
+            <ModeButton icon={<FileIcon />} title="Upload document" sub="Bank statement or receipt, parsed for review" onClick={() => setMode("document")} />
             <ModeButton icon={<ManualIcon />} title="Manual entry" sub="Type it in yourself" onClick={() => setMode("manual")} />
           </div>
         ) : null}
 
-        {mode === "statement" ? (
+        {mode === "document" ? (
           <div className="grid gap-3">
+            <Field label="Document type">
+              <Select value={documentType} onValueChange={(value) => setDocumentType((value ?? "statement") as "statement" | "receipt")}>
+                <SelectTrigger aria-label="Document type" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="statement">Bank statement</SelectItem>
+                  <SelectItem value="receipt">Receipt</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,.txt,.ofx,.qfx"
+              accept={documentType === "statement" ? ".csv,.txt,.ofx,.qfx,.pdf" : "image/jpeg,image/png,image/webp,.pdf"}
               className="hidden"
-              aria-label="Choose statement file"
+              aria-label={documentType === "statement" ? "Choose bank statement" : "Choose receipt"}
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) void pickStatement(f);
+                if (f) void (documentType === "statement" ? pickStatement(f) : pickReceipt(f));
                 e.target.value = "";
               }}
             />
-            <Button variant="secondary" onClick={() => fileRef.current?.click()}>
-              {fileName || "Choose file"}
-            </Button>
-            {parseError ? <p className="m-0 text-[12px] text-[#b0402f]">{parseError}</p> : null}
-            {selectedFile && parsed.length > 0 ? (
-              <p className="m-0 text-[13px]" aria-live="polite">
-                <span className="font-semibold">{parsed.length}</span>{" "}
-                <span className="text-[#8a8b91] dark:text-[#a2a3a8]">transactions ready from {fileName}</span>
-              </p>
-            ) : selectedFile ? (
-              <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]" aria-live="polite">Ready to process {fileName} securely.</p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {mode === "receipt" ? (
-          <div className="grid gap-3">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,.pdf"
-              className="hidden"
-              aria-label="Choose receipt file"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void pickReceipt(f);
-                e.target.value = "";
-              }}
-            />
-            <Button variant="secondary" onClick={() => fileRef.current?.click()}>
-              {fileName || "Choose receipt"}
-            </Button>
-            {parsing ? (
-              <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]" aria-live="polite">Parsing receipt…</p>
-            ) : null}
-            {fileName && !parsing ? (
-              <>
-                <Field label="Merchant">
-                  <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Amount">
-                    <div className="relative">
-                      <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">$</span>
-                      <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount in dollars" className="mono h-8 bg-white dark:bg-[#232327] pr-2 pl-7 text-[13px]" />
-                    </div>
-                  </Field>
-                  <Field label="Category">
-                    <Select value={category} onValueChange={(v) => setCategory(v ?? "other")}>
-                      <SelectTrigger aria-label="Category" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TX_CATEGORIES.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </div>
-              </>
-            ) : null}
+            <Button variant="secondary" onClick={() => fileRef.current?.click()}>{fileName || "Choose file"}</Button>
+            {selectedFile && parsed.length > 0 ? <p className="m-0 text-[13px]" aria-live="polite"><span className="font-semibold">{parsed.length}</span>{" "}<span className="text-[#8a8b91] dark:text-[#a2a3a8]">transactions ready from {fileName}</span></p> : selectedFile ? <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]" aria-live="polite">Ready to process {fileName} securely.</p> : null}
           </div>
         ) : null}
 
@@ -307,6 +262,17 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
           <div className="grid gap-3">
             <Field label="Merchant">
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Whole Foods" className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
+            </Field>
+            <Field label="Transaction type">
+              <Select value={transactionType} onValueChange={(value) => setTransactionType((value ?? "EXPENSE") as "EXPENSE" | "INCOME")}>
+                <SelectTrigger aria-label="Transaction type" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="EXPENSE">Expense</SelectItem>
+                  <SelectItem value="INCOME">Income</SelectItem>
+                </SelectContent>
+              </Select>
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Amount">
@@ -342,25 +308,21 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
               Back
             </Button>
           )}
-          {mode === "statement" ? (
+          {mode === "document" ? (
             <Button
               variant="primary"
-              disabled={!selectedFile || (parsed.length === 0 && !/\.(ofx|qfx)$/i.test(selectedFile.name))}
+              disabled={submitting || !selectedFile || (parsed.length === 0 && documentType === "statement" && !/\.(ofx|qfx|pdf)$/i.test(selectedFile.name))}
               onClick={() => {
                 const extension = selectedFile?.name.split(".").pop()?.toLowerCase();
-                const importType = extension === "ofx" ? "OFX" : extension === "qfx" ? "QFX" : "CSV";
-                onImport(parsed, selectedFile ?? undefined, importType);
-                close(false);
+                const importType = documentType === "receipt" ? "RECEIPT" : extension === "ofx" ? "OFX" : extension === "qfx" ? "QFX" : "CSV";
+                setSubmitting(true);
+                void Promise.resolve(onImport(parsed, selectedFile ?? undefined, importType)).then(() => { toast.success("Statement processed and added to review"); close(false); }).catch((error: unknown) => { toast.error(error instanceof Error ? error.message : "Could not process statement."); }).finally(() => setSubmitting(false));
               }}
             >
-              Import {parsed.length > 0 ? `${parsed.length} ` : ""}transactions
+              {submitting ? "Processing…" : documentType === "receipt" ? "Process receipt" : `Import ${parsed.length > 0 ? `${parsed.length} ` : ""}transactions`}
             </Button>
           ) : null}
-          {mode === "receipt" ? (
-            <Button variant="primary" disabled={parsing || (!selectedFile && (!name.trim() || !amount.trim()))} onClick={addReceipt}>
-              Add transaction
-            </Button>
-          ) : null}
+
           {mode === "manual" ? (
             <Button variant="primary" disabled={!name.trim() || !amount.trim()} onClick={addManual}>
               Add transaction

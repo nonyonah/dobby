@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, type AccentColor } from "@/lib/theme";
 import { useApi } from "@/hooks/use-api";
+import { WalletConnectModal } from "./wallet-connect-modal";
+
 import {
   Select,
   SelectContent,
@@ -53,6 +55,34 @@ function TextField({ id, label, defaultValue, type = "text" }: { id: string; lab
 }
 
 const BRANDFETCH_LOGO = (domain: string) => `https://cdn.brandfetch.io/domain/${domain}/w/64/h/64?c=${process.env.NEXT_PUBLIC_BRANDFETCH_CLIENT_ID ?? ""}`;
+
+function shortAddress(address: string): string {
+  if (address.length <= 12) return address;
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+function summarizeTransfers(transfers?: Array<{ asset?: string | null; value?: number | string | null }>): string {
+  if (!transfers || transfers.length === 0) return "No on-chain activity yet";
+  const totals = new Map<string, number>();
+  for (const transfer of transfers) {
+    const asset = (transfer.asset ?? "UNKNOWN").toUpperCase();
+    const value = Number(transfer.value ?? 0);
+    if (!Number.isFinite(value)) continue;
+    totals.set(asset, (totals.get(asset) ?? 0) + Math.abs(value));
+  }
+  const stables = ["USDC", "CNGN", "ETH"]
+    .filter((asset) => totals.has(asset))
+    .map((asset) => `${totals.get(asset)?.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${asset}`);
+  const parts = stables.length > 0 ? stables : [`${transfers.length} transfers`];
+  return `${transfers.length} transfers · ${parts.slice(0, 2).join(" · ")}`;
+}
+
+const PROVIDER_ROWS = [
+  { id: "gmail", name: "Gmail", domain: "gmail.com", description: "Import and track transactions from email." },
+  { id: "outlook", name: "Outlook", domain: "outlook.com", description: "Import and track transactions from email." },
+  { id: "quickbooks", name: "QuickBooks", domain: "quickbooks.intuit.com", description: "Export transactions and reports to QuickBooks." },
+  { id: "xero", name: "Xero", domain: "xero.com", description: "Export transactions and reports to Xero." },
+];
 
 function BrandLogo({ domain }: { domain: string }) {
   const sheetsLogo = domain === "sheets.google.com";
@@ -136,7 +166,12 @@ function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: 
 }
 
 export function SettingsPage() {
-  const [walletConnected, setWalletConnected] = useState(true);
+  const [wallets, setWallets] = useState<Array<{ id: string; chain: string; address: string; displayName: string; color: string }>>([]);
+  const [walletSummaries, setWalletSummaries] = useState<Record<string, string>>({});
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const [providers, setProviders] = useState<Record<string, { status: string; live: boolean }>>({});
+  const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [accentColor, setAccentColor] = useState<AccentColor>(DEFAULT_ACCENT);
   const [country, setCountry] = useState("nigeria");
   const [currency, setCurrency] = useState("ngn");
@@ -152,7 +187,16 @@ export function SettingsPage() {
       const profile = response.data.profile;
       if (!profile) return;
       if (profile.country) setCountry(profile.country.toLowerCase() === "ng" ? "nigeria" : profile.country.toLowerCase() === "us" ? "united-states" : "other");
-      if (profile.currency) setCurrency(profile.currency.toLowerCase());
+      if (profile.currency) {
+        setCurrency(profile.currency.toLowerCase());
+        window.localStorage.setItem("dobby-currency", profile.currency.toUpperCase());
+      } else if (profile.country?.toUpperCase() === "NG") {
+        setCurrency("ngn");
+        window.localStorage.setItem("dobby-currency", "NGN");
+      } else if (profile.country?.toUpperCase() === "US") {
+        setCurrency("usd");
+        window.localStorage.setItem("dobby-currency", "USD");
+      }
       if (profile.theme) setTheme(profile.theme);
       if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction);
       const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
@@ -163,8 +207,103 @@ export function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
-  const handleAccentChange = (next: AccentColor) => {
-    setAccentColor(next);
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const walletResponse = await api.get<{ data: Array<{ id: string; chain: string; address: string; displayName: string; color: string }> }>("/v1/wallets");
+        if (cancelled) return;
+        setWallets(walletResponse.data);
+        void Promise.all(
+          walletResponse.data.map(async (wallet) => {
+            try {
+              const summary = await api.get<{ data: { provider?: string; transfers?: Array<{ asset?: string | null; value?: number | string | null }> } }>(`/v1/wallets/${wallet.id}/summary`);
+              if (!cancelled) setWalletSummaries((prev) => ({ ...prev, [wallet.id]: summarizeTransfers(summary.data.transfers) }));
+            } catch {
+              if (!cancelled) setWalletSummaries((prev) => ({ ...prev, [wallet.id]: "Summary unavailable" }));
+            }
+          }),
+        );
+      } catch {
+        if (!cancelled) setWallets([]);
+      }
+      try {
+        const providerResponse = await api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations");
+        if (!cancelled) {
+          setProviders(Object.fromEntries(providerResponse.data.map((item) => [item.provider, { status: item.status, live: item.live }])));
+        }
+      } catch {
+        // Provider rows fall back to disconnected until the API responds.
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
+
+  const refreshProviders = async () => {
+    try {
+      const providerResponse = await api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations");
+      setProviders(Object.fromEntries(providerResponse.data.map((item) => [item.provider, { status: item.status, live: item.live }])));
+    } catch {
+      // Keep last known statuses.
+    }
+  };
+
+  const connectProvider = async (provider: string) => {
+    setConnectError(null);
+    setConnectingProvider(provider);
+    // Open synchronously inside the click handler so popup blockers allow it.
+    const popup = window.open("about:blank", "dobby-connect", "width=520,height=680");
+    try {
+      const response = await api.post<{ data: { redirectUrl: string } }>(`/v1/integrations/${provider}/connect`, {});
+      if (popup && !popup.closed) {
+        popup.location.href = response.data.redirectUrl;
+      } else {
+        window.location.href = response.data.redirectUrl;
+        return;
+      }
+      for (let attempt = 0; attempt < 40; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        if (!popup || popup.closed) break;
+        try {
+          const status = await api.post<{ data: { status: string } }>(`/v1/integrations/${provider}/refresh`, {});
+          if (status.data.status === "connected") break;
+        } catch {
+          // Keep polling while the popup is open.
+        }
+      }
+      if (popup && !popup.closed) popup.close();
+      await refreshProviders();
+    } catch (error) {
+      setConnectError(error instanceof Error ? error.message : `Could not connect ${provider}.`);
+    } finally {
+      setConnectingProvider(null);
+    }
+  };
+
+  const disconnectProvider = async (provider: string) => {
+    try {
+      await api.delete(`/v1/integrations/${provider}`);
+      await refreshProviders();
+    } catch {
+      setConnectError(`Could not disconnect ${provider}.`);
+    }
+  };
+
+  const disconnectWallet = async (id: string) => {
+    try {
+      await api.delete(`/v1/wallets/${id}`);
+      setWallets((prev) => prev.filter((wallet) => wallet.id !== id));
+    } catch {
+      setConnectError("Could not disconnect this wallet.");
+    }
+  };
+
+  const handleAccentChange = (next: AccentColor) => {    setAccentColor(next);
     applyAccentColor(next);
     window.localStorage.setItem(ACCENT_STORAGE_KEY, next);
   };
@@ -178,6 +317,8 @@ export function SettingsPage() {
         taxJurisdiction: jurisdiction,
         accentColor: ACCENT_COLORS.find((item) => item.id === accentColor)?.value,
       });
+      window.localStorage.setItem("dobby-currency", currency.toUpperCase());
+      window.dispatchEvent(new CustomEvent("dobby-currency-change", { detail: currency.toUpperCase() }));
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2200);
     } catch {
@@ -203,21 +344,59 @@ export function SettingsPage() {
           <Section label="Profile">
             <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" defaultValue="Ada Lovelace" /></Row>
             <Row label="Email address" description="Used for account messages and notifications."><TextField id="profile-email" label="Email address" defaultValue="ada@riftlabs.co" type="email" /></Row>
-            <Row label="Country"><SelectField id="country" label="Country" value={country} onValueChange={(value) => setCountry(value ?? "nigeria")} options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "ghana", label: "🇬🇭 Ghana" }, { value: "kenya", label: "🇰🇪 Kenya" }, { value: "other", label: "🌐 Other" }]} /></Row>
+            <Row label="Country"><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); if (next === "nigeria") setCurrency("ngn"); if (next === "united-states") setCurrency("usd"); if (next === "ghana") setCurrency("ghs"); if (next === "kenya") setCurrency("kes"); }} options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "united-states", label: "🇺🇸 United States" }, { value: "ghana", label: "🇬🇭 Ghana" }, { value: "kenya", label: "🇰🇪 Kenya" }, { value: "other", label: "🌐 Other" }]} /></Row>
           </Section>
 
           <Section label="Connections">
-            <Row label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{walletConnected ? <span className="font-mono">0x71a4…c912 · $2,840.00 USDC</span> : "Not connected"}</span></span></span>}>
-              {walletConnected ? <Button variant="secondary" size="small" onClick={() => setWalletConnected(false)}><X /> Disconnect</Button> : <Button variant="secondary" size="small" onClick={() => setWalletConnected(true)}><LinkSimple /> Connect</Button>}
-            </Row>
+            {wallets.length === 0 ? (
+              <Row
+                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">No wallets connected yet</span></span></span>}
+              >
+                <Button variant="secondary" size="small" onClick={() => setWalletModalOpen(true)}><LinkSimple /> Connect</Button>
+              </Row>
+            ) : (
+              wallets.map((wallet) => (
+                <Row
+                  key={wallet.id}
+                  label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-[13px]" style={{ backgroundColor: `${wallet.color}1A` }} aria-hidden="true"><span className="size-2.5 rounded-full" style={{ backgroundColor: wallet.color }} /></span><span><span className="block">{wallet.displayName} <span className="font-normal text-muted-foreground">· {wallet.chain === "BASE" ? "Base" : "Solana"}</span></span><span className="mt-0.5 block font-mono text-[12px] font-medium leading-4 text-muted-foreground">{shortAddress(wallet.address)} · {walletSummaries[wallet.id] ?? "Loading activity…"}</span></span></span>}
+                >
+                  <Button variant="secondary" size="small" onClick={() => void disconnectWallet(wallet.id)}><X /> Disconnect</Button>
+                </Row>
+              ))
+            )}
+            {wallets.length > 0 ? (
+              <Row
+                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Base or Solana address with a custom color</span></span></span>}
+              >
+                <Button variant="secondary" size="small" onClick={() => setWalletModalOpen(true)}><LinkSimple /> Connect</Button>
+              </Row>
+            ) : null}
             <Row label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Briefcase size={16} /></span><span><span className="block">Bank</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Bank connections are planned for a future release.</span></span></span>}><Button variant="secondary" size="small" disabled>Coming soon</Button></Row>
           </Section>
 
           <Section label="Integrations">
-            <Row label={<span className="flex items-start gap-2.5"><BrandLogo domain="gmail.com" /><span><span className="block">Gmail</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Import and track transactions from email.</span></span></span>}><Button variant="secondary" size="small"><LinkSimple /> Connect</Button></Row>
-            <Row label={<span className="flex items-start gap-2.5"><BrandLogo domain="outlook.com" /><span><span className="block">Outlook</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Import and track transactions from email.</span></span></span>}><Button variant="secondary" size="small"><LinkSimple /> Connect</Button></Row>
-            <Row label={<span className="flex items-start gap-2.5"><BrandLogo domain="quickbooks.intuit.com" /><span><span className="block">QuickBooks</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Export transactions and reports to QuickBooks.</span></span></span>}><Button variant="secondary" size="small"><LinkSimple /> Connect</Button></Row>
-            <Row label={<span className="flex items-start gap-2.5"><BrandLogo domain="xero.com" /><span><span className="block">Xero</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Export transactions and reports to Xero.</span></span></span>}><Button variant="secondary" size="small"><LinkSimple /> Connect</Button></Row>
+            {connectError ? (
+              <p role="alert" className="m-0 px-1 text-[12px] text-destructive">{connectError}</p>
+            ) : null}
+            {PROVIDER_ROWS.map((row) => {
+              const status = providers[row.id]?.status ?? "disconnected";
+              const connected = status === "connected";
+              const busy = connectingProvider === row.id;
+              return (
+                <Row
+                  key={row.id}
+                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><span><span className="block">{row.name}</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{connected ? "Connected" : row.description}</span></span></span>}
+                >
+                  {connected ? (
+                    <Button variant="secondary" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
+                  ) : (
+                    <Button variant="secondary" size="small" disabled={busy} onClick={() => void connectProvider(row.id)}>
+                      {busy ? "Connecting…" : (<><LinkSimple /> Connect</>)}
+                    </Button>
+                  )}
+                </Row>
+              );
+            })}
             <Row label={<span className="flex items-start gap-2.5"><BrandLogo domain="sheets.google.com" /><span><span className="block">Google Sheets</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Export transaction data to a spreadsheet.</span></span></span>}><Button variant="secondary" size="small"><LinkSimple /> Connect</Button></Row>
           </Section>
 
@@ -230,7 +409,7 @@ export function SettingsPage() {
           <Section label="Preferences">
             <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => setTheme(value ?? "system")} options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
-            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }, { value: "gbp", label: "GBP 🇬🇧" }]} /></Row>
+            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }, { value: "ghs", label: "GHS 🇬🇭" }, { value: "kes", label: "KES 🇰🇪" }, { value: "gbp", label: "GBP 🇬🇧" }]} /></Row>
             <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-kingdom", label: "United Kingdom" }, { value: "united-states", label: "United States" }]} onValueChange={(value) => { const next = value ?? "nigeria"; setJurisdiction(next); window.localStorage.setItem("dobby-tax-jurisdiction", next); }} /></Row>
           </Section>
 
@@ -244,6 +423,17 @@ export function SettingsPage() {
           </Section>
         </div>
       </div>
+      <WalletConnectModal
+        open={walletModalOpen}
+        onOpenChange={setWalletModalOpen}
+        onConnected={(wallet, summary) => {
+          setWallets((prev) => [...prev, wallet]);
+          setWalletSummaries((prev) => ({
+            ...prev,
+            [wallet.id]: summary ? summarizeTransfers(summary.transfers) : "Summary unavailable",
+          }));
+        }}
+      />
     </div>
   );
 }

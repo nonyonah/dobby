@@ -21,6 +21,7 @@ import {
 import { Button } from "./ui/button";
 import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
+import { getAppCurrency } from "@/lib/format";
 
 interface TxEditDialogProps {
   tx: TxFull | null;
@@ -67,10 +68,13 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave }: TxEditDialogPro
 
   const commit = () => {
     const parsed = Number.parseFloat(amount.replace(/[^0-9.]/g, ""));
+    const amountChanged = Number.isFinite(parsed) && Math.abs(parsed - Math.abs(tx.amount)) > 0.000001;
     onSave({
       ...tx,
       name: name.trim() || tx.name,
       amount: (tx.amount < 0 ? -1 : 1) * (Number.isFinite(parsed) ? parsed : Math.abs(tx.amount)),
+      sourceAmount: amountChanged ? Math.abs(parsed) : tx.sourceAmount,
+      currency: amountChanged ? getAppCurrency() : tx.currency,
       date: date || tx.date,
       category,
       taxable: taxable === "taxable",

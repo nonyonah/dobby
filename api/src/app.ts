@@ -22,6 +22,8 @@ import { rulesRouter } from "./routes/rules.js";
 import { taxRouter } from "./routes/tax.js";
 import { budgetsRouter } from "./routes/budgets.js";
 import { goalsRouter } from "./routes/goals.js";
+import { currencyRouter } from "./routes/currency.js";
+import { integrationsRouter } from "./routes/integrations.js";
 
 export const app = express();
 
@@ -46,6 +48,7 @@ app.use(
 );
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
+app.use(express.raw({ type: ["application/pdf", "image/jpeg", "image/png", "image/webp", "text/csv", "text/plain", "application/ofx", "application/x-ofx", "application/qfx"], limit: "15mb" }));
 
 // Clerk must run before any route that reads authentication state.
 app.use(clerkMiddleware());
@@ -66,6 +69,8 @@ app.use("/v1/rules", rulesRouter);
 app.use("/v1/tax", taxRouter);
 app.use("/v1/budgets", budgetsRouter);
 app.use("/v1/goals", goalsRouter);
+app.use("/v1/currency", currencyRouter);
+app.use("/v1/integrations", integrationsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

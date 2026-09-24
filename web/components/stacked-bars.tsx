@@ -2,73 +2,79 @@
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { formatUSD } from "@/lib/format";
-import { buildStacks } from "@/lib/cashflow";
+import type { StackDatum } from "@/lib/cashflow";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 
 const SAVINGS_COLOR = "#4a55c9";
 
-export function StackedBars() {
-  const raw = buildStacks();
-  const keys = ["housing", "groceries", "investments", "shopping", "utilities", "rest", "savings"];
-  const colors: Record<string, string> = {
-    housing: "#a855f7",
-    groceries: "#ad7f22",
-    investments: "#0d9488",
-    shopping: "#7c3aed",
-    utilities: "#35754e",
-    rest: "#c4c2bc",
-    savings: SAVINGS_COLOR,
-  };
-  const data = raw.map((d) => {
-    const row: Record<string, string | number> = { month: d.month };
-    for (const s of d.segments) row[s.id] = s.value;
-    row.savings = d.savings;
+export function StackedBars({ data }: { data: StackDatum[] }) {
+  const categoryById = new Map<string, { name: string; color: string; total: number }>();
+  for (const month of data) {
+    for (const segment of month.segments) {
+      const current = categoryById.get(segment.id) ?? { name: segment.name, color: segment.color, total: 0 };
+      current.total += segment.value;
+      categoryById.set(segment.id, current);
+    }
+  }
+  const categories = [...categoryById.entries()].sort((left, right) => right[1].total - left[1].total);
+  const keys = [...categories.map(([id]) => id), "savings"];
+  const colors = Object.fromEntries(categories.map(([id, item]) => [id, item.color])) as Record<string, string>;
+  colors.savings = SAVINGS_COLOR;
+  const chartData = data.map((month) => {
+    const row: Record<string, string | number> = { month: month.month };
+    for (const segment of month.segments) row[segment.id] = segment.value;
+    row.savings = month.savings;
     return row;
   });
-  const config: ChartConfig = {
-    income: { label: "Amount", color: "#22C55E" },
-  };
+  const config = Object.fromEntries([
+    ...categories.map(([id, item]) => [id, { label: item.name, color: item.color }]),
+    ["savings", { label: "Savings", color: SAVINGS_COLOR }],
+  ]) as ChartConfig;
+  const hasData = chartData.some((row) => keys.some((key) => Number(row[key] ?? 0) > 0));
+
+  if (!hasData) {
+    return (
+      <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-line text-center" role="status">
+        <p className="m-0 px-4 text-[13px] text-muted-foreground">No monthly spending or savings data yet.</p>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
+      <div className="mb-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
         {[
-          { id: "housing", name: "Housing" },
-          { id: "groceries", name: "Groceries" },
-          { id: "investments", name: "Investments" },
-          { id: "shopping", name: "Shopping" },
-          { id: "utilities", name: "Utilities" },
-          { id: "rest", name: "Other" },
+          ...categories.map(([id, item]) => ({ id, name: item.name })),
           { id: "savings", name: "Savings" },
-        ].map((s) => (
-          <span key={s.id} className="inline-flex items-center gap-1.5">
-            <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: colors[s.id] }} />
-            {s.name}
+        ].map((item) => (
+          <span key={item.id} className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: colors[item.id] }} />
+            {item.name}
           </span>
         ))}
       </div>
       <ChartContainer config={config} className="aspect-auto h-[240px] w-full">
-        <BarChart accessibilityLayer data={data} margin={{ top: 12, right: 4, left: 4, bottom: 0 }} barCategoryGap="12%">
+        <BarChart accessibilityLayer data={chartData} margin={{ top: 12, right: 4, left: 4, bottom: 0 }} barCategoryGap="12%">
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis dataKey="month" tickLine={false} axisLine={false} dy={8} tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />
           <YAxis
-            width={44}
+            width={56}
             tickLine={false}
             axisLine={false}
             tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
-            tickFormatter={(v: number) => (Math.abs(v) >= 1000 ? `$${Math.round(v / 1000)}k` : `$${v}`)}
+            tickFormatter={(value: number) => (Math.abs(value) >= 1000 ? `${formatUSD(value).replace(/[\d.,\s]/g, "")} ${Math.round(value / 1000)}k` : formatUSD(value))}
           />
           <ChartTooltip
             cursor={{ fill: "var(--chart-cursor)", fillOpacity: 0.6 }}
-            content={<ChartTooltipContent className="bg-white dark:bg-[#1a1a1d]" formatter={(v) => formatUSD(Number(v))} />}
+            content={<ChartTooltipContent className="bg-card" formatter={(value) => formatUSD(Number(value))} />}
           />
-          {keys.map((k, ki) => (
+          {keys.map((key, index) => (
             <Bar
-              key={k}
-              dataKey={k}
+              key={key}
+              dataKey={key}
               stackId="total"
-              fill={colors[k]}
-              radius={ki === keys.length - 1 ? [5, 5, 0, 0] : [0, 0, 0, 0]}
+              fill={colors[key]}
+              radius={index === keys.length - 1 ? [5, 5, 0, 0] : [0, 0, 0, 0]}
               maxBarSize={34}
             />
           ))}

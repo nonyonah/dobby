@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+
+import { useClerk } from "@clerk/nextjs";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
@@ -107,8 +108,7 @@ function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: 
 }
 
 
-function QuickCreate() {
-  const router = useRouter();
+function QuickCreate({ onCreate }: { onCreate: (kind: "import" | "budget" | "goal") => void }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -119,21 +119,26 @@ function QuickCreate() {
         }
       />
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuItem onSelect={() => router.push("/transactions?modal=import")}>
+        <DropdownMenuItem onClick={() => onCreate("import")}>
           <UploadIcon />
           <span>Import transaction</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => router.push("/budget?create=1")}>
+        <DropdownMenuItem onClick={() => onCreate("budget")}>
           <WalletIcon />
           <span>Create a budget</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onCreate("goal")}>
+          <GoalsIcon />
+          <span>Create a goal</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () => void }) {
+function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNavigate?: () => void; onCreate: (kind: "import" | "budget" | "goal") => void }) {
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const { signOut } = useClerk();
 
   return (
     <>
@@ -151,7 +156,7 @@ function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () =>
             </span>
 
           </div>
-          <QuickCreate />
+          <QuickCreate onCreate={onCreate} />
         </div>
       </SidebarHeader>
 
@@ -223,12 +228,12 @@ function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () =>
             <AlertDialogHeader>
               <AlertDialogTitle>Log out of Dobby?</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to log out? You can reconnect your HeroUI account later.
+                Are you sure you want to log out of Dobby?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => setLogoutOpen(false)}>Log out</AlertDialogAction>
+              <AlertDialogAction onClick={() => { setLogoutOpen(false); void signOut(); }}>Log out</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -239,6 +244,7 @@ function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () =>
 
 interface AppSidebarProps {
   active: string;
+  onCreate: (kind: "import" | "budget" | "goal") => void;
   peek: boolean;
   onPeekChange: (peek: boolean) => void;
 }
@@ -248,7 +254,7 @@ interface AppSidebarProps {
  * flush to the screen edge, offcanvas collapse, floating variant styling
  * reserved for the hover peek panel.
  */
-export function AppSidebar({ active, peek, onPeekChange }: AppSidebarProps) {
+export function AppSidebar({ active, peek, onPeekChange, onCreate }: AppSidebarProps) {
   const reduce = useReducedMotion() ?? false;
   const { open } = useSidebar();
   const showPeek = peek && !open;
@@ -270,7 +276,7 @@ export function AppSidebar({ active, peek, onPeekChange }: AppSidebarProps) {
         className="border-r-0"
         style={{ borderRightWidth: 0 }}
       >
-        <SidebarNav active={active} onNavigate={() => onPeekChange(false)} />
+        <SidebarNav active={active} onNavigate={() => onPeekChange(false)} onCreate={onCreate} />
       </Sidebar>
 
       {/* Edge hover-strip: opens the floating sidebar while collapsed */}
@@ -287,7 +293,7 @@ export function AppSidebar({ active, peek, onPeekChange }: AppSidebarProps) {
             className="fixed top-2 bottom-2 left-2 z-50 hidden w-[248px] flex-col overflow-hidden rounded-[12px] border border-line bg-background shadow-[0_16px_48px_rgb(23_24_28/0.18),0_4px_12px_rgb(23_24_28/0.1)] md:flex"
             aria-label="Sidebar preview"
           >
-            <SidebarNav active={active} onNavigate={() => onPeekChange(false)} />
+            <SidebarNav active={active} onNavigate={() => onPeekChange(false)} onCreate={onCreate} />
           </motion.aside>
         ) : null}
       </AnimatePresence>

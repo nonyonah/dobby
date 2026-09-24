@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { AppSidebar } from "./app-sidebar";
 import { TopBar } from "./topbar";
 import { SidebarProvider } from "./ui/sidebar";
@@ -12,6 +13,8 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { QuestionIcon } from "./icons";
+import { useApi } from "@/hooks/use-api";
+import { QuickCreateModals } from "./quick-create-modals";
 
 const SIDEBAR_KEY = "rift-sidebar-collapsed";
 
@@ -29,6 +32,31 @@ interface ShellProps {
 export function Shell({ title, active, children }: ShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [peek, setPeek] = useState(false);
+  const [quickCreate, setQuickCreate] = useState<"import" | "budget" | "goal" | null>(null);
+  const [, setCurrency] = useState("NGN");
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
+  useEffect(() => {
+    const handleCurrencyChange = (event: Event) => {
+      const next = (event as CustomEvent<string>).detail;
+      if (next) setCurrency(next.toUpperCase());
+    };
+    window.addEventListener("dobby-currency-change", handleCurrencyChange);
+    return () => window.removeEventListener("dobby-currency-change", handleCurrencyChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    void api.get<{ data: { profile?: { currency?: string | null; country?: string | null } | null } }>("/v1/me").then((response) => {
+      const profile = response.data.profile;
+      const currency = profile?.currency?.toUpperCase() ?? (profile?.country?.toUpperCase() === "US" ? "USD" : "NGN");
+      window.localStorage.setItem("dobby-currency", currency);
+      setCurrency(currency);
+    }).catch(() => {
+      setCurrency(window.localStorage.getItem("dobby-currency")?.toUpperCase() ?? "NGN");
+    });
+  }, [api, isLoaded, isSignedIn]);
 
   useEffect(() => {
     try {
@@ -64,7 +92,7 @@ export function Shell({ title, active, children }: ShellProps) {
       style={{ "--sidebar-width": "248px" } as CSSProperties}
       className="min-h-screen bg-background"
     >
-      <AppSidebar active={active} peek={peek} onPeekChange={setPeek} />
+      <AppSidebar active={active} peek={peek} onPeekChange={setPeek} onCreate={setQuickCreate} />
 
       <div className={`min-w-0 flex-1 ${collapsed ? "p-2" : "py-2 pr-2 pl-0 md:pl-1"}`}>
         <main className="min-h-[calc(100vh-16px)] rounded-xl border border-line bg-background shadow-none">
@@ -72,6 +100,8 @@ export function Shell({ title, active, children }: ShellProps) {
           {children}
         </main>
       </div>
+
+      <QuickCreateModals kind={quickCreate} onClose={() => setQuickCreate(null)} />
 
       <DropdownMenu>
         <DropdownMenuTrigger

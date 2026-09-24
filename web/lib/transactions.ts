@@ -37,8 +37,12 @@ export interface TxFull {
   name: string;
   account: string;
   date: string; // ISO
-  amount: number; // signed: + income, − spend
+  amount: number; // signed display amount: + income, − spend
+  sourceAmount?: number;
+  currency?: string;
+  needsManualReview?: boolean;
   category: string;
+  categoryId?: string;
   taxable: boolean;
   source: TxSource;
   parse: { state: ParseState; confidence?: number };

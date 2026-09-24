@@ -28,12 +28,13 @@ interface BreakdownPieProps {
 
   items: BreakdownItem[];
   month: number;
+  year: number;
   months: { value: number; label: string }[];
   onMonthChange: (month: number) => void;
 }
 
 /** Breakdown card with aligned controls, a larger donut, and category detail. */
-export function BreakdownPie({ title, items, month, months, onMonthChange }: BreakdownPieProps) {
+export function BreakdownPie({ title, items, month, year, months, onMonthChange }: BreakdownPieProps) {
   const [catFilter, setCatFilter] = useState("all");
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   const config = useMemo(
@@ -41,9 +42,9 @@ export function BreakdownPie({ title, items, month, months, onMonthChange }: Bre
     [title]
   );
   const visible = catFilter === "all" ? items : items.filter((item) => item.id === catFilter);
-  const lastDay = new Date(2026, month + 1, 0).getDate();
+  const lastDay = new Date(year, month + 1, 0).getDate();
   const monthLabel = MONTH_LABELS[month] ?? "Month";
-  const dateLabel = `${monthLabel} 1, 2026 - ${monthLabel} ${lastDay}, 2026`;
+  const dateLabel = `${monthLabel} 1, ${year} - ${monthLabel} ${lastDay}, ${year}`;
 
   return (
     <Card className="gap-4 p-4 sm:p-5">
