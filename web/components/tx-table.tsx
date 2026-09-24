@@ -35,7 +35,6 @@ import {
 } from "./icons";
 import { formatUSD } from "@/lib/format";
 import {
-  TX_CATEGORIES,
   categoryMeta,
   dayLabel,
   downloadTransactions,
@@ -48,7 +47,7 @@ import {
 } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
 import { detectRecurringTransactions, MOCK_RECURRING_HISTORY } from "@/lib/recurring";
-import { CardIcon, EmailIcon, ManualIcon, WalletIcon } from "./icons";
+import { CardIcon, EmailIcon, FileIcon, ManualIcon, WalletIcon } from "./icons";
 
 const PAGE_SIZE = 12;
 
@@ -57,6 +56,8 @@ const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.Rea
   email: EmailIcon,
   card: CardIcon,
   wallet: WalletIcon,
+  statement: FileIcon,
+  receipt: ReceiptIcon,
 };
 
 const SOURCE_LABEL: Record<TxSource, string> = {
@@ -64,6 +65,8 @@ const SOURCE_LABEL: Record<TxSource, string> = {
   email: "Email receipt",
   card: "Card sync",
   wallet: "Wallet sync",
+  statement: "Statement",
+  receipt: "Receipt",
 };
 
 const DATE_LABEL: Record<DateFilter, string> = {
@@ -163,8 +166,15 @@ export interface MonthOption {
   label: string;
 }
 
+export interface TableCategoryOption {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
 interface TxTableProps {
   rows: TxFull[];
+  categoryOptions: TableCategoryOption[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onEdit: (id: string) => void;
@@ -181,7 +191,7 @@ interface TxTableProps {
  * Filters live inside the search bar; active filters surface as pills
  * with live spent / income / net totals across the result set.
  */
-export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport, month, monthOptions, onMonthChange }: TxTableProps) {
+export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport, month, monthOptions, onMonthChange, categoryOptions }: TxTableProps) {
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [tax, setTax] = useState<TaxFilter>("all");
@@ -218,8 +228,8 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     const q = query.trim().toLowerCase();
     const cut = dateRange === "all" ? null : cutoff(dateRange);
     const out = rows.filter((t) => {
-      if (q && !`${t.name} ${t.account} ${categoryMeta(t.category).label}`.toLowerCase().includes(q)) return false;
-      if (categories.length > 0 && !categories.includes(t.category)) return false;
+      if (q && !`${t.name} ${t.account} ${categoryMeta(t.categoryId ?? t.category, t.categoryName).label}`.toLowerCase().includes(q)) return false;
+      if (categories.length > 0 && !categories.includes(t.categoryId ?? t.category)) return false;
       if (tax === "taxable" && !t.taxable) return false;
       if (tax === "nontaxable" && t.taxable) return false;
       if (source !== "all" && t.source !== source) return false;
@@ -245,10 +255,11 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     return { spent, income, net: income - spent };
   }, [filtered]);
 
+  const optionName = (id: string) => categoryOptions.find((o) => o.id === id)?.name ?? categoryMeta(id, undefined).label;
   const pills: { key: string; label: string; clear: () => void }[] = [
     ...categories.map((c) => ({
       key: `cat-${c}`,
-      label: categoryMeta(c).label,
+      label: optionName(c),
       clear: () => toggleCategory(c),
     })),
   ];
@@ -361,7 +372,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
               {menu === null ? (
                 <div role="menu" aria-label="Transaction filters">
                   <p className="m-0 px-2 pt-1 pb-0.5 text-[12px] font-semibold text-[#8a8b91] dark:text-[#a2a3a8]">Filter by</p>
-                  <MenuRow icon={TagIcon} label="Category" value={categories.length === 1 ? categoryMeta(categories[0]).label : categories.length > 1 ? `${categories.length} selected` : undefined} onClick={() => setMenu("category")} />
+                  <MenuRow icon={TagIcon} label="Category" value={categories.length === 1 ? optionName(categories[0]) : categories.length > 1 ? `${categories.length} selected` : undefined} onClick={() => setMenu("category")} />
                   <MenuRow icon={CalendarIcon} label="Date" value={dateRange !== "all" ? DATE_LABEL[dateRange] : undefined} onClick={() => setMenu("date")} />
                   <MenuRow icon={CalendarIcon} label="Recurring" value={recurringOnly ? "Detected" : undefined} onClick={() => setRecurringOnly((current) => !current)} />
                   <MenuRow icon={ReceiptIcon} label="Tax status" value={tax !== "all" ? (tax === "taxable" ? "Taxable" : "Non-taxable") : undefined} onClick={() => setMenu("tax")} />
@@ -396,8 +407,8 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   <div role="group" aria-label="Filter options" className="mt-0.5">
                     {menu === "category" ? (
                       <>
-                        {TX_CATEGORIES.map((c) => (
-                          <MenuOption key={c.id} label={c.label} selected={categories.includes(c.id)} onClick={() => toggleCategory(c.id)} />
+                        {categoryOptions.map((c) => (
+                          <MenuOption key={c.id} label={`${c.emoji} ${c.name}`} selected={categories.includes(c.id)} onClick={() => toggleCategory(c.id)} />
                         ))}
                       </>
                     ) : null}
@@ -498,7 +509,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
           </HeroTable.Header>
           <HeroTable.Body>
             {slice.map((t, index) => {
-              const meta = categoryMeta(t.category);
+              const meta = categoryMeta(t.categoryId ?? t.category, t.categoryName);
               const SIcon = SOURCE_ICON[t.source];
               const income = t.amount >= 0;
               const selected = t.id === selectedId;

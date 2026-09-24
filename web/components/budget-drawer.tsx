@@ -35,7 +35,7 @@ function useMemoGroups(txns: TxFull[]): { day: string; items: TxFull[] }[] {
 }
 import { CardIcon, ManualIcon, MoreIcon, WalletIcon } from "./icons";
 
-const FEED_ICON: Record<Exclude<FeedKey, "gmail">, (props: { className?: string }) => React.ReactNode> = {
+const FEED_ICON: Partial<Record<Exclude<FeedKey, "gmail">, (props: { className?: string }) => React.ReactNode>> = {
   cards: CardIcon,
   wallets: WalletIcon,
   manual: ManualIcon,
@@ -64,7 +64,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
   const status = budgetStatus(spent, amount);
   const bars = [{ month: "Current", spent }];
   const year = spent;
-  const feeds = { cards: 0, wallets: 0, manual: 0, gmail: 0 };
+  const feeds: Record<FeedKey, number> = { cards: 0, wallets: 0, manual: 0, gmail: 0, statement: 0, receipt: 0 };
   const txns: TxFull[] = [];
   const groups = useMemoGroups(txns);
   const excluded = def?.excluded === true;
@@ -161,7 +161,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
                 ) : (
                   (() => {
                     const Icon = FEED_ICON[k];
-                    return <Icon />;
+                    return Icon ? <Icon /> : null;
                   })()
                 )}
               </span>

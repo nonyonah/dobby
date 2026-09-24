@@ -6,13 +6,15 @@ import { useApi } from "@/hooks/use-api";
 import { formatUSD } from "@/lib/format";
 import type { TxSource, Tx } from "@/lib/finance";
 import { ModuleCard } from "./module-card";
-import { CardIcon, EmailIcon, ManualIcon, WalletIcon } from "./icons";
+import { CardIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
 
 const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.ReactNode> = {
   manual: ManualIcon,
   email: EmailIcon,
   card: CardIcon,
   wallet: WalletIcon,
+  statement: FileIcon,
+  receipt: ReceiptIcon,
 };
 
 const SOURCE_LABEL: Record<TxSource, string> = {
@@ -20,6 +22,8 @@ const SOURCE_LABEL: Record<TxSource, string> = {
   email: "Email receipt",
   card: "Card sync",
   wallet: "Wallet sync",
+  statement: "Statement",
+  receipt: "Receipt",
 };
 
 export function TransactionsCard() {

@@ -4,13 +4,15 @@ import { Button } from "./ui/button";
 import { formatUSD } from "@/lib/format";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
-import { CardIcon, EmailIcon, ManualIcon, WalletIcon } from "./icons";
+import { CardIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
 
 const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.ReactNode> = {
   manual: ManualIcon,
   email: EmailIcon,
   card: CardIcon,
   wallet: WalletIcon,
+  statement: FileIcon,
+  receipt: ReceiptIcon,
 };
 
 const SOURCE_LABEL: Record<TxSource, string> = {
@@ -18,6 +20,8 @@ const SOURCE_LABEL: Record<TxSource, string> = {
   email: "Email receipt",
   card: "Card sync",
   wallet: "Wallet sync",
+  statement: "Statement",
+  receipt: "Receipt",
 };
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -33,9 +37,10 @@ interface TxDetailProps {
   tx: TxFull | null;
   onClose: () => void;
   onEdit: () => void;
+  onToggleBudget?: (tx: TxFull) => void;
 }
 
-export function TxDetail({ tx, onEdit }: TxDetailProps) {
+export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
   if (!tx) {
     return (
       <div className="p-6 text-center">
@@ -45,7 +50,7 @@ export function TxDetail({ tx, onEdit }: TxDetailProps) {
     );
   }
 
-  const meta = categoryMeta(tx.category);
+  const meta = categoryMeta(tx.categoryId ?? tx.category, tx.categoryName);
   const SIcon = SOURCE_ICON[tx.source];
   const income = tx.amount >= 0;
   const date = new Date(`${tx.date}T12:00:00`).toLocaleDateString("en-US", {
@@ -96,6 +101,33 @@ export function TxDetail({ tx, onEdit }: TxDetailProps) {
             <span className="text-[13px]">{SOURCE_LABEL[tx.source]}</span>
           </span>
         </Row>
+        {onToggleBudget && (tx.kind === "TRANSFER" || (tx.source === "wallet" && tx.kind !== "INCOME" && tx.amount < 0)) ? (
+          <Row label="Budgets">
+            {tx.kind === "TRANSFER" ? (
+              <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                <span className="text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">Excluded</span>
+                <button
+                  type="button"
+                  onClick={() => onToggleBudget({ ...tx, kind: "EXPENSE" })}
+                  className="cursor-pointer rounded-md text-[13px] font-medium text-[#4a55c9] outline-none hover:underline focus-visible:outline-2 focus-visible:outline-[#4a55c9]"
+                >
+                  Treat as regular spending
+                </button>
+              </span>
+            ) : (
+              <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                <span className="text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">Included</span>
+                <button
+                  type="button"
+                  onClick={() => onToggleBudget({ ...tx, kind: "TRANSFER" })}
+                  className="cursor-pointer rounded-md text-[13px] font-medium text-[#4a55c9] outline-none hover:underline focus-visible:outline-2 focus-visible:outline-[#4a55c9]"
+                >
+                  Exclude from budgets
+                </button>
+              </span>
+            )}
+          </Row>
+        ) : null}
         <Row label="Parsing">
           {tx.parse.state === "parsed" ? (
             <span className="text-[13px] text-[#00afb9]">Parsed · {tx.parse.confidence}% confidence</span>

@@ -34,7 +34,7 @@ function exportRows(rows: TxFull[], filename: string, kind: ExportKind) {
     Date: row.date,
     Merchant: row.name,
     Account: row.account,
-    Category: categoryMeta(row.category).label,
+    Category: categoryMeta(row.categoryId ?? row.category, row.categoryName).label,
     Amount: row.amount,
     Taxable: row.taxable ? "yes" : "no",
     Source: row.source,

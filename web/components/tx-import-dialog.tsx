@@ -21,11 +21,13 @@ import {
 import { Button } from "./ui/button";
 import { FileIcon, ManualIcon, ReceiptIcon } from "./icons";
 import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
+import type { DialogCategoryOption } from "./tx-edit-dialog";
 
 interface TxImportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImport: (rows: TxFull[], file?: File, importType?: "CSV" | "OFX" | "QFX" | "RECEIPT") => Promise<void> | void;
+  categories?: DialogCategoryOption[];
 }
 
 type Mode = "choose" | "document" | "manual";
@@ -105,7 +107,7 @@ function parseStatement(text: string, filename: string): TxFull[] {
   return rows;
 }
 
-export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogProps) {
+export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }: TxImportDialogProps) {
   const [mode, setMode] = useState<Mode>("choose");
   const [fileName, setFileName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -170,6 +172,8 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
   const addManual = () => {
     const value = Number.parseFloat(amount.replace(/[^0-9.-]/g, ""));
     if (!name.trim() || !Number.isFinite(value)) return;
+    const liveIds = new Set(categories.map((c) => c.id));
+    const option = categories.find((c) => c.id === category);
     setSubmitting(true);
     void Promise.resolve(onImport([
       {
@@ -179,6 +183,9 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
         date: date || "2026-09-18",
         amount: transactionType === "INCOME" ? Math.abs(value) : -Math.abs(value),
         category,
+        categoryId: liveIds.has(category) ? category : undefined,
+        categoryName: option?.name,
+        kind: transactionType,
         taxable: false,
         source: "manual",
         parse: { state: "manual" },
@@ -291,8 +298,13 @@ export function TxImportDialog({ open, onOpenChange, onImport }: TxImportDialogP
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {TX_CATEGORIES.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                  {(categories.length > 0
+                    ? categories
+                    : TX_CATEGORIES.map((c) => ({ id: c.id, name: c.label, emoji: c.emoji }))
+                  ).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.emoji} {c.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

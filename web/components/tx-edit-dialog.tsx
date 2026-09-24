@@ -23,11 +23,18 @@ import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
 import { getAppCurrency } from "@/lib/format";
 
+export interface DialogCategoryOption {
+  id: string;
+  name: string;
+  emoji: string;
+}
+
 interface TxEditDialogProps {
   tx: TxFull | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (tx: TxFull) => void;
+  categories?: DialogCategoryOption[];
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -43,7 +50,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * Rift Labs Dialog: one-sentence consequence, Cancel left,
  * the named commit action right.
  */
-export function TxEditDialog({ tx, open, onOpenChange, onSave }: TxEditDialogProps) {
+export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }: TxEditDialogProps) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
@@ -51,17 +58,23 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave }: TxEditDialogPro
   const [taxable, setTaxable] = useState("non-taxable");
   const [source, setSource] = useState<TxSource>("manual");
   const [note, setNote] = useState("");
+  const options =
+    categories.length > 0
+      ? categories
+      : TX_CATEGORIES.map((c) => ({ id: c.id, name: c.label, emoji: c.emoji }));
 
   useEffect(() => {
     if (tx && open) {
       setName(tx.name);
       setAmount(String(Math.abs(tx.amount)));
       setDate(tx.date);
-      setCategory(tx.category);
+      const liveIds = new Set(options.map((o) => o.id));
+      setCategory(tx.categoryId && liveIds.has(tx.categoryId) ? tx.categoryId : tx.category);
       setTaxable(tx.taxable ? "taxable" : "non-taxable");
       setSource(tx.source);
       setNote(tx.note);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tx, open]);
 
   if (!tx) return null;
@@ -69,6 +82,8 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave }: TxEditDialogPro
   const commit = () => {
     const parsed = Number.parseFloat(amount.replace(/[^0-9.]/g, ""));
     const amountChanged = Number.isFinite(parsed) && Math.abs(parsed - Math.abs(tx.amount)) > 0.000001;
+    const liveIds = new Set(options.map((o) => o.id));
+    const option = options.find((o) => o.id === category);
     onSave({
       ...tx,
       name: name.trim() || tx.name,
@@ -77,6 +92,8 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave }: TxEditDialogPro
       currency: amountChanged ? getAppCurrency() : tx.currency,
       date: date || tx.date,
       category,
+      categoryId: liveIds.has(category) ? category : tx.categoryId,
+      categoryName: option?.name ?? tx.categoryName,
       taxable: taxable === "taxable",
       source,
       note: note.trim(),
@@ -120,9 +137,9 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave }: TxEditDialogPro
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {TX_CATEGORIES.map((c) => (
+                {options.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
-                    {c.label}
+                    {c.emoji} {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>

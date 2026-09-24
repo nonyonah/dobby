@@ -41,6 +41,7 @@ reviewsRouter.get("/", async (req, res) => {
 
 reviewsRouter.post("/:id/approve", async (req, res) => {
   const ownerClerkId = req.auth!.userId;
+  const override = z.object({ categoryId: z.string().trim().min(1).max(80).nullable().optional() }).parse(req.body);
   const item = await prisma.transactionReviewItem.findFirst({ where: { id: req.params.id, ownerClerkId } });
   if (!item) {
     res.status(404).json({ error: { code: "REVIEW_ITEM_NOT_FOUND", message: "Review item was not found." } });
@@ -54,6 +55,14 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
   if (!proposed.success) {
     res.status(400).json({ error: { code: "REVIEW_ITEM_INVALID", message: "This row has no valid proposed transaction." } });
     return;
+  }
+  if (override.categoryId) {
+    const category = await prisma.category.findFirst({ where: { id: override.categoryId, ownerClerkId, isArchived: false }, select: { id: true } });
+    if (!category) {
+      res.status(400).json({ error: { code: "INVALID_CATEGORY", message: "The chosen category is not available." } });
+      return;
+    }
+    proposed.data.categoryId = override.categoryId;
   }
 
   const rawCurrency = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined;
@@ -70,6 +79,7 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
       const duplicate = await tx.transaction.findFirst({ where: { ownerClerkId, fingerprint: item.fingerprint } });
       if (duplicate) return { duplicate: true as const };
     }
+    const origin = await tx.transactionImport.findFirst({ where: { id: item.importId, ownerClerkId }, select: { type: true } });
     const transactionData: Prisma.TransactionUncheckedCreateInput = {
       ownerClerkId,
       type: proposed.data.type,
@@ -80,7 +90,7 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
       merchant: proposed.data.merchant,
       occurredAt: proposed.data.occurredAt,
       fingerprint: item.fingerprint,
-      source: "csv",
+      source: origin?.type === "RECEIPT" ? "receipt" : "statement",
       needsReview: false,
     };
     const transaction = await tx.transaction.create({ data: transactionData });

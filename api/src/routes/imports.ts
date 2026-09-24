@@ -97,7 +97,17 @@ async function persistReviewItems(ownerClerkId: string, record: { id: string }, 
       return typeof descriptor === "string" && descriptor.trim().length > 0;
     });
   const aiConfidence = new Map<number, number>();
-  if (aiCandidates.length > 0) {
+  // Copilot-style cold start: automated predictions only kick in after the
+  // user has manually reviewed 30 transactions. Keyword and custom rules
+  // always run; anything below the threshold stays in review instead.
+  const reviewedCount = await prisma.transactionReviewItem.count({
+    where: { ownerClerkId, status: { in: [ReviewStatus.APPROVED, ReviewStatus.REJECTED] } },
+  });
+  const aiUnlocked = reviewedCount >= 30;
+  if (aiCandidates.length > 0 && !aiUnlocked) {
+    logger.info({ reviewedCount }, "AI categorization locked until 30 manual reviews are completed");
+  }
+  if (aiCandidates.length > 0 && aiUnlocked) {
     try {
       const names = categories.map((category) => category.name);
       const byIndex = new Map(aiCandidates.map((entry) => [entry.index, entry]));

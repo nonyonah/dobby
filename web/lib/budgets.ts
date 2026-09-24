@@ -32,13 +32,15 @@ export function categorySpent(catId: string): number {
   return CATEGORIES.find((c) => c.id === catId)?.spent ?? 0;
 }
 
-export type FeedKey = "gmail" | "cards" | "wallets" | "manual";
+export type FeedKey = "gmail" | "cards" | "wallets" | "manual" | "statement" | "receipt";
 
 export const FEED_LABEL: Record<FeedKey, string> = {
   gmail: "Gmail",
   cards: "Cards",
   wallets: "Wallets",
   manual: "Manual",
+  statement: "Statement",
+  receipt: "Receipt",
 };
 
 const SOURCE_FEED: Record<TxSource, FeedKey> = {
@@ -46,10 +48,12 @@ const SOURCE_FEED: Record<TxSource, FeedKey> = {
   card: "cards",
   wallet: "wallets",
   manual: "manual",
+  statement: "manual",
+  receipt: "manual",
 };
 
 export function feedTotals(catId: string): Record<FeedKey, number> {
-  const totals: Record<FeedKey, number> = { gmail: 0, cards: 0, wallets: 0, manual: 0 };
+  const totals: Record<FeedKey, number> = { gmail: 0, cards: 0, wallets: 0, manual: 0, statement: 0, receipt: 0 };
   for (const t of TRANSACTIONS_FULL) {
     if (t.category !== catId || t.amount >= 0) continue;
     totals[SOURCE_FEED[t.source]] += Math.abs(t.amount);

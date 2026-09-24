@@ -27,8 +27,14 @@ export const TX_CATEGORIES: CategoryMeta[] = [
   { id: "other", label: "Other", emoji: "📦", pill: "border-transparent bg-[#cdb4db] text-white", dot: "#8a8b91" },
 ];
 
-export const categoryMeta = (id: string): CategoryMeta =>
-  TX_CATEGORIES.find((c) => c.id === id) ?? TX_CATEGORIES[TX_CATEGORIES.length - 1];
+export const categoryMeta = (id: string, fallbackName?: string): CategoryMeta =>
+  TX_CATEGORIES.find((c) => c.id === id) ?? {
+    id,
+    label: fallbackName ?? id,
+    emoji: "📦",
+    pill: "border-transparent bg-[#cdb4db] text-white",
+    dot: "#8a8b91",
+  };
 
 export type ParseState = "parsed" | "review" | "manual";
 
@@ -43,6 +49,8 @@ export interface TxFull {
   needsManualReview?: boolean;
   category: string;
   categoryId?: string;
+  categoryName?: string;
+  kind?: "INCOME" | "EXPENSE" | "TRANSFER";
   taxable: boolean;
   source: TxSource;
   parse: { state: ParseState; confidence?: number };

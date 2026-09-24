@@ -20,6 +20,8 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { TxFull } from "@/lib/transactions";
 import { useApi } from "@/hooks/use-api";
+import { useCategories } from "@/hooks/use-categories";
+import { TX_CATEGORIES } from "@/lib/transactions";
 import { toast } from "@/components/ui/toast";
 
 type ApiTransaction = {
@@ -55,7 +57,7 @@ function categoryId(name?: string | null) {
 }
 
 function sourceId(source?: string | null): TxFull["source"] {
-  return source === "email" || source === "card" || source === "wallet" || source === "manual" ? source : "manual";
+  return source === "email" || source === "card" || source === "wallet" || source === "manual" || source === "statement" || source === "receipt" ? source : "manual";
 }
 
 function mapTransaction(item: ApiTransaction): TxFull {
@@ -68,8 +70,10 @@ function mapTransaction(item: ApiTransaction): TxFull {
     amount,
     sourceAmount: Number(item.amount),
     currency: item.currency,
-    category: categoryId(item.category?.name),
+    category: item.category?.id ?? categoryId(item.category?.name),
     categoryId: item.category?.id,
+    categoryName: item.category?.name ?? undefined,
+    kind: item.type,
     taxable: item.isTaxable,
     source: sourceId(item.source),
     parse: { state: item.needsReview ? "review" : "parsed" },
@@ -94,6 +98,8 @@ function mapReview(item: ApiReview): TxFull {
     needsManualReview: Boolean(raw.needsReview && !proposed),
     category: categoryId(item.proposedData?.categoryName),
     categoryId: item.proposedData?.categoryId,
+    categoryName: item.proposedData?.categoryName ?? undefined,
+    kind: proposed?.type === "INCOME" ? "INCOME" : "EXPENSE",
     taxable: false,
     source: "manual",
     parse: { state: "review", confidence: 90 },
@@ -110,6 +116,7 @@ function TransactionsInner() {
   const [editId, setEditId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [categoryIds, setCategoryIds] = useState<Record<string, string>>({});
+  const { categories: liveCategories } = useCategories();
   const [month, setMonth] = useState("all");
   const isMobile = useIsMobile();
   const api = useApi();
@@ -198,6 +205,11 @@ function TransactionsInner() {
     }
   }, [importModal, router]);
 
+  const categoryOptions =
+    liveCategories.length > 0
+      ? liveCategories
+      : TX_CATEGORIES.map((c) => ({ id: c.id, name: c.label, emoji: c.emoji }));
+
   const selected = rows.find((t) => t.id === selectedId) ?? null;
   const editing = rows.find((t) => t.id === editId) ?? reviewRows.find((t) => t.id === editId) ?? null;
 
@@ -208,14 +220,15 @@ function TransactionsInner() {
 
   const save = async (next: TxFull) => {
     try {
+      const liveIds = new Set(liveCategories.map((c) => c.id));
       const response = await api.patch<{ data: ApiTransaction }>(`/v1/transactions/${next.id}`, {
-        type: next.amount >= 0 ? "INCOME" : "EXPENSE",
+        type: next.kind ?? (next.amount >= 0 ? "INCOME" : "EXPENSE"),
         amount: Math.abs(next.sourceAmount ?? next.amount),
         currency: next.currency,
         description: next.name,
         occurredAt: next.date,
         source: next.source,
-        categoryId: categoryIds[next.category] ?? next.categoryId ?? null,
+        categoryId: (next.categoryId && liveIds.has(next.categoryId) ? next.categoryId : null) ?? categoryIds[next.category] ?? null,
         isTaxable: next.taxable,
       });
       const mapped = mapTransaction(response.data);
@@ -239,9 +252,13 @@ function TransactionsInner() {
     }
   };
 
-  const approveReview = async (ids: string[]) => {
+  const approveReview = async (ids: string[], overrides: Record<string, string> = {}) => {
     try {
-      await Promise.all(ids.map((id) => api.post(`/v1/reviews/${id}/approve`, {})));
+      await Promise.all(
+        ids.map((id) =>
+          api.post(`/v1/reviews/${id}/approve`, overrides[id] ? { categoryId: overrides[id] } : {}),
+        ),
+      );
       setReviewRows((prev) => prev.filter((transaction) => !ids.includes(transaction.id)));
       setRows((await fetchAllTransactions(month)).map(mapTransaction));
     } catch {
@@ -314,7 +331,7 @@ function TransactionsInner() {
           </div>
           {view === "review" ? <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Approve items to add them to Ledger</p> : null}
         </div>
-        {view === "review" ? <ReviewQueue rows={reviewRows} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} /> : <>
+        {view === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} /> : <>
           <TxTable
             rows={rows}
             selectedId={selectedId}
@@ -325,6 +342,7 @@ function TransactionsInner() {
             month={month}
             monthOptions={monthOptions}
             onMonthChange={setMonth}
+            categoryOptions={categoryOptions}
           />
         </>}
       </div>
@@ -342,11 +360,12 @@ function TransactionsInner() {
             </DrawerDescription>
           </DrawerHeader>
           <div className="scrollbar-hide flex-1 overflow-y-auto px-6 pt-2 pb-6">
-            <TxDetail
-              tx={selected}
-              onClose={() => setDrawerOpen(false)}
-              onEdit={() => selected && setEditId(selected.id)}
-            />
+          <TxDetail
+            tx={selected}
+            onClose={() => setDrawerOpen(false)}
+            onEdit={() => selected && setEditId(selected.id)}
+            onToggleBudget={(next) => void save(next)}
+          />
           </div>
         </DrawerContent>
       </Drawer>
@@ -357,11 +376,13 @@ function TransactionsInner() {
           if (!open) setEditId(null);
         }}
         onSave={save}
+        categories={liveCategories}
       />
       <TxImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
         onImport={addRows}
+        categories={categoryOptions}
       />
     </>
   );

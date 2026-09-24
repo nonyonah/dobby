@@ -38,6 +38,7 @@ interface BudgetDialogProps {
   initial: BudgetDef;
   title: string;
   onSave: (catId: string, def: BudgetDef) => void;
+  categories?: Array<{ id: string; name: string; emoji: string }>;
 }
 
 type CreateStep = "suggestion" | "plan" | "manual";
@@ -56,11 +57,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave }: BudgetDialogProps) {
+export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave, categories = [] }: BudgetDialogProps) {
   const isEditing = catId !== null;
+  const options = categories.length > 0 ? categories : CATEGORIES;
+  const [picked, setPicked] = useState(catId ?? options[0].id);
+  const [budgetEmoji, setBudgetEmoji] = useState(options[0].emoji);
   const [step, setStep] = useState<CreateStep>("suggestion");
-  const [picked, setPicked] = useState(catId ?? CATEGORIES[0].id);
-  const [budgetEmoji, setBudgetEmoji] = useState(CATEGORIES[0].emoji);
   const [type, setType] = useState<"fixed" | "percent">(initial.type);
   const [value, setValue] = useState(String(initial.value));
   const [includeRecurring, setIncludeRecurring] = useState(true);
@@ -89,7 +91,7 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
     setStep("manual");
   };
 
-  const cat = CATEGORIES.find((category) => category.id === picked);
+  const cat = options.find((category) => category.id === picked);
   const availableCash = MONTH.income - MONTH.expenses;
 
   const editForm = (
@@ -156,23 +158,23 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
     >
       <div className="space-y-1.5">
         <label htmlFor="budget-category" className="text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">Choose a category</label>
-        <Select
-          value={picked}
-          onValueChange={(nextCategory) => {
-            const next = CATEGORIES.find((category) => category.id === nextCategory);
-            if (next) {
-              setPicked(next.id);
-              setBudgetEmoji(next.emoji);
-            }
-          }}
-        >
-          <SelectTrigger id="budget-category" aria-label="Choose a category" className="h-8 w-full bg-card text-[13px] text-foreground">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CATEGORIES.map((category) => <SelectItem key={category.id} value={category.id}>{category.emoji} {category.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
+          <Select
+            value={picked}
+            onValueChange={(nextCategory) => {
+              const next = options.find((category) => category.id === nextCategory);
+              if (next) {
+                setPicked(next.id);
+                setBudgetEmoji(next.emoji);
+              }
+            }}
+          >
+            <SelectTrigger id="budget-category" aria-label="Choose a category" className="h-8 w-full bg-card text-[13px] text-foreground">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((category) => <SelectItem key={category.id} value={category.id}>{category.emoji} {category.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         <div className="flex items-center gap-2 pt-1">
           <EmojiPickerField value={budgetEmoji} onChange={setBudgetEmoji} label="Choose a budget emoji" />
           <span className="text-[12px] font-medium text-muted-foreground">Customize the category emoji</span>

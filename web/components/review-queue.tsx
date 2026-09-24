@@ -4,11 +4,18 @@ import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Table as HeroTable } from "@heroui/react";
 import { Button } from "./ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { Alert, AlertContent, AlertDescription, AlertTitle } from "./ui/alert";
 import { formatUSD } from "@/lib/format";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import { PencilSimple, Sparkle } from "@phosphor-icons/react/dist/ssr";
-import { CardIcon, CheckIcon, CloseSmallIcon, EmailIcon, ManualIcon, WalletIcon } from "./icons";
+import { CardIcon, CheckIcon, CloseSmallIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
 import type { TxSource } from "@/lib/finance";
 
 const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.ReactNode> = {
@@ -16,6 +23,8 @@ const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.Rea
   email: EmailIcon,
   card: CardIcon,
   wallet: WalletIcon,
+  statement: FileIcon,
+  receipt: ReceiptIcon,
 };
 
 const SOURCE_LABEL: Record<TxSource, string> = {
@@ -23,17 +32,27 @@ const SOURCE_LABEL: Record<TxSource, string> = {
   email: "Email receipt",
   card: "Card sync",
   wallet: "Wallet sync",
+  statement: "Statement",
+  receipt: "Receipt",
 };
+
+export interface ReviewCategoryOption {
+  id: string;
+  name: string;
+  emoji: string;
+}
 
 interface ReviewQueueProps {
   rows: TxFull[];
-  onApprove: (ids: string[]) => void;
+  categories: ReviewCategoryOption[];
+  onApprove: (ids: string[], overrides?: Record<string, string>) => void;
   onDecline: (ids: string[]) => void;
   onEdit: (id: string) => void;
 }
 
-export function ReviewQueue({ rows, onApprove, onDecline, onEdit }: ReviewQueueProps) {
+export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit }: ReviewQueueProps) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
   const reduce = useReducedMotion() ?? false;
   const allChecked = rows.length > 0 && rows.every((row) => checked.has(row.id));
   const approvableRows = rows.filter((row) => !row.needsManualReview);
@@ -50,8 +69,26 @@ export function ReviewQueue({ rows, onApprove, onDecline, onEdit }: ReviewQueueP
   const approve = (ids: string[]) => {
     const approvableIds = ids.filter((id) => !rows.find((row) => row.id === id)?.needsManualReview);
     if (approvableIds.length === 0) return;
-    onApprove(approvableIds);
+    const selectedOverrides: Record<string, string> = {};
+    for (const id of approvableIds) {
+      if (overrides[id]) selectedOverrides[id] = overrides[id];
+    }
+    onApprove(approvableIds, selectedOverrides);
     setChecked((current) => new Set([...current].filter((id) => !approvableIds.includes(id))));
+    setOverrides((current) => {
+      const next = { ...current };
+      for (const id of approvableIds) delete next[id];
+      return next;
+    });
+  };
+
+  const setOverride = (id: string, categoryId: string | null) => {
+    setOverrides((current) => {
+      const next = { ...current };
+      if (categoryId) next[id] = categoryId;
+      else delete next[id];
+      return next;
+    });
   };
 
   return (
@@ -89,12 +126,34 @@ export function ReviewQueue({ rows, onApprove, onDecline, onEdit }: ReviewQueueP
                 </HeroTable.Header>
                 <HeroTable.Body>
                   {rows.map((row) => {
-                    const meta = categoryMeta(row.category);
+                    const meta = categoryMeta(row.category, row.categoryName);
                     const SourceIcon = SOURCE_ICON[row.source];
+                    const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
                     return <HeroTable.Row key={row.id} id={row.id} className="border-b border-[#f1efeb] last:border-0 dark:border-[#26262a]">
                       <HeroTable.Cell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-[#4a55c9]" /></HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.account} · {row.date.slice(5).replace("-", "/")}</span></HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.pill}`}><span aria-hidden="true">{meta.emoji}</span>{meta.label}</span><span className="ml-2 text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%</span></HeroTable.Cell>
+                      <HeroTable.Cell className="px-2 py-3">
+                        {categories.length > 0 ? (
+                          <Select
+                            value={overrides[row.id] ?? suggestedId}
+                            onValueChange={(value) => setOverride(row.id, value ?? suggestedId ?? null)}
+                          >
+                            <SelectTrigger aria-label={`Category for ${row.name}`} className="h-7 min-w-36 bg-white dark:bg-[#232327] text-[12px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {categories.map((option) => (
+                                <SelectItem key={option.id} value={option.id}>
+                                  {option.emoji} {option.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.pill}`}><span aria-hidden="true">{meta.emoji}</span>{meta.label}</span>
+                        )}
+                        <span className="ml-2 text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
+                      </HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
                       <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#00afb9]" : "text-[#ef476f]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatUSD(Math.abs(row.amount))}</>}</HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" onClick={() => approve([row.id])}><CheckIcon /> Approve</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>

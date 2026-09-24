@@ -172,6 +172,7 @@ function BudgetInner() {
         }
         title={dialog?.mode === "edit" ? "Edit budget" : "Create budget"}
         onSave={save}
+        categories={categories}
       />
     </>
   );

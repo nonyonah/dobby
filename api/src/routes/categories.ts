@@ -29,8 +29,28 @@ categoriesRouter.post("/", async (req, res) => {
   res.status(201).json({ data: category });
 });
 
+function isProtectedDefault(name: string): boolean {
+  return name.trim().toLowerCase() === "other";
+}
+
+async function forbidProtectedDefault(ownerClerkId: string, id: string): Promise<string | null> {
+  const existing = await prisma.category.findFirst({ where: { id, ownerClerkId }, select: { name: true } });
+  if (!existing) return null;
+  if (isProtectedDefault(existing.name)) {
+    return "The default Other category cannot be archived or deleted because uncategorized transactions fall back to it.";
+  }
+  return null;
+}
+
 categoriesRouter.patch("/:id", async (req, res) => {
   const input = categorySchema.partial().parse(req.body);
+  if (input.isArchived) {
+    const forbidden = await forbidProtectedDefault(req.auth!.userId, req.params.id);
+    if (forbidden) {
+      res.status(400).json({ error: { code: "PROTECTED_CATEGORY", message: forbidden } });
+      return;
+    }
+  }
   const result = await prisma.category.updateMany({
     where: { id: req.params.id, ownerClerkId: req.auth!.userId },
     data: input,
@@ -44,6 +64,11 @@ categoriesRouter.patch("/:id", async (req, res) => {
 });
 
 categoriesRouter.delete("/:id", async (req, res) => {
+  const forbidden = await forbidProtectedDefault(req.auth!.userId, req.params.id);
+  if (forbidden) {
+    res.status(400).json({ error: { code: "PROTECTED_CATEGORY", message: forbidden } });
+    return;
+  }
   const result = await prisma.category.updateMany({
     where: { id: req.params.id, ownerClerkId: req.auth!.userId },
     data: { isArchived: true },

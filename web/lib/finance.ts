@@ -17,7 +17,7 @@ export const TAX_DOCS: TaxDoc[] = [
   { id: "prior", label: "Prior-year return", done: true },
 ];
 
-export type TxSource = "manual" | "email" | "card" | "wallet";
+export type TxSource = "manual" | "email" | "card" | "wallet" | "statement" | "receipt";
 
 export interface Tx {
   id: string;
