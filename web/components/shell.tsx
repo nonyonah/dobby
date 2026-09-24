@@ -20,7 +20,7 @@ const SIDEBAR_KEY = "rift-sidebar-collapsed";
 
 interface ShellProps {
   title: string;
-  active: "dashboard" | "transactions" | "insights" | "budget" | "goals" | "settings";
+  active: "dashboard" | "transactions" | "insights" | "budget" | "goals" | "settings" | "notifications";
   children: ReactNode;
 }
 

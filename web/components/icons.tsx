@@ -146,8 +146,8 @@ export function PlusIcon({ className }: IconProps) {
   return <P icon={Plus} size={14} className={className} />
 }
 
-export function BellIcon({ className }: IconProps) {
-  return <P icon={Bell} size={16} className={className} />
+export function BellIcon({ className, filled = false }: IconProps & { filled?: boolean }) {
+  return <P icon={Bell} size={16} weight={filled ? "fill" : "regular"} className={className} />
 }
 
 export function FilterIcon({ className }: IconProps) {

@@ -31,6 +31,7 @@ import { SignOut } from "@phosphor-icons/react/dist/ssr";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import {
   AccountsIcon,
+  BellIcon,
   BookmarkIcon,
   BudgetIcon,
   DashboardIconFull,
@@ -57,6 +58,7 @@ const MAIN_NAV: NavItem[] = [
   { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon },
   { id: "budget", label: "Budget", href: "/budget", icon: BudgetIcon },
   { id: "goals", label: "Goals", href: "/budget/goals", icon: GoalsIcon },
+  { id: "notifications", label: "Notifications", href: "/notifications", icon: (props) => <BellIcon {...props} filled /> },
 ];
 
 const SIDEBAR_RESOURCES: SidebarResource[] = [
