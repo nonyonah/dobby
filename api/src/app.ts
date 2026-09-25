@@ -24,6 +24,7 @@ import { budgetsRouter } from "./routes/budgets.js";
 import { goalsRouter } from "./routes/goals.js";
 import { currencyRouter } from "./routes/currency.js";
 import { integrationsRouter } from "./routes/integrations.js";
+import { emailsRouter } from "./routes/emails.js";
 
 export const app = express();
 
@@ -71,6 +72,7 @@ app.use("/v1/budgets", budgetsRouter);
 app.use("/v1/goals", goalsRouter);
 app.use("/v1/currency", currencyRouter);
 app.use("/v1/integrations", integrationsRouter);
+app.use("/v1/emails", emailsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { composioClient } from "../lib/composio.js";
+import { clearAuthConfigCache, composioClient, lookupAuthConfigId, resolveAuthConfigId } from "../lib/composio.js";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
@@ -9,7 +9,7 @@ import { logger } from "../lib/logger.js";
 export const integrationsRouter = Router();
 integrationsRouter.use(requireAuth);
 
-const PROVIDERS = {
+export const PROVIDERS = {
   gmail: { toolkit: "gmail", authConfigEnv: "COMPOSIO_AUTH_CONFIG_GMAIL" as const },
   outlook: { toolkit: "outlook", authConfigEnv: "COMPOSIO_AUTH_CONFIG_OUTLOOK" as const },
   quickbooks: { toolkit: "quickbooks", authConfigEnv: "COMPOSIO_AUTH_CONFIG_QUICKBOOKS" as const },
@@ -42,7 +42,7 @@ function isActiveForToolkit(account: ListedAccount, toolkit: string): string | n
   return null;
 }
 
-async function refreshProviderStatus(ownerClerkId: string, provider: IntegrationProvider) {
+export async function refreshProviderStatus(ownerClerkId: string, provider: IntegrationProvider) {
   const { toolkit } = PROVIDERS[provider];
   let status = "disconnected";
   let connectedAccountId: string | null = null;
@@ -98,27 +98,70 @@ integrationsRouter.get("/", async (req, res) => {
 
 integrationsRouter.post("/:provider/connect", async (req, res) => {
   const { provider } = providerSchema.parse(req.params);
-  const authConfigId = env[PROVIDERS[provider].authConfigEnv];
+  const { toolkit, authConfigEnv } = PROVIDERS[provider];
+  const override = env[authConfigEnv];
+
+  // A pinned env override wins; otherwise use the enabled auth config Composio
+  // already has for the toolkit, so a config created in the dashboard connects
+  // without redeploying the API.
+  let authConfigId: string | null = null;
+  let lookupFailed = false;
+  if (override) {
+    authConfigId = override;
+  } else {
+    try {
+      authConfigId = await resolveAuthConfigId(toolkit);
+    } catch (error) {
+      lookupFailed = true;
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error), provider, toolkit },
+        "Composio auth config lookup failed",
+      );
+    }
+  }
   if (!authConfigId) {
     res.status(503).json({
       error: {
         code: "COMPOSIO_AUTH_CONFIG_MISSING",
-        message: `No auth config is configured for ${provider}. Create one in the Composio dashboard and set ${PROVIDERS[provider].authConfigEnv}.`,
+        message: lookupFailed
+          ? `No auth config is configured for ${provider}, and Composio could not be reached to look one up. Create one for the "${toolkit}" toolkit at https://app.composio.dev, set ${authConfigEnv} in api/.env, and restart the API server.`
+          : `No auth config is configured for ${provider}. Create one for the "${toolkit}" toolkit at https://app.composio.dev (it must be enabled), or set ${authConfigEnv} in api/.env and restart the API server.`,
       },
     });
     return;
   }
-  try {
-    const request = await composioClient().connectedAccounts.link(req.auth!.userId, authConfigId, {
+  const startLink = (id: string) =>
+    composioClient().connectedAccounts.link(req.auth!.userId, id, {
       ...(env.COMPOSIO_CALLBACK_URL ? { callbackUrl: env.COMPOSIO_CALLBACK_URL } : {}),
     });
+
+  try {
+    const request = await startLink(authConfigId);
     res.status(201).json({ data: { redirectUrl: request.redirectUrl, connectionId: request.id } });
+    return;
   } catch (error) {
     logger.warn({ error: error instanceof Error ? error.message : String(error), provider }, "Composio connect link failed");
-    res.status(502).json({
-      error: { code: "COMPOSIO_CONNECT_FAILED", message: "Could not start the connection flow. Try again." },
-    });
   }
+
+  // A pinned env ID goes stale if the config is recreated in the dashboard;
+  // retry once with whatever Composio has now before giving up.
+  if (override === authConfigId) {
+    try {
+      clearAuthConfigCache(toolkit);
+      const fresh = await lookupAuthConfigId(toolkit);
+      if (fresh && fresh !== authConfigId) {
+        const request = await startLink(fresh);
+        res.status(201).json({ data: { redirectUrl: request.redirectUrl, connectionId: request.id } });
+        return;
+      }
+    } catch (error) {
+      logger.warn({ error: error instanceof Error ? error.message : String(error), provider }, "Composio connect link retry failed");
+    }
+  }
+
+  res.status(502).json({
+    error: { code: "COMPOSIO_CONNECT_FAILED", message: "Could not start the connection flow. Try again." },
+  });
 });
 
 integrationsRouter.post("/:provider/refresh", async (req, res) => {

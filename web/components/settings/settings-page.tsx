@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, type AccentColor } from "@/lib/theme";
 import { useApi } from "@/hooks/use-api";
+import { toast } from "@/components/ui/toast";
 import { WalletConnectModal } from "./wallet-connect-modal";
 
 import {
@@ -83,6 +84,35 @@ const PROVIDER_ROWS = [
   { id: "quickbooks", name: "QuickBooks", domain: "quickbooks.intuit.com", description: "Export transactions and reports to QuickBooks." },
   { id: "xero", name: "Xero", domain: "xero.com", description: "Export transactions and reports to Xero." },
 ];
+
+const EMAIL_PROVIDER_IDS = new Set(["gmail", "outlook"]);
+
+type EmailImportRow = {
+  id: string;
+  provider: string;
+  subject: string | null;
+  fromAddress: string | null;
+  receivedAt: string | null;
+  kind: string;
+  status: string;
+  detail: string | null;
+  importId: string | null;
+};
+
+type SyncJob = {
+  status: string;
+  scanned: number;
+  imported: number;
+  duplicates: number;
+  duplicateRows: number;
+  skipped: number;
+  failed: number;
+  errorMessage?: string | null;
+};
+
+type SyncState = { busy: boolean; summary?: string; error?: string };
+
+const KIND_LABELS: Record<string, string> = { statement: "Statement", receipt: "Receipt", alert: "Bank alert" };
 
 function BrandLogo({ domain }: { domain: string }) {
   const sheetsLogo = domain === "sheets.google.com";
@@ -172,6 +202,9 @@ export function SettingsPage() {
   const [providers, setProviders] = useState<Record<string, { status: string; live: boolean }>>({});
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [syncState, setSyncState] = useState<Record<string, SyncState>>({});
+  const [duplicateEmails, setDuplicateEmails] = useState<EmailImportRow[]>([]);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [accentColor, setAccentColor] = useState<AccentColor>(DEFAULT_ACCENT);
   const [country, setCountry] = useState("nigeria");
   const [currency, setCurrency] = useState("ngn");
@@ -236,6 +269,35 @@ export function SettingsPage() {
       } catch {
         // Provider rows fall back to disconnected until the API responds.
       }
+      try {
+        const duplicates = await api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25");
+        if (!cancelled) setDuplicateEmails(duplicates.data);
+      } catch {
+        // The duplicate notice only appears once email sync has run.
+      }
+      try {
+        const jobs = await api.get<{ data: Array<SyncJob & { provider: string; id: string }> }>("/v1/emails/sync");
+        if (!cancelled) {
+          const latestByProvider = new Map<string, SyncJob>();
+          for (const job of jobs.data) if (!latestByProvider.has(job.provider)) latestByProvider.set(job.provider, job);
+          const summaries: Record<string, SyncState> = {};
+          for (const [provider, job] of latestByProvider) {
+            if (job.status === "failed") {
+              summaries[provider] = { busy: false, error: job.errorMessage ?? "The last email sync failed." };
+              continue;
+            }
+            const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
+            if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
+            if (job.failed > 0) parts.push(`${job.failed} failed`);
+            summaries[provider] = job.status === "processing"
+              ? { busy: true }
+              : { busy: false, summary: `${parts.join(" · ")}` };
+          }
+          setSyncState(summaries);
+        }
+      } catch {
+        // Sync status stays empty until the first run.
+      }
     };
     void load();
     return () => {
@@ -247,9 +309,49 @@ export function SettingsPage() {
   const refreshProviders = async () => {
     try {
       const providerResponse = await api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations");
-      setProviders(Object.fromEntries(providerResponse.data.map((item) => [item.provider, { status: item.status, live: item.live }])));
+      const next = Object.fromEntries(providerResponse.data.map((item) => [item.provider, { status: item.status, live: item.live }]));
+      setProviders(next);
+      return next;
     } catch {
       // Keep last known statuses.
+      return null;
+    }
+  };
+
+  const syncEmailProvider = async (provider: string) => {
+    setConnectError(null);
+    setSyncState((prev) => ({ ...prev, [provider]: { busy: true } }));
+    try {
+      const started = await api.post<{ data: { jobId: string } }>("/v1/emails/sync", { provider });
+      let job: SyncJob | null = null;
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const response = await api.get<{ data: SyncJob }>(`/v1/emails/sync/${started.data.jobId}`);
+        job = response.data;
+        if (job.status !== "processing") break;
+      }
+      if (!job || job.status === "processing") throw new Error("The email sync is still running. Check back in a minute.");
+      if (job.status === "failed") throw new Error(job.errorMessage ?? "The email sync failed.");
+
+      const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
+      if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
+      if (job.failed > 0) parts.push(`${job.failed} failed`);
+      const summary = parts.join(" · ");
+
+      const duplicates = job.duplicates > 0
+        ? (await api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25")).data
+        : [];
+      setDuplicateEmails(duplicates);
+      setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary } }));
+      toast.success(
+        job.imported === 0 && job.duplicates === 0
+          ? "Nothing new to import from this inbox."
+          : `Imported ${job.imported} email item${job.imported === 1 ? "" : "s"} · ${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not sync this inbox.";
+      setSyncState((prev) => ({ ...prev, [provider]: { busy: false, error: message } }));
+      setConnectError(message);
     }
   };
 
@@ -277,7 +379,10 @@ export function SettingsPage() {
         }
       }
       if (popup && !popup.closed) popup.close();
-      await refreshProviders();
+      const latest = await refreshProviders();
+      if (EMAIL_PROVIDER_IDS.has(provider) && latest?.[provider]?.status === "connected") {
+        void syncEmailProvider(provider);
+      }
     } catch (error) {
       setConnectError(error instanceof Error ? error.message : `Could not connect ${provider}.`);
     } finally {
@@ -378,17 +483,41 @@ export function SettingsPage() {
             {connectError ? (
               <p role="alert" className="m-0 px-1 text-[12px] text-destructive">{connectError}</p>
             ) : null}
+            {duplicateEmails.length > 0 ? (
+              <div className="-mx-1 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <p className="m-0 text-[12px] font-medium leading-4 text-amber-900 dark:text-amber-100">
+                  {duplicateEmails.length} duplicate {duplicateEmails.length === 1 ? "email was" : "emails were"} already imported and were not added again.
+                </p>
+                <Button variant="secondary" size="small" onClick={() => setDuplicatesOpen(true)}>Review duplicates</Button>
+              </div>
+            ) : null}
             {PROVIDER_ROWS.map((row) => {
               const status = providers[row.id]?.status ?? "disconnected";
               const connected = status === "connected";
               const busy = connectingProvider === row.id;
+              const sync = syncState[row.id];
+              const isEmail = EMAIL_PROVIDER_IDS.has(row.id);
+              const description = !connected
+                ? row.description
+                : !isEmail
+                  ? "Connected"
+                  : sync?.busy
+                    ? "Syncing inbox for statements, receipts, and bank alerts…"
+                    : sync?.error ?? sync?.summary ?? "Connected — sync to import statements, receipts, and bank alerts";
               return (
                 <Row
                   key={row.id}
-                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><span><span className="block">{row.name}</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{connected ? "Connected" : row.description}</span></span></span>}
+                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><span><span className="block">{row.name}</span><span className={`mt-0.5 block text-[12px] font-medium leading-4 ${connected && sync?.error ? "text-destructive" : "text-muted-foreground"}`}>{description}</span></span></span>}
                 >
                   {connected ? (
-                    <Button variant="secondary" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
+                    <div className="flex w-full flex-wrap justify-end gap-2">
+                      {isEmail ? (
+                        <Button variant="secondary" size="small" disabled={sync?.busy} onClick={() => void syncEmailProvider(row.id)}>
+                          {sync?.busy ? "Syncing…" : <><CloudArrowDown /> Sync</>}
+                        </Button>
+                      ) : null}
+                      <Button variant="secondary" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
+                    </div>
                   ) : (
                     <Button variant="secondary" size="small" disabled={busy} onClick={() => void connectProvider(row.id)}>
                       {busy ? "Connecting…" : (<><LinkSimple /> Connect</>)}
@@ -423,6 +552,30 @@ export function SettingsPage() {
           </Section>
         </div>
       </div>
+      <Dialog open={duplicatesOpen} onOpenChange={setDuplicatesOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Duplicate emails skipped</DialogTitle>
+            <DialogDescription>
+              These statements, receipts, and bank alerts had already been imported, so Dobby did not add them again.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="m-0 max-h-[50vh] list-none space-y-2 overflow-y-auto p-0">
+            {duplicateEmails.map((row) => (
+              <li key={row.id} className="rounded-lg border border-line px-3 py-2">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="m-0 truncate text-[13px] font-medium text-foreground">{row.subject || "(no subject)"}</p>
+                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{KIND_LABELS[row.kind] ?? row.kind}</span>
+                </div>
+                <p className="m-0 mt-0.5 truncate text-[12px] text-muted-foreground">
+                  {row.fromAddress || "Unknown sender"}{row.receivedAt ? ` · ${new Date(row.receivedAt).toLocaleDateString()}` : ""}
+                </p>
+                {row.detail ? <p className="m-0 mt-1 text-[12px] text-muted-foreground">{row.detail}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
       <WalletConnectModal
         open={walletModalOpen}
         onOpenChange={setWalletModalOpen}
