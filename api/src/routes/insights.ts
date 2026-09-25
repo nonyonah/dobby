@@ -3,6 +3,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
+import { assertPro } from "../middleware/plan.js";
+import { buildNetWorthSnapshot } from "../lib/net-worth.js";
+import { computeProactiveFlags } from "../lib/flags.js";
 import { generateGatewaySummary } from "../providers/ai-gateway.js";
 import { convertCurrencyAmount } from "../providers/frankfurter.js";
 
@@ -122,4 +125,16 @@ insightsRouter.get("/summary", async (req, res) => {
       transactionCount: transactions.length,
     },
   });
+});
+
+/** Pro: stablecoin balances across connected wallets, from live chain data. */
+insightsRouter.get("/net-worth", async (req, res) => {
+  await assertPro(req.auth?.userId, "Net worth");
+  res.json({ data: await buildNetWorthSnapshot(req.auth!.userId) });
+});
+
+/** Pro: unusual spending and missed deduction candidates, computed from the ledger. */
+insightsRouter.get("/flags", async (req, res) => {
+  await assertPro(req.auth?.userId, "Proactive AI flags");
+  res.json({ data: await computeProactiveFlags(req.auth!.userId) });
 });

@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Button } from "./ui/button";
+import { toast } from "./ui/toast";
 import { CheckIcon } from "./icons";
 import { EmojiPickerField } from "./ui/emoji-picker";
 import { CATEGORIES, MONTH } from "@/lib/finance";
@@ -66,13 +67,12 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
   const [type, setType] = useState<"fixed" | "percent">(initial.type);
   const [value, setValue] = useState(String(initial.value));
   const [includeRecurring, setIncludeRecurring] = useState(true);
-  const [amountError, setAmountError] = useState("");
 
 
   const save = (categoryId = picked, budgetType = type, budgetValue = value) => {
     const parsed = Number.parseFloat(budgetValue.replace(/[^0-9.]/g, ""));
     if (!Number.isFinite(parsed) || parsed < 0) {
-      setAmountError("Enter an amount of $0 or more.");
+      toast.error("Enter an amount of $0 or more.");
       return;
     }
     onSave(categoryId, { type: budgetType, value: parsed, emoji: budgetEmoji });
@@ -87,7 +87,6 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
   };
 
   const openManual = () => {
-    setAmountError("");
     setStep("manual");
   };
 
@@ -126,19 +125,13 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
               </span>
               <Input
                 value={value}
-                onChange={(event) => {
-                  setValue(event.target.value);
-                  setAmountError("");
-                }}
+                onChange={(event) => setValue(event.target.value)}
                 inputMode="decimal"
-                aria-invalid={amountError ? "true" : undefined}
-                aria-describedby={amountError ? "budget-amount-error" : undefined}
                 aria-label={type === "fixed" ? "Amount in dollars" : "Percent of income"}
                 className="mono h-8 bg-card pr-2 pl-7 text-[13px] text-foreground"
               />
             </div>
           </Field>
-          {amountError ? <p id="budget-amount-error" className="mt-1 text-[12px] text-destructive">{amountError}</p> : null}
         </div>
       </div>
       <DialogFooter className="mt-4 sm:justify-between">
@@ -199,19 +192,13 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
             </span>
             <Input
               value={value}
-              onChange={(event) => {
-                setValue(event.target.value);
-                setAmountError("");
-              }}
+              onChange={(event) => setValue(event.target.value)}
               inputMode="decimal"
-              aria-invalid={amountError ? "true" : undefined}
-              aria-describedby={amountError ? "manual-budget-amount-error" : undefined}
               className="mono h-8 bg-card pr-2 pl-7 text-[13px] text-foreground"
             />
           </div>
         </Field>
       </div>
-      {amountError ? <p id="manual-budget-amount-error" className="-mt-2 text-[12px] text-destructive">{amountError}</p> : null}
       <DialogFooter className="sm:justify-between">
         <Button variant="ghost" onClick={() => setStep("suggestion")}>Back</Button>
         <Button variant="primary" type="submit">Create budget</Button>

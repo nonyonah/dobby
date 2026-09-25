@@ -21,8 +21,6 @@ const envSchema = z.object({
   COMPOSIO_API_KEY: z.string().min(1).optional(),
   COMPOSIO_AUTH_CONFIG_GMAIL: z.string().min(1).optional(),
   COMPOSIO_AUTH_CONFIG_OUTLOOK: z.string().min(1).optional(),
-  COMPOSIO_AUTH_CONFIG_QUICKBOOKS: z.string().min(1).optional(),
-  COMPOSIO_AUTH_CONFIG_XERO: z.string().min(1).optional(),
   COMPOSIO_CALLBACK_URL: z.string().url().optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),
   GROQ_API_KEY: z.string().min(1).optional(),

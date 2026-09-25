@@ -5,7 +5,7 @@ import { Shell } from "@/components/shell";
 
 const TITLES: Record<string, { title: string; active: "dashboard" | "transactions" | "insights" | "budget" | "goals" | "settings" | "notifications" }> = {
   "/": { title: "Dashboard", active: "dashboard" },
-  "/transactions": { title: "Transactions", active: "transactions" },
+  "/transactions": { title: "Ledger", active: "transactions" },
   "/insights": { title: "Insights", active: "insights" },
   "/budget": { title: "Budget", active: "budget" },
     "/budget/goals": { title: "Goals", active: "goals" },

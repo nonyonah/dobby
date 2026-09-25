@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { toast } from "./ui/toast";
 import { TxImportDialog } from "./tx-import-dialog";
 import { BudgetDialog } from "./budget-dialog";
 import type { BudgetDef } from "@/lib/budgets";
@@ -21,7 +22,6 @@ export function QuickCreateModals({ kind, onClose }: { kind: QuickCreateKind; on
   const [goalTarget, setGoalTarget] = useState("");
   const [goalMonthly, setGoalMonthly] = useState("");
   const [goalDate, setGoalDate] = useState("");
-  const [error, setError] = useState("");
 
   useEffect(() => {
     if (kind !== "budget" || !isSignedIn) return;
@@ -36,7 +36,6 @@ export function QuickCreateModals({ kind, onClose }: { kind: QuickCreateKind; on
       setGoalTarget("");
       setGoalMonthly("");
       setGoalDate("");
-      setError("");
     }
   }, [kind]);
 
@@ -67,24 +66,26 @@ export function QuickCreateModals({ kind, onClose }: { kind: QuickCreateKind; on
 
   const saveBudget = async (categoryKey: string, definition: BudgetDef) => {
     const categoryId = categoryIds[categoryKey.toLowerCase()];
-    if (!categoryId) { setError("Categories are still loading. Please try again."); return; }
+    if (!categoryId) { toast.error("Categories are still loading. Please try again."); return; }
     try {
       await api.post("/v1/budgets", { categoryId, type: definition.type === "percent" ? "PERCENTAGE" : "FIXED", value: definition.value, isExcluded: false });
-      onClose();
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not save the budget."); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Could not save the budget."); return; }
+    onClose();
+    toast.success("Budget created");
   };
 
   const saveGoal = async () => {
     const targetAmount = Number(goalTarget);
     const monthlyAmount = Number(goalMonthly || 0);
     if (!goalName.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0 || !Number.isFinite(monthlyAmount) || monthlyAmount < 0) {
-      setError("Add a name, target amount, and valid monthly saving amount.");
+      toast.error("Add a name, target amount, and valid monthly saving amount.");
       return;
     }
     try {
       await api.post("/v1/goals", { name: goalName.trim(), targetAmount, currency: "USD", deadline: goalDate || null });
-      onClose();
-    } catch (err) { setError(err instanceof Error ? err.message : "Could not save the goal."); }
+    } catch (err) { toast.error(err instanceof Error ? err.message : "Could not save the goal."); return; }
+    onClose();
+    toast.success("Goal created");
   };
 
   return <>
@@ -97,7 +98,6 @@ export function QuickCreateModals({ kind, onClose }: { kind: QuickCreateKind; on
           <Input value={goalName} onChange={(event) => setGoalName(event.target.value)} placeholder="e.g. Tax Reserve" aria-label="Goal name" />
           <div className="grid grid-cols-2 gap-3"><Input value={goalTarget} onChange={(event) => setGoalTarget(event.target.value)} inputMode="decimal" placeholder="Target amount" aria-label="Target amount" /><Input value={goalMonthly} onChange={(event) => setGoalMonthly(event.target.value)} inputMode="decimal" placeholder="Monthly saving" aria-label="Monthly saving" /></div>
           <Input type="date" value={goalDate} onChange={(event) => setGoalDate(event.target.value)} aria-label="Target date" />
-          {error ? <p className="m-0 text-xs text-destructive">{error}</p> : null}
         </div>
         <DialogFooter><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveGoal()}>Create goal</Button></DialogFooter>
       </DialogContent>

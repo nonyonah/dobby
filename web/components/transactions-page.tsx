@@ -234,9 +234,9 @@ function TransactionsInner() {
       const mapped = mapTransaction(response.data);
       setRows((prev) => prev.map((t) => (t.id === next.id ? mapped : t)));
       setReviewRows((prev) => prev.map((t) => (t.id === next.id ? mapped : t)));
+      toast.success("Transaction updated");
     } catch {
-      setRows((prev) => prev.map((t) => (t.id === next.id ? next : t)));
-      setReviewRows((prev) => prev.map((t) => (t.id === next.id ? next : t)));
+      toast.error("Could not save this transaction. Try again.");
     }
   };
 
@@ -262,12 +262,10 @@ function TransactionsInner() {
       setReviewRows((prev) => prev.filter((transaction) => !ids.includes(transaction.id)));
       setRows((await fetchAllTransactions(month)).map(mapTransaction));
     } catch {
-      const approved = reviewRows
-        .filter((transaction) => ids.includes(transaction.id))
-        .map((transaction) => ({ ...transaction, parse: { state: "parsed" as const, confidence: transaction.parse.confidence ?? 100 } }));
-      setRows((prev) => [...approved, ...prev]);
-      setReviewRows((prev) => prev.filter((transaction) => !ids.includes(transaction.id)));
+      toast.error(ids.length === 1 ? "Could not approve this transaction." : "Could not approve these transactions.");
+      return;
     }
+    toast.success(ids.length === 1 ? "Transaction approved" : `${ids.length} transactions approved`);
     setView("ledger");
   };
 
@@ -286,6 +284,7 @@ function TransactionsInner() {
     }
     setSelectedId((current) => (current && ids.includes(current) ? null : current));
     setDrawerOpen(false);
+    toast.success(ids.length === 1 ? "Transaction deleted" : `${ids.length} transactions deleted`);
   };
 
   const addRows = async (incoming: TxFull[], file?: File, importType: "CSV" | "OFX" | "QFX" | "RECEIPT" = "CSV") => {

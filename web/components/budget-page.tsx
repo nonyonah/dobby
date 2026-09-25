@@ -18,6 +18,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { PlusIcon } from "@/components/icons";
 
 import type { BudgetDef } from "@/lib/budgets";
+import { toast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 
 export default function BudgetPage() {
@@ -97,25 +98,44 @@ function BudgetInner() {
       } else if (categoryId) {
         const response = await api.post<{ data: { id: string } }>("/v1/budgets", payload);
         setBudgetIds((current) => ({ ...current, [catId]: response.data.id }));
+      } else {
+        toast.error("Categories are still loading. Please try again.");
+        return;
       }
     } catch {
+      toast.error("Could not save this budget. Try again.");
       return;
     }
     setBudgets((prev) => ({ ...prev, [catId]: { ...def, excluded: false } }));
+    toast.success("Budget saved");
   };
 
   const toggleExclude = async (catId: string) => {
     const current = budgets[catId] ?? { type: "fixed" as const, value: 0 };
     const excluded = !current.excluded;
-    try { if (budgetIds[catId]) await api.patch(`/v1/budgets/${budgetIds[catId]}`, { isExcluded: excluded }); else return; } catch { return; }
+    if (!budgetIds[catId]) return;
+    try {
+      await api.patch(`/v1/budgets/${budgetIds[catId]}`, { isExcluded: excluded });
+    } catch {
+      toast.error(excluded ? "Could not exclude this category." : "Could not include this category.");
+      return;
+    }
     setBudgets((prev) => ({ ...prev, [catId]: { ...current, excluded } }));
+    toast.success(excluded ? "Category excluded from this budget" : "Category included in this budget");
   };
 
   const remove = async (catId: string) => {
-    try { if (budgetIds[catId]) await api.delete(`/v1/budgets/${budgetIds[catId]}`); else return; } catch { return; }
+    if (!budgetIds[catId]) return;
+    try {
+      await api.delete(`/v1/budgets/${budgetIds[catId]}`);
+    } catch {
+      toast.error("Could not delete this budget. Try again.");
+      return;
+    }
     setBudgets((prev) => { const next = { ...prev }; delete next[catId]; return next; });
     setDrawerOpen(false);
     setSelectedId(null);
+    toast.success("Budget deleted");
   };
 
   return (

@@ -10,6 +10,7 @@ import { Meter } from "@/components/module-card";
 import { AlertIcon } from "@/components/icons";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { ExportMenu } from "@/components/export-menu";
+import { toast } from "@/components/ui/toast";
 
 import { formatUSD } from "@/lib/format";
 import type { TxFull } from "@/lib/transactions";
@@ -60,7 +61,6 @@ export default function InsightsPage() {
   const [jurisdiction, setJurisdiction] = useState("nigeria");
   const [yearSummary, setYearSummary] = useState<InsightsSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [summaryRetry, setSummaryRetry] = useState(0);
   const [taxEstimate, setTaxEstimate] = useState<{ estimatedTaxOwed: number; filingDeadline: string; quarterly?: { required: boolean; nextPayment: number; nextDueDate: string | null }; notes: string[] } | null>(null);
   const [taxChecklist, setTaxChecklist] = useState<Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> | null>(null);
@@ -92,7 +92,6 @@ export default function InsightsPage() {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
     setSummaryLoading(true);
-    setSummaryError(null);
     const from = new Date(selectedYear, 0, 1).toISOString();
     const to = new Date(selectedYear, 11, 31, 23, 59, 59, 999).toISOString();
     void api.get<{ data: InsightsSummary }>(`/v1/insights/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((response) => {
@@ -100,7 +99,10 @@ export default function InsightsPage() {
     }).catch((error: unknown) => {
       if (cancelled) return;
       setYearSummary(null);
-      setSummaryError(error instanceof Error ? error.message : "Could not load annual Insights data.");
+      const message = error instanceof Error ? error.message : "Could not load annual Insights data.";
+      toast.error(`Couldn’t load Insights data: ${message}`, {
+        action: { label: "Try again", onPress: () => setSummaryRetry((current) => current + 1) },
+      });
     }).finally(() => { if (!cancelled) setSummaryLoading(false); });
     return () => { cancelled = true; };
     // The API client is stable for the current Clerk session.
@@ -122,8 +124,14 @@ export default function InsightsPage() {
   };
   const toggleChecklist = async (key: string, status: "READY" | "OUTSTANDING") => {
     const next = status === "READY" ? "OUTSTANDING" : "READY";
-    try { await api.patch(`/v1/tax/checklist/${key}`, { status: next }); } catch { return; }
+    try {
+      await api.patch(`/v1/tax/checklist/${key}`, { status: next });
+    } catch {
+      toast.error("Could not update the filing checklist. Try again.");
+      return;
+    }
     setTaxChecklist((current) => current?.map((item) => item.key === key ? { ...item, status: next } : item) ?? current);
+    toast.success(next === "READY" ? "Checklist item marked ready" : "Checklist item marked outstanding");
   };
   const exportRows: TxFull[] = [];
   const exportFilename = section === "cashflow" ? "dobby-cashflow" : section === "income" ? "dobby-income" : "dobby-spending";
@@ -151,12 +159,6 @@ export default function InsightsPage() {
         </div>
 
         {summaryLoading && !yearSummary ? <div className="mb-4 rounded-lg border border-line bg-card px-4 py-3 text-[13px] text-muted-foreground" role="status">Loading this year’s transaction insights…</div> : null}
-        {summaryError ? (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13px]" role="alert">
-            <span>Couldn’t load Insights data: {summaryError}</span>
-            <button type="button" onClick={() => setSummaryRetry((current) => current + 1)} className="rounded-md px-3 py-1.5 font-medium text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring">Try again</button>
-          </div>
-        ) : null}
         {section === "cashflow" ? (
           <CashflowSection year={selectedYear} summary={yearSummary} />
         ) : section === "spending" ? (

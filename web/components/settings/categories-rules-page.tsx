@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Archive, ArrowLeft, Check, PencilSimple, Plus, Trash } from "@phosphor-icons/react/dist/ssr";
+import { Archive, ArrowLeft, PencilSimple, Plus, Trash } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmojiPickerField } from "@/components/ui/emoji-picker";
+import { toast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 
 const categoryOptions = ["Home", "Food & dining", "Transport", "Subscriptions", "Income", "Uncategorized"];
@@ -29,7 +30,6 @@ export function CategoriesRulesPage() {
   const [matcher, setMatcher] = useState("");
   const [ruleCategory, setRuleCategory] = useState("Home");
   const [taxable, setTaxable] = useState(false);
-  const [notice, setNotice] = useState("");
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -50,11 +50,6 @@ export function CategoriesRulesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
-  const showNotice = (message: string) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 2200);
-  };
-
   const addCategory = async () => {
     const value = newCategory.trim();
     if (!value || categories.includes(value)) return;
@@ -62,12 +57,13 @@ export function CategoriesRulesPage() {
       const response = await api.post<{ data: { id: string; name: string } }>("/v1/categories", { name: value, isTaxable: false });
       setCategories((current) => [...current, response.data.name]);
       setCategoryIds((current) => ({ ...current, [response.data.name]: response.data.id }));
-    } catch {
-      setCategories((current) => [...current, `${newCategoryEmoji} ${value}`]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create this category.");
+      return;
     }
     setNewCategory("");
     setNewCategoryEmoji("✨");
-    showNotice("Category created");
+    toast.success("Category created");
   };
 
   const addRule = async () => {
@@ -76,12 +72,13 @@ export function CategoriesRulesPage() {
     try {
       const response = await api.post<{ data: { id: string; matcher: string; category?: { name: string } | null; categoryId?: string | null; isTaxable: boolean } }>("/v1/rules", { matcher: value, categoryId: categoryIds[ruleCategory] ?? null, isTaxable: taxable });
       setRules((current) => [...current, { id: response.data.id, matcher: response.data.matcher, category: response.data.category?.name ?? ruleCategory, categoryId: response.data.categoryId, taxable: response.data.isTaxable }]);
-    } catch {
-      setRules((current) => [...current, { id: Date.now(), matcher: value, category: ruleCategory, taxable }]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create this rule.");
+      return;
     }
     setMatcher("");
     setTaxable(false);
-    showNotice("Rule created");
+    toast.success("Rule created");
   };
 
   const renameCategory = async (category: string) => {
@@ -90,20 +87,21 @@ export function CategoriesRulesPage() {
     const id = categoryIds[category];
     try {
       if (id) await api.patch(`/v1/categories/${id}`, { name: value });
-    } catch {
-      // Keep the local rename fallback.
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not rename this category.");
+      return;
     }
     setCategories((current) => current.map((item) => item === category ? value : item));
     setCategoryIds((current) => { const next = { ...current }; if (id) { delete next[category]; next[value] = id; } return next; });
     setRules((current) => current.map((rule) => rule.category === category ? { ...rule, category: value } : rule));
-    showNotice("Category renamed");
+    toast.success("Category renamed");
   };
 
   return (
     <div className="w-full px-6 pt-6 pb-12">
       <div className="mb-6">
         <Link href="/settings" className="mb-3 inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] hover:text-[#1c1d20] dark:text-[#a2a3a8] dark:hover:text-white"><ArrowLeft size={14} /> Settings</Link>
-        <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-[18px] font-semibold tracking-[-0.01em] text-[#1c1d20] dark:text-[#eceef0]">Categories &amp; rules</h1><p className="mt-1 text-[13px] text-[#6b6d72] dark:text-[#a2a3a8]">Control how imported transactions are organized and classified.</p></div>{notice ? <p role="status" className="flex items-center gap-1.5 text-[12px] text-[#35754e]"><Check size={14} /> {notice}</p> : null}</div>
+        <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-[18px] font-semibold tracking-[-0.01em] text-[#1c1d20] dark:text-[#eceef0]">Categories &amp; rules</h1><p className="mt-1 text-[13px] text-[#6b6d72] dark:text-[#a2a3a8]">Control how imported transactions are organized and classified.</p></div></div>
       </div>
 
       <div className="grid max-w-4xl gap-5">
@@ -116,7 +114,7 @@ export function CategoriesRulesPage() {
                 const customEmoji = category.startsWith("✨ ") ? category.match(/^(\S+)\s(.+)$/) : null;
                 const emoji = customEmoji?.[1] ?? categoryEmojis[category] ?? "✨";
                 const displayName = customEmoji?.[2] ?? category;
-                return <div key={category} className="flex items-center justify-between gap-3 py-2.5 first:pt-1"><span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary" aria-hidden="true">{emoji}</span><span className="truncate">{displayName}</span></span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Rename ${displayName}`} title={`Rename ${displayName}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${displayName}`} title={`Archive ${displayName}`} onClick={async () => { const id = categoryIds[category]; try { if (id) await api.delete(`/v1/categories/${id}`); } catch { /* local fallback */ } setCategories((current) => current.filter((item) => item !== category)); showNotice("Category archived"); }}><Archive /></Button></div></div>;
+                return <div key={category} className="flex items-center justify-between gap-3 py-2.5 first:pt-1"><span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary" aria-hidden="true">{emoji}</span><span className="truncate">{displayName}</span></span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Rename ${displayName}`} title={`Rename ${displayName}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${displayName}`} title={`Archive ${displayName}`} onClick={async () => { const id = categoryIds[category]; try { if (id) await api.delete(`/v1/categories/${id}`); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not archive this category."); return; } setCategories((current) => current.filter((item) => item !== category)); toast.success("Category archived"); }}><Archive /></Button></div></div>;
               })}
             </div>
           </CardContent>
@@ -132,8 +130,8 @@ export function CategoriesRulesPage() {
               <label className="flex items-center gap-2 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8] sm:col-span-2"><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} className="size-3.5 accent-[#4a55c9]" /> Mark matching transactions as taxable</label>
             </form>
 
-            <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-[12px]"><caption className="sr-only">Persistent categorization rules</caption><thead><tr className="border-b border-[#e0ddd7] text-[#6b6d72] dark:border-[#2d2d31] dark:text-[#a2a3a8]"><th scope="col" className="pb-2 font-medium">Contains</th><th scope="col" className="pb-2 font-medium">Category</th><th scope="col" className="pb-2 font-medium">Tax status</th><th scope="col" className="pb-2 text-right font-medium">Action</th></tr></thead><tbody>{rules.map((rule) => <tr key={rule.id} className="border-b border-[#e9e7e2] last:border-0 dark:border-[#2d2d31]"><td className="py-3 font-mono">{rule.matcher}</td><td className="py-3">{rule.category}</td><td className="py-3"><span className={`rounded-full px-2 py-1 text-[11px] ${rule.taxable ? "bg-[#eceefb] text-[#3a44a8]" : "bg-[#f1efeb] text-[#6b6d72] dark:bg-[#2d2d31] dark:text-[#a2a3a8]"}`}>{rule.taxable ? "Taxable" : "Non-tax"}</span></td><td className="py-3 text-right"><Button variant="ghost" size="icon-sm" aria-label={`Delete rule containing ${rule.matcher}`} title="Delete rule" onClick={async () => { try { if (typeof rule.id === "string") await api.delete(`/v1/rules/${rule.id}`); } catch { /* local fallback */ } setRules((current) => current.filter((item) => item.id !== rule.id)); showNotice("Rule deleted"); }}><Trash /></Button></td></tr>)}</tbody></table></div>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e9e7e2] pt-4 dark:border-[#2d2d31]"><p className="text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]">Re-apply rules to your existing transaction history after making changes.</p><Button variant="secondary" onClick={async () => { try { const response = await api.post<{ data: { updatedCount: number } }>("/v1/rules/reapply", {}); showNotice(`${response.data.updatedCount} transactions updated`); } catch { showNotice("Could not re-apply rules"); } }}>Re-apply past transactions</Button></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-left text-[12px]"><caption className="sr-only">Persistent categorization rules</caption><thead><tr className="border-b border-[#e0ddd7] text-[#6b6d72] dark:border-[#2d2d31] dark:text-[#a2a3a8]"><th scope="col" className="pb-2 font-medium">Contains</th><th scope="col" className="pb-2 font-medium">Category</th><th scope="col" className="pb-2 font-medium">Tax status</th><th scope="col" className="pb-2 text-right font-medium">Action</th></tr></thead><tbody>{rules.map((rule) => <tr key={rule.id} className="border-b border-[#e9e7e2] last:border-0 dark:border-[#2d2d31]"><td className="py-3 font-mono">{rule.matcher}</td><td className="py-3">{rule.category}</td><td className="py-3"><span className={`rounded-full px-2 py-1 text-[11px] ${rule.taxable ? "bg-[#eceefb] text-[#3a44a8]" : "bg-[#f1efeb] text-[#6b6d72] dark:bg-[#2d2d31] dark:text-[#a2a3a8]"}`}>{rule.taxable ? "Taxable" : "Non-tax"}</span></td><td className="py-3 text-right"><Button variant="ghost" size="icon-sm" aria-label={`Delete rule containing ${rule.matcher}`} title="Delete rule" onClick={async () => { try { if (typeof rule.id === "string") await api.delete(`/v1/rules/${rule.id}`); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not delete this rule."); return; } setRules((current) => current.filter((item) => item.id !== rule.id)); toast.success("Rule deleted"); }}><Trash /></Button></td></tr>)}</tbody></table></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e9e7e2] pt-4 dark:border-[#2d2d31]"><p className="text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]">Re-apply rules to your existing transaction history after making changes.</p><Button variant="secondary" onClick={async () => { try { const response = await api.post<{ data: { updatedCount: number } }>("/v1/rules/reapply", {}); toast.success(`${response.data.updatedCount} transactions updated`); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not re-apply rules."); } }}>Re-apply past transactions</Button></div>
           </CardContent>
         </Card>
       </div>

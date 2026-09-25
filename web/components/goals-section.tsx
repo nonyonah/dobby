@@ -18,6 +18,7 @@ import { formatUSD } from "@/lib/format";
 import type { Goal, GoalFundingSource, GoalStatus } from "@/lib/goals";
 import { CheckIcon, MoreIcon, PlusIcon, SettingsIcon } from "./icons";
 import { EmojiPickerField } from "./ui/emoji-picker";
+import { toast } from "./ui/toast";
 import { useApi } from "@/hooks/use-api";
 const sourceOptions: { value: GoalFundingSource; label: string; source: string }[] = [
   { value: "wallet", label: "Main wallet + Business account", source: "Main wallet + Business account" },
@@ -56,7 +57,6 @@ export function GoalsSection() {
   const [source, setSource] = useState<GoalFundingSource>("wallet");
   const [targetDate, setTargetDate] = useState("");
   const [timing, setTiming] = useState<"monthly" | "date">("monthly");
-  const [error, setError] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const api = useApi();
@@ -117,7 +117,6 @@ export function GoalsSection() {
     setSource("wallet");
     setTargetDate("");
     setTiming("monthly");
-    setError("");
     setCreateOpen(true);
   };
 
@@ -132,7 +131,6 @@ export function GoalsSection() {
     setSource(goal.fundingSource);
     setTargetDate(goal.targetDate ?? "");
     setTiming(goal.targetDate ? "date" : "monthly");
-    setError("");
     setCreateOpen(true);
   };
 
@@ -140,7 +138,7 @@ export function GoalsSection() {
     const targetAmount = Number(target);
     const monthlyAmount = Number(monthly || 0);
     if (!name.trim() || !Number.isFinite(targetAmount) || targetAmount <= 0 || !Number.isFinite(monthlyAmount) || monthlyAmount < 0) {
-      setError("Add a name, target amount, and a valid monthly saving amount.");
+      toast.error("Add a name, target amount, and a valid monthly saving amount.");
       return;
     }
     const sourceDetails = sourceOptions.find((option) => option.value === source)!;
@@ -157,10 +155,11 @@ export function GoalsSection() {
         setSelectedId(id);
       }
     } catch {
-      setError("Could not save this goal. Please try again.");
+      toast.error("Could not save this goal. Please try again.");
       return;
     }
     setCreateOpen(false);
+    toast.success(editingId ? "Goal updated" : "Goal created");
   };
 
   const acceptSuggestion = () => {
@@ -176,6 +175,7 @@ export function GoalsSection() {
   const recordSpend = (goal: Goal) => {
     const amount = Math.min(250, goal.tracked);
     setGoals((current) => current.map((item) => item.id === goal.id ? { ...item, tracked: item.tracked - amount, status: item.status === "ready" && item.reactivateOnSpend ? "active" : item.status } : item));
+    toast.success("$250 spending recorded");
   };
 
   const recordContribution = async (goal: Goal) => {
@@ -184,18 +184,37 @@ export function GoalsSection() {
       const response = await api.post<{ data: { goal: { currentAmount?: number | string; contributions: Array<{ id: string; contributedAt: string; amount: number | string; note?: string | null }> } } }>(`/v1/goals/${goal.id}/contributions`, { amount, note: "Manual goal contribution" });
       const updated = response.data.goal;
       setGoals((current) => current.map((item) => item.id === goal.id ? { ...item, tracked: Number(updated.currentAmount ?? item.tracked + amount), status: Number(updated.currentAmount ?? 0) >= item.target ? "ready" : item.status, contributions: updated.contributions.map((contribution) => ({ id: contribution.id, date: contribution.contributedAt.slice(0, 10), name: contribution.note ?? "Goal contribution", amount: Number(contribution.amount) })) } : item));
+      toast.success("$250 contribution recorded");
     } catch {
-      setGoals((current) => current.map((item) => item.id === goal.id ? { ...item, tracked: item.tracked + amount, contributions: [{ id: `contribution-${Date.now()}`, date: new Date().toISOString().slice(0, 10), name: "Manual goal contribution", amount }, ...item.contributions] } : item));
+      toast.error("Could not save this contribution. Try again.");
     }
   };
 
   const updateGoal = async (id: string, changes: Partial<Goal>) => {
     if (changes.status === "archived" || changes.status === "active") {
-      try { await api.post(`/v1/goals/${id}/${changes.status === "archived" ? "archive" : "reactivate"}`, {}); } catch { /* local fallback */ }
+      try {
+        await api.post(`/v1/goals/${id}/${changes.status === "archived" ? "archive" : "reactivate"}`, {});
+      } catch {
+        toast.error("Could not update this goal. Try again.");
+        return;
+      }
+      toast.success(changes.status === "archived" ? "Goal archived" : "Goal reactivated");
     }
     setGoals((current) => current.map((goal) => goal.id === id ? { ...goal, ...changes } : goal));
   };
-  const deleteGoal = async (id: string) => { try { await api.delete(`/v1/goals/${id}`); } catch { /* local fallback */ } setGoals((current) => current.filter((goal) => goal.id !== id)); setSelectedId(null); setDeleteConfirmId(null); };
+
+  const deleteGoal = async (id: string) => {
+    try {
+      await api.delete(`/v1/goals/${id}`);
+    } catch {
+      toast.error("Could not delete this goal. Try again.");
+      return;
+    }
+    setGoals((current) => current.filter((goal) => goal.id !== id));
+    setSelectedId(null);
+    setDeleteConfirmId(null);
+    toast.success("Goal deleted");
+  };
 
   const listRow = (goal: Goal) => {
     const goalProgress = Math.min(100, (goal.tracked / goal.target) * 100);
@@ -268,12 +287,11 @@ export function GoalsSection() {
           <DialogFooter className="sm:justify-between"><Button variant="ghost" onClick={() => setStep("manual")}>Adjust manually</Button><Button variant="primary" onClick={saveGoal}>Create goal</Button></DialogFooter>
         </> : <>
           <DialogHeader><DialogTitle>{editingId ? "Edit goal" : "Create a goal manually"}</DialogTitle><DialogDescription>Use a dedicated balance for passive tracking, then choose a monthly cadence or target date.</DialogDescription></DialogHeader>
-          <div className="space-y-3"><div className="space-y-1.5"><label htmlFor="goal-name" className="text-[12px] font-medium text-muted-foreground">Goal name</label><div className="flex items-center gap-2"><EmojiPickerField value={emoji} onChange={setEmoji} label="Choose a goal emoji" /><Input id="goal-name" value={name} onChange={(event) => { setName(event.target.value); setError(""); }} placeholder="e.g. Tax Reserve" /></div></div>
-            <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><label htmlFor="goal-target" className="text-[12px] font-medium text-muted-foreground">Target amount</label><Input id="goal-target" value={target} onChange={(event) => { setTarget(event.target.value); setError(""); }} inputMode="decimal" className="mono" placeholder="10,000" /></div><div className="space-y-1.5"><label htmlFor="goal-monthly" className="text-[12px] font-medium text-muted-foreground">Monthly saving</label><Input id="goal-monthly" value={monthly} onChange={(event) => { setMonthly(event.target.value); setError(""); }} inputMode="decimal" className="mono" placeholder="800" /></div></div>
+          <div className="space-y-3"><div className="space-y-1.5"><label htmlFor="goal-name" className="text-[12px] font-medium text-muted-foreground">Goal name</label><div className="flex items-center gap-2"><EmojiPickerField value={emoji} onChange={setEmoji} label="Choose a goal emoji" /><Input id="goal-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Tax Reserve" /></div></div>
+            <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><label htmlFor="goal-target" className="text-[12px] font-medium text-muted-foreground">Target amount</label><Input id="goal-target" value={target} onChange={(event) => setTarget(event.target.value)} inputMode="decimal" className="mono" placeholder="10,000" /></div><div className="space-y-1.5"><label htmlFor="goal-monthly" className="text-[12px] font-medium text-muted-foreground">Monthly saving</label><Input id="goal-monthly" value={monthly} onChange={(event) => setMonthly(event.target.value)} inputMode="decimal" className="mono" placeholder="800" /></div></div>
             <div className="space-y-1.5"><label htmlFor="goal-source" className="text-[12px] font-medium text-muted-foreground">Funding source</label><Select value={source} onValueChange={(value) => setSource((value ?? "wallet") as GoalFundingSource)}><SelectTrigger id="goal-source" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{sourceOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
             <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setTiming("monthly")} aria-pressed={timing === "monthly"} className={`rounded-lg border p-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${timing === "monthly" ? "border-primary bg-primary/5" : "border-border hover:bg-secondary"}`}><span className="block text-[12px] font-medium">Monthly savings</span><span className="mt-0.5 block text-[11px] text-muted-foreground">Track a steady contribution.</span></button><button type="button" onClick={() => setTiming("date")} aria-pressed={timing === "date"} className={`rounded-lg border p-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${timing === "date" ? "border-primary bg-primary/5" : "border-border hover:bg-secondary"}`}><span className="block text-[12px] font-medium">Target date</span><span className="mt-0.5 block text-[11px] text-muted-foreground">Save toward a deadline.</span></button></div>
             {timing === "date" ? <div className="space-y-1.5"><label htmlFor="goal-date" className="text-[12px] font-medium text-muted-foreground">Target date</label><Input id="goal-date" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></div> : null}
-            {error ? <p className="m-0 text-[12px] text-destructive">{error}</p> : null}
           </div>
           <DialogFooter className="sm:justify-between"><Button variant="ghost" onClick={() => editingId ? setCreateOpen(false) : setStep("suggestion")}>{editingId ? "Cancel" : "Back"}</Button><Button variant="primary" onClick={saveGoal}><CheckIcon /> {editingId ? "Save goal" : "Create goal"}</Button></DialogFooter>
         </>}

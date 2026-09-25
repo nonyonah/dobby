@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Button } from "../ui/button";
+import { toast } from "../ui/toast";
 import { useApi } from "@/hooks/use-api";
 
 export interface ConnectedWallet {
@@ -66,30 +67,27 @@ export function WalletConnectModal({
   const [address, setAddress] = useState("");
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const reset = () => {
     setAddress("");
     setName("");
     setColor(COLORS[0]);
-    setError(null);
     setSaving(false);
   };
 
   const connect = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("Give the wallet a name.");
+      toast.error("Give the wallet a name.");
       return;
     }
     const invalid = addressError(chain, address);
     if (invalid) {
-      setError(invalid);
+      toast.error(invalid);
       return;
     }
     setSaving(true);
-    setError(null);
     try {
       const created = await api.post<{ data: ConnectedWallet }>("/v1/wallets", {
         chain,
@@ -107,8 +105,9 @@ export function WalletConnectModal({
       onConnected(created.data, summary);
       reset();
       onOpenChange(false);
+      toast.success(`${trimmedName} connected`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not connect this wallet.");
+      toast.error(err instanceof Error ? err.message : "Could not connect this wallet.");
     } finally {
       setSaving(false);
     }
@@ -188,11 +187,6 @@ export function WalletConnectModal({
               ))}
             </div>
           </div>
-          {error ? (
-            <p role="alert" className="m-0 text-[12px] text-destructive">
-              {error}
-            </p>
-          ) : null}
         </div>
         <DialogFooter className="sm:justify-between">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

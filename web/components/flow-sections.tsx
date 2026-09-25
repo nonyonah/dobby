@@ -10,6 +10,7 @@ import type { TxFull } from "@/lib/transactions";
 import { BreakdownPie } from "./breakdown-pie";
 import { FlowNarrative } from "./flow-narrative";
 import { FlowTable } from "./flow-table";
+import { toast } from "./ui/toast";
 
 const MONTHS = [
   { value: 0, label: "January" },
@@ -35,7 +36,6 @@ function useLiveMonth(month: number, year: number, income: boolean) {
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
   const [rows, setRows] = useState<TxFull[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -43,7 +43,6 @@ function useLiveMonth(month: number, year: number, income: boolean) {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
     setLoading(true);
-    setError(null);
     const from = new Date(year, month, 1).toISOString();
     const to = new Date(year, month + 1, 0, 23, 59, 59, 999).toISOString();
     const query = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&type=${income ? "INCOME" : "EXPENSE"}&pageSize=100`;
@@ -78,31 +77,25 @@ function useLiveMonth(month: number, year: number, income: boolean) {
     }).catch((reason: unknown) => {
       if (cancelled) return;
       setRows([]);
-      setError(reason instanceof Error ? reason.message : "Could not load this month's transactions.");
+      const message = reason instanceof Error ? reason.message : "Could not load this month's transactions.";
+      toast.error(`Couldn’t load ${income ? "income" : "spending"} transactions: ${message}`, {
+        action: { label: "Try again", onPress: () => setRetryCount((count) => count + 1) },
+      });
     }).finally(() => { if (!cancelled) setLoading(false); });
 
     // The API client is stable for the current Clerk session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn, month, year, income, retryCount]);
 
-  return { rows, error, loading, retry: () => setRetryCount((count) => count + 1) };
+  return { rows, loading };
 }
 
 function monthKey(year: number, month: number) {
   return `${year}-${String(month + 1).padStart(2, "0")}`;
 }
 
-function requestError(message: string, retry: () => void) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13px]" role="alert">
-      <span>{message}</span>
-      <button type="button" onClick={retry} className="rounded-md px-3 py-1.5 font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring">Try again</button>
-    </div>
-  );
-}
-
 export function SpendingSection({ month, year, yearSummary, onMonthChange }: { month: number; year: number; yearSummary: InsightsSummary | null; onMonthChange: (month: number) => void }) {
-  const { rows, error, loading, retry } = useLiveMonth(month, year, false);
+  const { rows, loading } = useLiveMonth(month, year, false);
   const selectedMonth = monthKey(year, month);
   const items = (yearSummary?.monthlySpendingByCategory ?? [])
     .filter((item) => item.month === selectedMonth && item.amount > 0)
@@ -112,7 +105,6 @@ export function SpendingSection({ month, year, yearSummary, onMonthChange }: { m
 
   return (
     <div className="flex flex-col gap-4">
-      {error ? requestError(`Couldn’t load spending transactions: ${error}`, retry) : null}
       <BreakdownPie title="Spending by category" items={items} month={month} year={year} months={MONTHS} onMonthChange={onMonthChange} />
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -129,7 +121,7 @@ export function SpendingSection({ month, year, yearSummary, onMonthChange }: { m
 }
 
 export function IncomeSection({ month, year, yearSummary, onMonthChange }: { month: number; year: number; yearSummary: InsightsSummary | null; onMonthChange: (month: number) => void }) {
-  const { rows, error, loading, retry } = useLiveMonth(month, year, true);
+  const { rows, loading } = useLiveMonth(month, year, true);
   const selectedMonth = monthKey(year, month);
   const items = (yearSummary?.monthlyIncomeBySource ?? [])
     .filter((item) => item.month === selectedMonth && item.amount > 0)
@@ -139,7 +131,6 @@ export function IncomeSection({ month, year, yearSummary, onMonthChange }: { mon
 
   return (
     <div className="flex flex-col gap-4">
-      {error ? requestError(`Couldn’t load income transactions: ${error}`, retry) : null}
       <BreakdownPie title="Income by source" items={items} month={month} year={year} months={MONTHS} onMonthChange={onMonthChange} />
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">

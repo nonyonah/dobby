@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { ArrowRight, Briefcase, Check, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, Briefcase, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, type AccentColor } from "@/lib/theme";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
+import { FEATURES } from "@/lib/features";
 import { WalletConnectModal } from "./wallet-connect-modal";
 
 import {
@@ -81,11 +82,13 @@ function summarizeTransfers(transfers?: Array<{ asset?: string | null; value?: n
 const PROVIDER_ROWS = [
   { id: "gmail", name: "Gmail", domain: "gmail.com", description: "Import and track transactions from email." },
   { id: "outlook", name: "Outlook", domain: "outlook.com", description: "Import and track transactions from email." },
-  { id: "quickbooks", name: "QuickBooks", domain: "quickbooks.intuit.com", description: "Export transactions and reports to QuickBooks." },
-  { id: "xero", name: "Xero", domain: "xero.com", description: "Export transactions and reports to Xero." },
 ];
 
 const EMAIL_PROVIDER_IDS = new Set(["gmail", "outlook"]);
+
+function providerLabel(provider: string): string {
+  return PROVIDER_ROWS.find((row) => row.id === provider)?.name ?? provider;
+}
 
 type EmailImportRow = {
   id: string;
@@ -110,7 +113,7 @@ type SyncJob = {
   errorMessage?: string | null;
 };
 
-type SyncState = { busy: boolean; summary?: string; error?: string };
+type SyncState = { busy: boolean; summary?: string };
 
 const KIND_LABELS: Record<string, string> = { statement: "Statement", receipt: "Receipt", alert: "Bank alert" };
 
@@ -201,7 +204,6 @@ export function SettingsPage() {
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [providers, setProviders] = useState<Record<string, { status: string; live: boolean }>>({});
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
-  const [connectError, setConnectError] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<Record<string, SyncState>>({});
   const [duplicateEmails, setDuplicateEmails] = useState<EmailImportRow[]>([]);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
@@ -210,7 +212,6 @@ export function SettingsPage() {
   const [currency, setCurrency] = useState("ngn");
   const [theme, setTheme] = useState("system");
   const [jurisdiction, setJurisdiction] = useState("nigeria");
-  const [saved, setSaved] = useState(false);
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
 
@@ -283,7 +284,8 @@ export function SettingsPage() {
           const summaries: Record<string, SyncState> = {};
           for (const [provider, job] of latestByProvider) {
             if (job.status === "failed") {
-              summaries[provider] = { busy: false, error: job.errorMessage ?? "The last email sync failed." };
+              toast.error(job.errorMessage ?? "The last email sync failed.");
+              summaries[provider] = { busy: false, summary: "Last sync failed" };
               continue;
             }
             const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
@@ -319,7 +321,6 @@ export function SettingsPage() {
   };
 
   const syncEmailProvider = async (provider: string) => {
-    setConnectError(null);
     setSyncState((prev) => ({ ...prev, [provider]: { busy: true } }));
     try {
       const started = await api.post<{ data: { jobId: string } }>("/v1/emails/sync", { provider });
@@ -350,13 +351,12 @@ export function SettingsPage() {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not sync this inbox.";
-      setSyncState((prev) => ({ ...prev, [provider]: { busy: false, error: message } }));
-      setConnectError(message);
+      setSyncState((prev) => ({ ...prev, [provider]: { busy: false } }));
+      toast.error(message);
     }
   };
 
   const connectProvider = async (provider: string) => {
-    setConnectError(null);
     setConnectingProvider(provider);
     // Open synchronously inside the click handler so popup blockers allow it.
     const popup = window.open("about:blank", "dobby-connect", "width=520,height=680");
@@ -382,9 +382,11 @@ export function SettingsPage() {
       const latest = await refreshProviders();
       if (EMAIL_PROVIDER_IDS.has(provider) && latest?.[provider]?.status === "connected") {
         void syncEmailProvider(provider);
+      } else {
+        toast.success(`${providerLabel(provider)} connected`);
       }
     } catch (error) {
-      setConnectError(error instanceof Error ? error.message : `Could not connect ${provider}.`);
+      toast.error(error instanceof Error ? error.message : `Could not connect ${providerLabel(provider)}.`);
     } finally {
       setConnectingProvider(null);
     }
@@ -394,8 +396,9 @@ export function SettingsPage() {
     try {
       await api.delete(`/v1/integrations/${provider}`);
       await refreshProviders();
+      toast.success(`${providerLabel(provider)} disconnected`);
     } catch {
-      setConnectError(`Could not disconnect ${provider}.`);
+      toast.error(`Could not disconnect ${providerLabel(provider)}.`);
     }
   };
 
@@ -403,8 +406,9 @@ export function SettingsPage() {
     try {
       await api.delete(`/v1/wallets/${id}`);
       setWallets((prev) => prev.filter((wallet) => wallet.id !== id));
+      toast.success("Wallet disconnected");
     } catch {
-      setConnectError("Could not disconnect this wallet.");
+      toast.error("Could not disconnect this wallet.");
     }
   };
 
@@ -424,10 +428,9 @@ export function SettingsPage() {
       });
       window.localStorage.setItem("dobby-currency", currency.toUpperCase());
       window.dispatchEvent(new CustomEvent("dobby-currency-change", { detail: currency.toUpperCase() }));
-      setSaved(true);
-      window.setTimeout(() => setSaved(false), 2200);
+      toast.success("Settings saved");
     } catch {
-      setSaved(false);
+      toast.error("Could not save your settings. Try again.");
     }
   };
 
@@ -440,8 +443,7 @@ export function SettingsPage() {
             <p className="mt-1 text-[13px] text-ink-500">Manage your account, connections, and finance preferences.</p>
           </div>
           <Button variant="primary" size="small" onClick={saveChanges}>
-            {saved ? <Check /> : null}
-            {saved ? "Saved" : "Save changes"}
+            Save changes
           </Button>
         </header>
 
@@ -480,9 +482,6 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Integrations">
-            {connectError ? (
-              <p role="alert" className="m-0 px-1 text-[12px] text-destructive">{connectError}</p>
-            ) : null}
             {duplicateEmails.length > 0 ? (
               <div className="-mx-1 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
                 <p className="m-0 text-[12px] font-medium leading-4 text-amber-900 dark:text-amber-100">
@@ -503,11 +502,11 @@ export function SettingsPage() {
                   ? "Connected"
                   : sync?.busy
                     ? "Syncing inbox for statements, receipts, and bank alerts…"
-                    : sync?.error ?? sync?.summary ?? "Connected — sync to import statements, receipts, and bank alerts";
+                    : sync?.summary ?? "Connected — sync to import statements, receipts, and bank alerts";
               return (
                 <Row
                   key={row.id}
-                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><span><span className="block">{row.name}</span><span className={`mt-0.5 block text-[12px] font-medium leading-4 ${connected && sync?.error ? "text-destructive" : "text-muted-foreground"}`}>{description}</span></span></span>}
+                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><span><span className="block">{row.name}</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{description}</span></span></span>}
                 >
                   {connected ? (
                     <div className="flex w-full flex-wrap justify-end gap-2">
@@ -531,7 +530,7 @@ export function SettingsPage() {
 
           <Section label="Notifications">
             <Toggle label="Filing deadline reminders" description="Reminder 30 days before configured filing deadlines." initial={false} />
-            <Toggle label="Budget alerts" description="Alert when a category is approaching its limit." />
+            {FEATURES.budgeting ? <Toggle label="Budget alerts" description="Alert when a category is approaching its limit." /> : null}
             <Toggle label="Import completed" description="Get notified when a statement has finished processing." />
           </Section>
 
@@ -547,7 +546,7 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Data & subscription">
-            <Row label="Export transactions" description="Download a CSV of your categorized transactions."><Button variant="secondary" size="small" onClick={() => window.alert("CSV export is ready to connect to the backend.")}><CloudArrowDown /> Export CSV</Button></Row>
+            <Row label="Export transactions" description="Download a CSV of your categorized transactions."><Button variant="secondary" size="small" onClick={() => toast.info("CSV export is ready to connect to the backend.")}><CloudArrowDown /> Export CSV</Button></Row>
             <Row label="Dobby plan" description="Plan management will be available here."><Button variant="secondary" size="small" disabled>Manage subscription</Button></Row>
           </Section>
         </div>

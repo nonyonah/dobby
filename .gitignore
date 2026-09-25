@@ -1,7 +1,15 @@
+# macOS
 .DS_Store
-*.local
-web/node_modules/
-web/.next/
-web/out/
-web/*.tsbuildinfo
-web/next-env.d.ts
+
+# editors / tooling
+.idea/
+.vscode/
+*.swp
+
+# env — never commit secrets
+.env
+.env.*
+!.env.example
+
+# build output
+*.tsbuildinfo

@@ -6,6 +6,7 @@ import { getBlockscoutAddressSummary } from "../lib/blockscout.js";
 import { getBaseWalletTransfers } from "../providers/alchemy.js";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/auth.js";
+import { assertPro } from "../middleware/plan.js";
 
 export const walletsRouter = Router();
 walletsRouter.use(requireAuth);
@@ -37,6 +38,7 @@ walletsRouter.get("/", async (req, res) => {
 });
 
 walletsRouter.post("/", async (req, res) => {
+  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
   const input = walletSchema.parse(req.body);
   const address = input.chain === Chain.BASE ? input.address.toLowerCase() : input.address;
   const validationError = validateAddress(input.chain, address);
@@ -113,6 +115,7 @@ walletsRouter.delete("/:id", async (req, res) => {
 });
 
 walletsRouter.get("/:id/summary", async (req, res) => {
+  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
   const wallet = await prisma.walletAccount.findFirst({ where: { id: req.params.id, ownerClerkId: req.auth!.userId } });
   if (!wallet) {
     res.status(404).json({ error: { code: "WALLET_NOT_FOUND", message: "Wallet was not found." } });

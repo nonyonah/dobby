@@ -1,3 +1,4 @@
+import { Plan } from "@prisma/client";
 import { Resend } from "resend";
 import { env } from "../config/env.js";
 import { prisma } from "../lib/prisma.js";
@@ -7,7 +8,11 @@ import { generateGatewaySummary } from "../providers/ai-gateway.js";
 export async function runMonthlyTaxReminder(now = new Date()) {
   if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return { sent: 0, skipped: "RESEND_NOT_CONFIGURED" as const };
   const resend = new Resend(env.RESEND_API_KEY);
-  const profiles = await prisma.taxProfile.findMany({ include: { owner: true, checklistItems: true } });
+  // Monthly email reminders are a Pro benefit: Free accounts are skipped.
+  const profiles = await prisma.taxProfile.findMany({
+    where: { owner: { plan: Plan.PRO } },
+    include: { owner: true, checklistItems: true },
+  });
   let sent = 0;
   for (const profile of profiles) {
     if (!profile.owner.email) continue;

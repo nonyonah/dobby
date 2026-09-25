@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { clearAuthConfigCache, composioClient, lookupAuthConfigId, resolveAuthConfigId } from "../lib/composio.js";
 import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/auth.js";
+import { assertPro } from "../middleware/plan.js";
 import { logger } from "../lib/logger.js";
 
 export const integrationsRouter = Router();
@@ -12,13 +13,11 @@ integrationsRouter.use(requireAuth);
 export const PROVIDERS = {
   gmail: { toolkit: "gmail", authConfigEnv: "COMPOSIO_AUTH_CONFIG_GMAIL" as const },
   outlook: { toolkit: "outlook", authConfigEnv: "COMPOSIO_AUTH_CONFIG_OUTLOOK" as const },
-  quickbooks: { toolkit: "quickbooks", authConfigEnv: "COMPOSIO_AUTH_CONFIG_QUICKBOOKS" as const },
-  xero: { toolkit: "xero", authConfigEnv: "COMPOSIO_AUTH_CONFIG_XERO" as const },
 } as const;
 
 export type IntegrationProvider = keyof typeof PROVIDERS;
 
-const providerSchema = z.object({ provider: z.enum(["gmail", "outlook", "quickbooks", "xero"]) });
+const providerSchema = z.object({ provider: z.enum(["gmail", "outlook"]) });
 
 type ListedAccount = { id?: unknown; status?: unknown; toolkit?: unknown };
 
@@ -97,6 +96,7 @@ integrationsRouter.get("/", async (req, res) => {
 });
 
 integrationsRouter.post("/:provider/connect", async (req, res) => {
+  await assertPro(req.auth?.userId, "Composio email auto-fetch");
   const { provider } = providerSchema.parse(req.params);
   const { toolkit, authConfigEnv } = PROVIDERS[provider];
   const override = env[authConfigEnv];
@@ -165,6 +165,7 @@ integrationsRouter.post("/:provider/connect", async (req, res) => {
 });
 
 integrationsRouter.post("/:provider/refresh", async (req, res) => {
+  await assertPro(req.auth?.userId, "Composio email auto-fetch");
   const { provider } = providerSchema.parse(req.params);
   res.json({ data: await refreshProviderStatus(req.auth!.userId, provider) });
 });

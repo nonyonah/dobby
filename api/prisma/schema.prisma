@@ -65,12 +65,18 @@ enum TaxChecklistStatus {
   OUTSTANDING
 }
 
+enum Plan {
+  FREE
+  PRO
+}
+
 model User {
   clerkId              String                   @id
   email                String?
   firstName            String?
   lastName             String?
-  imageUrl              String?
+  imageUrl             String?
+  plan                 Plan                     @default(FREE)
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
   profile              Profile?

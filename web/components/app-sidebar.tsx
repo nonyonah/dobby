@@ -31,9 +31,7 @@ import { SignOut } from "@phosphor-icons/react/dist/ssr";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import {
   AccountsIcon,
-  BellIcon,
   BookmarkIcon,
-  BudgetIcon,
   DashboardIconFull,
   GoalsIcon,
   PlusIcon,
@@ -43,6 +41,7 @@ import {
   UploadIcon,
   WalletIcon,
 } from "./icons";
+import { FEATURES } from "@/lib/features";
 
 interface NavItem {
   id: string;
@@ -54,11 +53,9 @@ interface NavItem {
 
 const MAIN_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/", icon: DashboardIconFull },
-  { id: "transactions", label: "Transactions", href: "/transactions", icon: TransactionsIcon },
+  { id: "transactions", label: "Ledger", href: "/transactions", icon: TransactionsIcon },
   { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon },
-  { id: "budget", label: "Budget", href: "/budget", icon: BudgetIcon },
-  { id: "goals", label: "Goals", href: "/budget/goals", icon: GoalsIcon },
-  { id: "notifications", label: "Notifications", href: "/notifications", icon: (props) => <BellIcon {...props} filled /> },
+  { id: "settings", label: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 
 const SIDEBAR_RESOURCES: SidebarResource[] = [
@@ -78,7 +75,7 @@ const SIDEBAR_RESOURCES: SidebarResource[] = [
     children: [
       { id: "category-rules", label: "Category rules", kind: "bookmark" },
       { id: "recent-insights", label: "Recent insights", kind: "bookmark" },
-      { id: "monthly-budget", label: "Monthly budget", kind: "bookmark" },
+      ...(FEATURES.budgeting ? [{ id: "monthly-budget", label: "Monthly budget", kind: "bookmark" } as SidebarResource] : []),
     ],
   },
 ];
@@ -125,14 +122,18 @@ function QuickCreate({ onCreate }: { onCreate: (kind: "import" | "budget" | "goa
           <UploadIcon />
           <span>Import transaction</span>
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onCreate("budget")}>
-          <WalletIcon />
-          <span>Create a budget</span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onCreate("goal")}>
-          <GoalsIcon />
-          <span>Create a goal</span>
-        </DropdownMenuItem>
+        {FEATURES.budgeting ? (
+          <DropdownMenuItem onClick={() => onCreate("budget")}>
+            <WalletIcon />
+            <span>Create a budget</span>
+          </DropdownMenuItem>
+        ) : null}
+        {FEATURES.goals ? (
+          <DropdownMenuItem onClick={() => onCreate("goal")}>
+            <GoalsIcon />
+            <span>Create a goal</span>
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -203,17 +204,6 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
 
       <SidebarFooter className="px-3 pb-3">
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              render={<Link href="/settings" />}
-              isActive={active === "settings"}
-              aria-current={active === "settings" ? "page" : undefined}
-              className="h-[28px] rounded-md px-2 text-[13px] font-medium"
-            >
-              <SettingsIcon />
-              <span className="flex-1">Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <button
               type="button"

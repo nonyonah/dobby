@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
+import { assertPro } from "../middleware/plan.js";
 import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
 import { refreshProviderStatus } from "./integrations.js";
@@ -30,6 +31,7 @@ const listSchema = z.object({
  * `GET /v1/emails/sync/:jobId` for progress and duplicate counts.
  */
 emailsRouter.post("/sync", async (req, res) => {
+  await assertPro(req.auth?.userId, "Composio email auto-fetch");
   const input = syncSchema.parse(req.body);
   const ownerClerkId = req.auth!.userId;
 
