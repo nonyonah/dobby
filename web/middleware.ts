@@ -1,13 +1,8 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 
-const isProtectedRoute = createRouteMatcher(["/(.*)"]);
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
-
-export default clerkMiddleware(async (auth, request) => {
-  if (isProtectedRoute(request) && !isPublicRoute(request)) {
-    await auth.protect();
-  }
-});
+// Auth checks live at each resource (layouts/pages) instead of path matching in
+// middleware — see app/(app)/layout.tsx and each page.tsx.
+export default clerkMiddleware();
 
 export const config = {
   matcher: [

@@ -87,6 +87,8 @@ model User {
   goalContributions    GoalContribution[]
   integrationConnections IntegrationConnection[]
   auditEvents          AuditEvent[]
+  emailSyncJobs        EmailSyncJob[]
+  emailImports         EmailImport[]
 }
 
 model Profile {
@@ -338,6 +340,53 @@ model IntegrationConnection {
   owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@unique([ownerClerkId, provider])
+}
+
+/// One run of the email importer (Gmail/Outlook). Counts drive the UI summary.
+model EmailSyncJob {
+  id            String   @id @default(cuid())
+  ownerClerkId  String
+  provider      String
+  status        String   @default("processing") // processing | completed | failed
+  scanned       Int      @default(0)
+  imported      Int      @default(0)
+  /// Emails skipped because the same message or the same file was already imported.
+  duplicates    Int      @default(0)
+  /// Ledger rows flagged as duplicates of transactions that already exist.
+  duplicateRows Int      @default(0)
+  /// Emails that were not finance related or had no usable artifact.
+  skipped       Int      @default(0)
+  failed        Int      @default(0)
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  owner         User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@index([ownerClerkId, createdAt])
+}
+
+/// A single email artifact that has already been processed, used to make
+/// re-syncs idempotent: the same message is never imported twice, and a
+/// re-sent copy of the same file (same bytes) is reported as a duplicate.
+model EmailImport {
+  id           String   @id @default(cuid())
+  ownerClerkId String
+  provider     String
+  messageId    String
+  subject      String?
+  fromAddress  String?
+  receivedAt   DateTime?
+  kind         String   // statement | receipt | alert
+  contentHash  String   @default("") // sha256 of the attachment bytes; "" for alert emails
+  status       String   // imported | duplicate | skipped | failed
+  detail       String?
+  importId     String?
+  createdAt    DateTime @default(now())
+  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@unique([ownerClerkId, provider, messageId])
+  @@index([ownerClerkId, createdAt])
+  @@index([ownerClerkId, contentHash])
 }
 
 model AuditEvent {
