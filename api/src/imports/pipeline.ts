@@ -1,6 +1,7 @@
 import { ImportStatus, ImportType, Prisma, ReviewStatus } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
+import { read as readWorkbook, utils as xlsxUtils } from "xlsx";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getPrivateObjectBytes, getPrivateObjectText } from "../lib/r2.js";
@@ -137,7 +138,8 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
 function normalizeKey(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
 function parseAmount(value?: string) {
   if (!value) return undefined;
-  const parsed = Number(value.replace(/[$,\s]/g, "").replace(/^\((.*)\)$/, "-$1"));
+  // Amount cells may carry symbols/codes ("₦92,133.50", "NGN 1,440.00", "(25.00)").
+  const parsed = Number(value.replace(/^[A-Za-z]{3}\s?/, "").replace(/[$₦£€₵,\s]/g, "").replace(/^\((.*)\)$/, "-$1"));
   return Number.isFinite(parsed) && parsed !== 0 ? parsed : undefined;
 }
 function parseDate(value?: string) {
@@ -149,11 +151,11 @@ function parseDate(value?: string) {
 export function prepareStatementRows(rows: Record<string, string>[], rowOffset = 2): PreparedReview[] {
   const valueFor = (row: Record<string, string>, names: string[]) => Object.entries(row).find(([key]) => names.includes(normalizeKey(key)))?.[1]?.trim() || undefined;
   return rows.map((row, index) => {
-    const dateText = valueFor(row, ["date", "transactiondate", "posteddate", "occurredat"]);
-    const description = valueFor(row, ["description", "name", "memo", "payee", "merchant"]);
-    const amount = parseAmount(valueFor(row, ["amount", "total", "value", "transactionamount"]));
-    const debit = parseAmount(valueFor(row, ["debit", "withdrawal"]));
-    const credit = parseAmount(valueFor(row, ["credit", "deposit"]));
+    const dateText = valueFor(row, ["date", "transactiondate", "posteddate", "occurredat", "valuedate", "transdate", "trandate", "effectivedate", "bookingdate"]);
+    const description = valueFor(row, ["description", "name", "memo", "payee", "merchant", "narration", "remarks", "particulars", "details", "transactiondetails"]);
+    const amount = parseAmount(valueFor(row, ["amount", "total", "value", "transactionamount", "netamount"]));
+    const debit = parseAmount(valueFor(row, ["debit", "withdrawal", "debitamount", "withdrawals", "withdrawalamount", "moneyout", "paidout", "payments"]));
+    const credit = parseAmount(valueFor(row, ["credit", "deposit", "creditamount", "deposits", "depositamount", "moneyin", "received", "paidin"]));
     const signedAmount = amount ?? (credit ? Math.abs(credit) : debit ? -Math.abs(debit) : undefined);
     const occurredAt = parseDate(dateText);
     const errorMessage = !occurredAt || !description || signedAmount === undefined ? "Date, description, and a non-zero amount are required." : undefined;
@@ -179,11 +181,116 @@ export function isPdfImport(record: { type: string; originalName: string | null 
   return record.type === ImportType.CSV && /\.pdf$/i.test(record.originalName ?? "");
 }
 
-export async function processPdfStatement(ownerClerkId: string, record: { id: string; objectKey: string }) {
+/** GTB-style spreadsheets carry the type CSV and an .xls/.xlsx filename. */
+export function isExcelImport(record: { type: string; originalName: string | null }) {
+  return record.type === ImportType.CSV && /\.xlsx?$/i.test(record.originalName ?? "");
+}
+
+/** Normalized header names that mark a transaction table (incl. GTB layouts). */
+const EXCEL_HEADER_ALIASES = new Set([
+  "date", "transactiondate", "posteddate", "occurredat", "valuedate", "transdate", "trandate", "effectivedate", "bookingdate",
+  "description", "name", "memo", "payee", "merchant", "narration", "remarks", "particulars", "details", "transactiondetails",
+  "amount", "total", "value", "transactionamount", "netamount",
+  "debit", "withdrawal", "debitamount", "withdrawals", "withdrawalamount", "moneyout", "paidout", "payments",
+  "credit", "deposit", "creditamount", "deposits", "depositamount", "moneyin", "received", "paidin",
+  "balance", "runningbalance", "availablebalance", "ref", "reference", "type", "drcr",
+]);
+
+/** Single amount column plus a DR/CR indicator column (some GTB exports). */
+const DRCR_COLUMNS = new Set(["drcr", "drorcr", "type", "txntype", "transactiontype", "side", "direction", "creditdebit", "debitorcredit", "dc", "sign"]);
+const DEBIT_TOKEN = /^(dr|d|debit|debits|withdrawal|wdr|out|payment|paid)$/i;
+const AMOUNT_KEYS = new Set([
+  "amount", "total", "value", "transactionamount", "netamount",
+  "debit", "withdrawal", "debitamount", "withdrawals", "withdrawalamount", "moneyout", "paidout", "payments",
+  "credit", "deposit", "creditamount", "deposits", "depositamount", "moneyin", "received", "paidin",
+]);
+
+function excelCellToString(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "boolean") return "";
+  return String(value).trim();
+}
+
+export async function processExcelStatement(ownerClerkId: string, record: { id: string; objectKey: string }) {
+  const bytes = await getPrivateObjectBytes(record.objectKey);
+  const { rows, sheetName } = excelToStatementRows(bytes);
+  const prepared = prepareStatementRows(rows);
+  logger.info({ importId: record.id, sheet: sheetName, transactionCount: prepared.length }, "completed Excel bank statement job");
+  await persistReviewItems(ownerClerkId, record, prepared);
+}
+
+/**
+ * Pure spreadsheet → statement records: first sheet, header-row detection
+ * (title/account rows above the table are skipped), DR/CR folding, empty-row
+ * skipping. Throws when the sheet has no usable table.
+ */
+export function excelToStatementRows(bytes: Buffer): { rows: Record<string, string>[]; sheetName: string } {
+  const workbook = readWorkbook(bytes, { type: "buffer", cellDates: true });
+  const sheetName = workbook.SheetNames[0] ?? "";
+  const sheet = sheetName ? workbook.Sheets[sheetName] : undefined;
+  if (!sheet) throw new Error("The spreadsheet has no worksheets.");
+  const grid = xlsxUtils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, defval: null, blankrows: false });
+  if (grid.length === 0) throw new Error("The spreadsheet is empty.");
+
+  // Title/account rows sit above the table — scan for the first row that
+  // looks like headers (at least two known columns).
+  let headerIndex = -1;
+  for (let index = 0; index < Math.min(grid.length, 25); index += 1) {
+    const cells = (grid[index] ?? []).map(excelCellToString);
+    if (cells.filter((cell) => EXCEL_HEADER_ALIASES.has(normalizeKey(cell))).length >= 2) {
+      headerIndex = index;
+      break;
+    }
+  }
+  if (headerIndex === -1) throw new Error("Could not find a header row (Date / Description / Amount) in the spreadsheet.");
+  const headers = (grid[headerIndex] ?? []).map(excelCellToString);
+  const drcrIndex = headers.findIndex((header) => DRCR_COLUMNS.has(normalizeKey(header)));
+
+  const rows: Record<string, string>[] = [];
+  for (const line of grid.slice(headerIndex + 1)) {
+    const cells = (line ?? []).map(excelCellToString);
+    const entry: Record<string, string> = {};
+    headers.forEach((header, column) => {
+      if (header) entry[header] = cells[column] ?? "";
+    });
+    if (Object.values(entry).every((value) => !value)) continue;
+    // Fold a DR/CR indicator into a single amount column.
+    if (drcrIndex >= 0 && DEBIT_TOKEN.test(cells[drcrIndex] ?? "")) {
+      const key = Object.keys(entry).find((candidate) => AMOUNT_KEYS.has(normalizeKey(candidate)) && (entry[candidate] ?? "") !== "");
+      if (key) {
+        const magnitude = Math.abs(Number((entry[key] ?? "").replace(/[^0-9.\-]/g, "")));
+        if (Number.isFinite(magnitude) && magnitude > 0) entry[key] = `-${magnitude}`;
+      }
+    }
+    rows.push(entry);
+  }
+  if (rows.length === 0) throw new Error("The spreadsheet has no data rows under its header.");
+  if (rows.length > 10_000) throw new Error("Statement exceeds the 10,000-row processing limit.");
+  return { rows, sheetName };
+}
+
+export async function processPdfStatement(ownerClerkId: string, record: { id: string; objectKey: string; originalName?: string | null }) {
   const bytes = await getPrivateObjectBytes(record.objectKey);
   const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
   const defaultCurrency = profile?.currency?.toUpperCase() ?? "USD";
   const report = await extractStatementReport({ mimeType: "application/pdf", bytes: bytes.toString("base64") });
+  if (report.encrypted) {
+    // A locked PDF lands in the review queue with a plain-language message,
+    // which is also what feeds the dashboard attention card and the bell —
+    // so the user is told exactly what to do. Dobby never asks for the
+    // password itself.
+    await persistReviewItems(ownerClerkId, record, [{
+      row: { filename: record.originalName ?? "statement.pdf", needsPassword: true },
+      rowNumber: 1,
+      fingerprint: fingerprintFor(record.objectKey, undefined, "password-protected statement"),
+      errorMessage:
+        "This statement is password-protected, so nothing could be read. Unlock it in your bank app (or print it to a new PDF) and import the unlocked copy.",
+    }]);
+    logger.info({ importId: record.id }, "password-protected statement queued for the user");
+    return;
+  }
   const statementRowSchema = z.object({ date: z.coerce.date(), description: z.string().min(1), amount: z.coerce.number().finite(), balance: z.coerce.number().finite().optional(), page: z.number().int().positive().optional(), currency: z.string().max(12).optional() });
   const parsedRows = report.transactions.flatMap((item) => {
     const parsed = statementRowSchema.safeParse(item);
@@ -219,14 +326,16 @@ export async function processPdfStatement(ownerClerkId: string, record: { id: st
 
 /**
  * Parse an already-stored import file and write its review items.
- * PDF statements run through the async extractor; everything else is synchronous.
+ * PDF statements run through the async extractor, Excel statements through
+ * the sheet reader; everything else is synchronous.
  */
 export async function processImportRecord(
   ownerClerkId: string,
   record: { id: string; objectKey: string; type: string; originalName: string | null },
 ): Promise<{ rowCount: number; reviewCount: number }> {
-  if (isPdfImport(record)) {
-    await processPdfStatement(ownerClerkId, { id: record.id, objectKey: record.objectKey });
+  if (isPdfImport(record) || isExcelImport(record)) {
+    if (isPdfImport(record)) await processPdfStatement(ownerClerkId, { id: record.id, objectKey: record.objectKey, originalName: record.originalName });
+    else await processExcelStatement(ownerClerkId, { id: record.id, objectKey: record.objectKey });
     const saved = await prisma.transactionImport.findUnique({ where: { id: record.id }, select: { rowCount: true } });
     const reviewCount = await prisma.transactionReviewItem.count({ where: { importId: record.id, ownerClerkId } });
     return { rowCount: saved?.rowCount ?? reviewCount, reviewCount };

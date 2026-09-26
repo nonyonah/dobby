@@ -18,17 +18,21 @@ import { useAttention } from "@/hooks/use-attention";
 
 /**
  * Rift Labs top bar: page title, sidebar trigger, and notifications.
+ * The greeting and net worth live on the homepage, above the income card.
  */
 export function TopBar({ title }: { title: string }) {
   const router = useRouter();
   const { items } = useAttention();
   const preview = items.slice(0, 3);
+
   return (
       <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 rounded-t-xl border-b border-line bg-background px-4">
         <SidebarTrigger className="shrink-0 text-muted-foreground" />
-        <h1 className="m-0 text-[14px] font-semibold tracking-[-0.01em] text-foreground">
-          {title}
-        </h1>
+        <div className="min-w-0">
+          <h1 className="m-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground">
+            {title}
+          </h1>
+        </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
 

@@ -10,14 +10,16 @@ interface FlowTableProps {
   title: string;
   rows: TxFull[];
   income?: boolean;
+  /** Derive the sign from each row instead of labelling the whole table one way. */
+  signed?: boolean;
   typeLabel: string;
   filterLabel: string;
 }
 
 const PAGE_SIZE = 8;
 
-/** Paginated HeroUI v3 ledger used by the spending and income insight tabs. */
-export function FlowTable({ title, rows, income = false, typeLabel, filterLabel }: FlowTableProps) {
+/** Paginated HeroUI v3 ledger used by the spending, income, and stablecoin insight tabs. */
+export function FlowTable({ title, rows, income = false, signed = false, typeLabel, filterLabel }: FlowTableProps) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -51,8 +53,8 @@ export function FlowTable({ title, rows, income = false, typeLabel, filterLabel 
                   <HeroTable.Cell className="max-w-56 truncate px-3 py-2.5 font-medium">
                     {transaction.name}
                   </HeroTable.Cell>
-                  <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-success-vivid" : ""}`}>
-                    {income ? "+" : "−"}{formatUSD(Math.abs(transaction.amount))}
+                  <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${(signed ? transaction.amount >= 0 : income) ? "text-success-vivid" : ""}`}>
+                    {(signed ? transaction.amount >= 0 : income) ? "+" : "−"}{formatUSD(Math.abs(transaction.amount))}
                   </HeroTable.Cell>
                 </HeroTable.Row>
               ))}

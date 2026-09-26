@@ -5,8 +5,10 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { createUploadUrl, storePrivateObject } from "../lib/r2.js";
 import { isPdfImport, processImportRecord, processPdfStatement } from "../imports/pipeline.js";
+import { notifyImportComplete } from "../lib/mailer.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
+import { assertPro } from "../middleware/plan.js";
 
 export const importsRouter = Router();
 importsRouter.use(requireAuth);
@@ -27,6 +29,7 @@ importsRouter.get("/", async (req, res) => {
 });
 
 importsRouter.post("/presign", async (req, res) => {
+  await assertPro(req.auth?.userId, "Uploading statements");
   const input = presignSchema.parse(req.body);
   const extension = input.originalName.split(".").pop()?.toLowerCase() || input.type.toLowerCase();
   const id = randomUUID();
@@ -46,6 +49,7 @@ importsRouter.post("/presign", async (req, res) => {
 });
 
 importsRouter.put("/:id/file", async (req, res) => {
+  await assertPro(req.auth?.userId, "Uploading statements");
   const record = await prisma.transactionImport.findFirst({ where: { id: req.params.id, ownerClerkId: req.auth!.userId } });
   if (!record?.objectKey) {
     res.status(404).json({ error: { code: "IMPORT_NOT_FOUND", message: "Import was not found." } });
@@ -60,6 +64,7 @@ importsRouter.put("/:id/file", async (req, res) => {
 });
 
 importsRouter.post("/:id/process", async (req, res) => {
+  await assertPro(req.auth?.userId, "Processing statements");
   const ownerClerkId = req.auth!.userId;
   const record = await prisma.transactionImport.findFirst({ where: { id: req.params.id, ownerClerkId } });
   if (!record) {
@@ -77,19 +82,34 @@ importsRouter.post("/:id/process", async (req, res) => {
   }
 
   await prisma.transactionImport.update({ where: { id: record.id }, data: { status: ImportStatus.PROCESSING, errorMessage: null } });
+  const filename = record.originalName ?? "import";
   if (isPdfImport(record)) {
-    void processPdfStatement(ownerClerkId, { id: record.id, objectKey }).catch(async (error) => {
-      logger.error({ importId: record.id, error: error instanceof Error ? error.message : String(error) }, "PDF bank statement job failed");
-      await prisma.transactionImport.update({ where: { id: record.id }, data: { status: ImportStatus.FAILED, errorMessage: error instanceof Error ? error.message : "PDF statement processing failed." } });
-    });
+    void processPdfStatement(ownerClerkId, { id: record.id, objectKey })
+      .then(async () => {
+        const [saved, reviewCount] = await Promise.all([
+          prisma.transactionImport.findUnique({ where: { id: record.id }, select: { rowCount: true } }),
+          prisma.transactionReviewItem.count({ where: { importId: record.id, ownerClerkId } }),
+        ]);
+        const rowCount = saved?.rowCount ?? reviewCount;
+        await notifyImportComplete(ownerClerkId, { filename, rowCount, reviewCount });
+      })
+      .catch(async (error) => {
+        const message = error instanceof Error ? error.message : "PDF statement processing failed.";
+        logger.error({ importId: record.id, error: message }, "PDF bank statement job failed");
+        await prisma.transactionImport.update({ where: { id: record.id }, data: { status: ImportStatus.FAILED, errorMessage: message } });
+        await notifyImportComplete(ownerClerkId, { filename, rowCount: 0, reviewCount: 0, failed: message });
+      });
     res.status(202).json({ data: { importId: record.id, jobId: record.id, status: ImportStatus.PROCESSING } });
     return;
   }
   try {
     const { rowCount, reviewCount } = await processImportRecord(ownerClerkId, { ...record, objectKey });
+    void notifyImportComplete(ownerClerkId, { filename, rowCount, reviewCount });
     res.json({ data: { importId: record.id, rowCount, reviewCount } });
   } catch (error) {
-    await prisma.transactionImport.update({ where: { id: record.id }, data: { status: ImportStatus.FAILED, errorMessage: error instanceof Error ? error.message : "Import processing failed." } });
+    const message = error instanceof Error ? error.message : "Import processing failed.";
+    await prisma.transactionImport.update({ where: { id: record.id }, data: { status: ImportStatus.FAILED, errorMessage: message } });
+    await notifyImportComplete(ownerClerkId, { filename, rowCount: 0, reviewCount: 0, failed: message });
     throw error;
   }
 });

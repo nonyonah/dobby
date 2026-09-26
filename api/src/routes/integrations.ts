@@ -41,13 +41,33 @@ function isActiveForToolkit(account: ListedAccount, toolkit: string): string | n
   return null;
 }
 
+/** Fail fast when Composio is slow so callers fall back to stored statuses. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Composio status check timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export async function refreshProviderStatus(ownerClerkId: string, provider: IntegrationProvider) {
   const { toolkit } = PROVIDERS[provider];
   let status = "disconnected";
   let connectedAccountId: string | null = null;
   try {
     const accounts = readAccounts(
-      await composioClient().connectedAccounts.list({ userIds: [ownerClerkId], toolkitSlugs: [toolkit], statuses: ["ACTIVE"] }),
+      await withTimeout(
+        composioClient().connectedAccounts.list({ userIds: [ownerClerkId], toolkitSlugs: [toolkit], statuses: ["ACTIVE"] }),
+        4000,
+      ),
     );
     for (const account of accounts) {
       const id = isActiveForToolkit(account, toolkit);
@@ -76,22 +96,44 @@ export async function refreshProviderStatus(ownerClerkId: string, provider: Inte
   return { provider, status, connectedAccountId, live: true };
 }
 
+// Live status checks hit Composio over the network; running them on every
+// dashboard load made GET /v1/integrations the slowest call in the app. The
+// route now serves stored rows immediately and reconciles in the background,
+// deduped per user so parallel clients cannot stack requests.
+const pendingRefreshes = new Map<string, Promise<void>>();
+
+function refreshInBackground(ownerClerkId: string): void {
+  if (pendingRefreshes.has(ownerClerkId)) return;
+  const providers = Object.keys(PROVIDERS) as IntegrationProvider[];
+  const run: Promise<void> = Promise.all(providers.map((provider) => refreshProviderStatus(ownerClerkId, provider)))
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      pendingRefreshes.delete(ownerClerkId);
+    });
+  pendingRefreshes.set(ownerClerkId, run);
+}
+
 integrationsRouter.get("/", async (req, res) => {
   const ownerClerkId = req.auth!.userId;
   const providers = Object.keys(PROVIDERS) as IntegrationProvider[];
-  const [stored, live] = await Promise.all([
-    prisma.integrationConnection.findMany({ where: { ownerClerkId } }),
-    Promise.all(providers.map((provider) => refreshProviderStatus(ownerClerkId, provider))),
-  ]);
+  const stored = await prisma.integrationConnection.findMany({ where: { ownerClerkId } });
+  refreshInBackground(ownerClerkId);
   const storedByProvider = new Map(stored.map((row) => [row.provider, row]));
   res.json({
-    data: live.map((item) => ({
-      provider: item.provider,
-      status: item.live ? item.status : (storedByProvider.get(item.provider)?.status ?? "disconnected"),
-      connectedAccountId: item.connectedAccountId,
-      live: item.live,
-      updatedAt: storedByProvider.get(item.provider)?.updatedAt ?? null,
-    })),
+    data: providers.map((provider) => {
+      const row = storedByProvider.get(provider);
+      const metadata = (row?.metadata ?? null) as { connectedAccountId?: string } | null;
+      return {
+        provider,
+        status: row?.status ?? "disconnected",
+        connectedAccountId: metadata?.connectedAccountId ?? null,
+        live: false,
+        updatedAt: row?.updatedAt ?? null,
+      };
+    }),
   });
 });
 

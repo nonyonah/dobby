@@ -1,27 +1,116 @@
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "./errors.js";
 
+/** Length of the free trial granted at sign-up. No payment card is collected. */
+export const TRIAL_DAYS = 14;
+const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
+
+/** What the account is right now, after applying the trial clock. */
+export type EffectivePlan = "TRIAL" | "ACTIVE" | "EXPIRED";
+
+type PlanRow = {
+  plan: string;
+  trialStartedAt: Date | null;
+  bachsSubscriptionStatus?: string | null;
+  bachsTrialEnd?: Date | null;
+};
+
 /**
- * Throws unless the signed-in user is on the Pro plan.
+ * The signup clock alone: a 14-day window from `trialStartedAt`, ignoring any
+ * subscription state. EXPIRED is terminal; TRIAL expires lazily once
+ * `trialStartedAt + 14 days` has passed, so expiry is computed rather than
+ * pre-written and a back-dated row still fails closed.
+ */
+export function computeLocalPlan(user: PlanRow): EffectivePlan {
+  if (user.plan === "ACTIVE") return "ACTIVE";
+  if (user.plan === "EXPIRED") return "EXPIRED";
+  const started = user.trialStartedAt?.getTime();
+  if (!started) return "EXPIRED";
+  return Date.now() - started >= TRIAL_MS ? "EXPIRED" : "TRIAL";
+}
+
+/**
+ * Resolves the stored plan against the subscription and the trial clock.
  *
- * Call it as the first line of a Pro-gated handler rather than as route
+ * Bachs is the source of truth once a subscription exists: `trialing` means
+ * the free period is the product's own `trial_period` (so it stays a trial
+ * even after the signup window lapses), and `active`/`past_due` keeps a paid
+ * account on Pro through a failed renewal attempt. Otherwise the local
+ * signup clock decides.
+ */
+export function computeEffectivePlan(user: PlanRow): EffectivePlan {
+  const status = user.bachsSubscriptionStatus;
+  if (status === "trialing") return "TRIAL";
+  if (status === "active" || status === "past_due") return "ACTIVE";
+  return computeLocalPlan(user);
+}
+
+/** Date the trial lapses (null when the row has no trial clock). */
+export function trialEndsAt(user: PlanRow): Date | null {
+  const local = user.trialStartedAt ? new Date(user.trialStartedAt.getTime() + TRIAL_MS) : null;
+  if (user.bachsSubscriptionStatus === "trialing") return user.bachsTrialEnd ?? local;
+  return local;
+}
+
+/**
+ * Reads the user's plan and persists EXPIRED the first time a lapsed trial
+ * is observed, so the stored enum catches up with the computed clock.
+ */
+export async function loadEffectivePlan(
+  clerkId: string,
+): Promise<{ plan: EffectivePlan; trialStartedAt: Date | null; trialEndsAt: Date | null }> {
+  const user = await prisma.user.findUnique({
+    where: { clerkId },
+    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true },
+  });
+  if (!user) return { plan: "EXPIRED", trialStartedAt: null, trialEndsAt: null };
+
+  const plan = computeEffectivePlan(user);
+  if (plan === "EXPIRED" && user.plan !== "EXPIRED") {
+    await prisma.user
+      .update({ where: { clerkId }, data: { plan: "EXPIRED" } })
+      .catch(() => undefined);
+  }
+  return { plan, trialStartedAt: user.trialStartedAt, trialEndsAt: trialEndsAt(user) };
+}
+
+/**
+ * Throws unless the signed-in account currently has Pro access — an active
+ * subscription or a trial still inside its 14-day window.
+ *
+ * Call it as the first line of a gated handler rather than as route
  * middleware: Express infers `req.params` types from the route signature, and
- * an extra middleware argument degrades them. Free-tier callers get a 403 with
- * `UPGRADE_REQUIRED` and a plain-language message, so the client can show an
+ * an extra middleware argument degrades them. Accounts whose trial has lapsed
+ * get a 403 with `UPGRADE_REQUIRED` and a plain-language message that makes
+ * clear their data is safe and still visible, so the client can show an
  * upgrade prompt instead of a generic failure.
  *
- * Read-only endpoints that only report state (connection status lists,
- * disconnect, deletes) stay ungated so Free accounts are never stuck.
+ * Read-only endpoints that only report state (ledger, history, connection
+ * status lists, disconnect) stay ungated so expired accounts can always see
+ * what they already have and never feel locked out of their own data.
  */
 export async function assertPro(userId: string | undefined, feature: string): Promise<void> {
   if (!userId) {
     throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
   }
-  const user = await prisma.user.findUnique({ where: { clerkId: userId }, select: { plan: true } });
-  if (user?.plan !== "PRO") {
+  const user = await prisma.user.findUnique({
+    where: { clerkId: userId },
+    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true },
+  });
+  if (!user) {
+    throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
+  }
+
+  const plan = computeEffectivePlan(user);
+  if (plan === "EXPIRED") {
+    if (user.plan !== "EXPIRED") {
+      await prisma.user
+        .update({ where: { clerkId: userId }, data: { plan: "EXPIRED" } })
+        .catch(() => undefined);
+    }
     throw new AppError(
       403,
-      `${feature} is part of Dobby Pro. Upgrade to unlock it — everything else keeps working on Free.`,
+      `${feature} is paused — your ${TRIAL_DAYS}-day free trial has ended. Everything you have already imported stays visible and untouched; upgrade to Dobby Pro to pick up where you left off.`,
       "UPGRADE_REQUIRED",
     );
   }

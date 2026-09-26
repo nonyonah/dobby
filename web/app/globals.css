@@ -118,9 +118,9 @@
   --color-paper-100: var(--paper-100);
   --color-paper-200: var(--paper-200);
   --color-line: var(--line);
-  --color-accent: #83c5be;
-  --color-accent-600: #5f9f98;
-  --color-accent-100: #e2f3f1;
+  --color-accent: var(--accent-token);
+  --color-accent-600: var(--accent-600);
+  --color-accent-100: var(--accent-100);
   --color-faint: var(--faint);
   --color-input-soft: var(--input-border-soft);
   --color-success: var(--success);

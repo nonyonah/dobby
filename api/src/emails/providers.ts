@@ -366,12 +366,12 @@ export class EmailProviderClient {
     }
   }
 
-  /** Search the mailbox and return the newest matching messages. */
-  async search(since: Date, limit: number): Promise<RawMessage[]> {
+  /** Search the mailbox in [since, until) and return the newest matching messages. */
+  async search(since: Date, limit: number, until: Date = new Date()): Promise<RawMessage[]> {
     if (this.provider === "gmail") {
       const seen = new Set<string>();
       const messages: RawMessage[] = [];
-      for (const query of gmailQueries(since)) {
+      for (const query of gmailQueries(since, until)) {
         const payload = await this.execute("GMAIL_FETCH_EMAILS", {
           query,
           max_results: Math.min(limit, 50),
@@ -391,7 +391,7 @@ export class EmailProviderClient {
 
     const seen = new Set<string>();
     const messages: RawMessage[] = [];
-    for (const args of outlookListFilters(since)) {
+    for (const args of outlookListFilters(since, until)) {
       const payload = await this.execute("OUTLOOK_LIST_MESSAGES", { ...args, user_id: "me" });
       for (const entry of pickArray(payload, ["messages", "items", "value", "data"])) {
         const message = normalizeOutlookMessage(entry);

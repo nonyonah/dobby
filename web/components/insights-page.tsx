@@ -2,23 +2,61 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Line, LineChart, ReferenceArea, XAxis, YAxis } from "recharts";
 import { MoneyStats } from "@/components/money-stats";
 import { CashflowViz } from "@/components/cashflow-viz";
 import { SpendingSection, IncomeSection } from "@/components/flow-sections";
 import { Meter } from "@/components/module-card";
 import { AlertIcon } from "@/components/icons";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { ExportMenu } from "@/components/export-menu";
+import { StablecoinSection, isStablecoinAsset } from "@/components/stablecoin-section";
 import { toast } from "@/components/ui/toast";
 
-import { formatUSD } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import type { TxFull } from "@/lib/transactions";
 import { useApi } from "@/hooks/use-api";
-import { MONTH_LABELS, type DayRange } from "@/lib/insights-data";
+import { type DayRange } from "@/lib/insights-data";
 import type { InsightsSummary } from "@/lib/cashflow";
 
-type Section = "cashflow" | "spending" | "income" | "tax";
+type Section = "cashflow" | "spending" | "income" | "stablecoin" | "tax";
+
+/** Shape of one row from `GET /v1/transactions`, as used for export. */
+type ApiYearTx = {
+  id: string;
+  type: "INCOME" | "EXPENSE";
+  amount: number | string;
+  description: string;
+  merchant?: string | null;
+  occurredAt: string;
+  source?: string | null;
+  assetSymbol?: string | null;
+  isTaxable: boolean;
+  needsReview: boolean;
+  account?: { name: string } | null;
+  category?: { id: string; name: string } | null;
+};
+
+/** Stable identity so loading renders never re-trigger the export memo. */
+const NO_TRANSACTIONS: TxFull[] = [];
+
+function toTxFull(item: ApiYearTx): TxFull {
+  const source = item.source ?? "";
+  return {
+    id: item.id,
+    name: item.merchant || item.description,
+    account: item.account?.name ?? "Ledger",
+    date: item.occurredAt.slice(0, 10),
+    amount: item.type === "INCOME" ? Number(item.amount) : -Math.abs(Number(item.amount)),
+    category: item.category?.id ?? "other",
+    categoryId: item.category?.id,
+    categoryName: item.category?.name,
+    kind: item.type,
+    asset: item.assetSymbol ?? undefined,
+    taxable: item.isTaxable,
+    source: (source === "email" || source === "card" || source === "wallet" ? source : "manual") as TxFull["source"],
+    parse: { state: item.needsReview ? "review" : "parsed" },
+    note: "",
+  };
+}
 
 
 
@@ -52,17 +90,41 @@ function CashflowSection({ year, summary }: { year: number; summary: InsightsSum
   );
 }
 
+/** Shape of `GET /v1/tax/estimate`, which is calculated in the tax jurisdiction's currency. */
+type TaxEstimate = {
+  country?: string;
+  taxYear?: number;
+  grossIncome?: number;
+  taxableIncome?: number;
+  estimatedTaxOwed: number;
+  filingDeadline: string;
+  deductions?: Record<string, number>;
+  quarterly?: { required?: boolean; nextPayment?: number; nextDueDate?: string | null };
+  notes?: string[];
+};
+
+/** Human names for the deduction keys the rule modules emit. */
+const DEDUCTION_LABELS: Record<string, string> = {
+  rentRelief: "Rent relief",
+  pension: "Pension contributions",
+  nhf: "National Housing Fund contributions",
+  taxableExpenses: "Deductible business expenses",
+  homeOffice: "Home office",
+  retirement: "Retirement contributions",
+  halfSelfEmploymentTax: "Half of self-employment tax",
+};
+
 export default function InsightsPage() {
   const [section, setSection] = useState<Section>("cashflow");
   const [range, setRange] = useState<DayRange>(() => {
     const now = new Date();
     return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999) };
   });
-  const [jurisdiction, setJurisdiction] = useState("nigeria");
+  const [taxEstimate, setTaxEstimate] = useState<TaxEstimate | null>(null);
   const [yearSummary, setYearSummary] = useState<InsightsSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryRetry, setSummaryRetry] = useState(0);
-  const [taxEstimate, setTaxEstimate] = useState<{ estimatedTaxOwed: number; filingDeadline: string; quarterly?: { required: boolean; nextPayment: number; nextDueDate: string | null }; notes: string[] } | null>(null);
+  const [yearTransactions, setYearTransactions] = useState<{ year: number; rows: TxFull[] } | null>(null);
   const [taxChecklist, setTaxChecklist] = useState<Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> | null>(null);
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
@@ -83,8 +145,6 @@ export default function InsightsPage() {
       setTaxEstimate(null);
       setTaxChecklist([]);
     });
-    const stored = window.localStorage.getItem("dobby-tax-jurisdiction");
-    if (stored) setJurisdiction(stored);
     return () => { cancelled = true; };
   }, [api, isLoaded, isSignedIn]);
 
@@ -109,14 +169,52 @@ export default function InsightsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn, selectedYear, summaryRetry]);
 
+  // Export runs off this list, so the Insights menu writes a real file instead
+  // of a header-less one. Loaded once per year and filtered per active tab.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    const from = new Date(selectedYear, 0, 1).toISOString();
+    const to = new Date(selectedYear, 11, 31, 23, 59, 59, 999).toISOString();
+    const query = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&pageSize=100`;
+    void (async () => {
+      const first = await api.get<{ data: ApiYearTx[]; meta: { total: number } }>(`/v1/transactions?${query}&page=1`);
+      const pageCount = Math.ceil(first.meta.total / 100);
+      if (pageCount > 100) throw new Error("This year has too many transactions to export at once.");
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => api.get<{ data: ApiYearTx[] }>(`/v1/transactions?${query}&page=${index + 2}`)),
+      );
+      return [...first.data, ...rest.flatMap((page) => page.data)];
+    })()
+      .then((items) => { if (!cancelled) setYearTransactions({ year: selectedYear, rows: items.map(toTxFull) }); })
+      .catch(() => { if (!cancelled) setYearTransactions({ year: selectedYear, rows: [] }); });
+    return () => { cancelled = true; };
+    // The API client is stable for the current Clerk session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn, selectedYear]);
 
-  const taxConfig = useMemo(
-    () => ({ v: { label: "Estimate", color: "#4a55c9" } }) satisfies ChartConfig,
-    []
-  );
-  const taxData = useMemo(() => [], []);
+
+  // Estimate figures come back in the jurisdiction's currency (NGN for
+  // Nigeria, USD for the US), which is not necessarily the display currency.
+  const taxCountry = taxEstimate?.country === "US" ? "US" : "NIGERIA";
+  const taxCurrency = taxCountry === "US" ? "USD" : "NGN";
+  const taxCountryLabel = taxCountry === "US" ? "United States" : "Nigeria";
+  const taxYear = taxEstimate?.taxYear ?? selectedYear;
+  const money = (value: number) => formatCurrency(value, taxCurrency);
   const taxNow = taxEstimate?.estimatedTaxOwed ?? 0;
-  const taxThen = 0;
+  const taxableIncome = taxEstimate?.taxableIncome ?? 0;
+  const deductionsTotal = taxEstimate?.deductions?.total ?? 0;
+  const deductionRows = Object.entries(taxEstimate?.deductions ?? {})
+    .filter(([key, value]) => key !== "total" && Number.isFinite(value) && value > 0)
+    .map(([key, value]) => ({
+      id: key,
+      name: DEDUCTION_LABELS[key] ?? key,
+      captured: value,
+      share: deductionsTotal > 0 ? Math.min(100, (value / deductionsTotal) * 100) : 0,
+    }));
+  const filingDeadline = taxEstimate?.filingDeadline
+    ? new Date(taxEstimate.filingDeadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : null;
   const month = Math.max(0, Math.min(11, range.to.getMonth()));
   const setMonth = (m: number) => {
     const last = new Date(selectedYear, m + 1, 0).getDate();
@@ -133,15 +231,32 @@ export default function InsightsPage() {
     setTaxChecklist((current) => current?.map((item) => item.key === key ? { ...item, status: next } : item) ?? current);
     toast.success(next === "READY" ? "Checklist item marked ready" : "Checklist item marked outstanding");
   };
-  const exportRows: TxFull[] = [];
-  const exportFilename = section === "cashflow" ? "dobby-cashflow" : section === "income" ? "dobby-income" : "dobby-spending";
+  const yearTxState = yearTransactions ?? { year: -1, rows: NO_TRANSACTIONS };
+  const loadedTransactions = yearTxState.year === selectedYear ? yearTxState.rows : NO_TRANSACTIONS;
+  const transactionsLoading = yearTxState.year !== selectedYear;
+  const stablecoinTransactions = useMemo(
+    () => loadedTransactions.filter((row) => isStablecoinAsset(row.asset)),
+    [loadedTransactions],
+  );
+  const exportRows: TxFull[] = useMemo(() => {
+    if (section === "income") return loadedTransactions.filter((row) => row.amount > 0);
+    if (section === "spending") return loadedTransactions.filter((row) => row.amount < 0);
+    if (section === "stablecoin") return stablecoinTransactions;
+    if (section === "tax") return [];
+    return loadedTransactions;
+  }, [section, loadedTransactions, stablecoinTransactions]);
+  const exportFilename =
+    section === "cashflow" ? "dobby-cashflow"
+    : section === "income" ? "dobby-income"
+    : section === "stablecoin" ? "dobby-stablecoin"
+    : "dobby-spending";
 
   return (
     <>
       <div className="w-full px-6 pt-6 pb-10">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex items-center rounded-full border border-line/60 bg-secondary p-1" role="group" aria-label="Insights section">
-          {(["cashflow", "spending", "income", "tax"] as Section[]).map((s) => (
+          {(["cashflow", "spending", "income", "stablecoin", "tax"] as Section[]).map((s) => (
             <button
               key={s}
               type="button"
@@ -165,68 +280,87 @@ export default function InsightsPage() {
           <SpendingSection month={month} year={selectedYear} yearSummary={yearSummary} onMonthChange={setMonth} />
         ) : section === "income" ? (
           <IncomeSection month={month} year={selectedYear} yearSummary={yearSummary} onMonthChange={setMonth} />
+        ) : section === "stablecoin" ? (
+          <StablecoinSection
+            year={selectedYear}
+            month={month}
+            onMonthChange={setMonth}
+            rows={stablecoinTransactions}
+            loading={transactionsLoading}
+          />
         ) : (
           <div>
             <div className="grid grid-cols-1 items-start gap-x-8 gap-y-8 md:grid-cols-2">
               <section aria-label="Deductions">
                 <h2 className="m-0 text-[13px] font-semibold">Deductions</h2>
-                <ul className="m-0 mt-1 list-none p-0">
-                  {([] as Array<{ id: string; name: string; detail: string; captured: number; cap: number }>).map((d) => {
-                    const pct = d.cap > 0 ? Math.min(100, (d.captured / d.cap) * 100) : 0;
-                    const done = d.captured >= d.cap;
-                    return (
-                      <li key={d.id} className="border-b border-line py-2 last:border-b-0">
-                        <div className="flex items-center gap-2 text-[13px]">
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate font-medium">{d.name}</span>
-                            <span className="block truncate text-[12px] text-muted-foreground">{d.detail}</span>
-                          </span>
-                          <span className="mono shrink-0 text-right">
-                            <span className="block font-medium tabular-nums">{formatUSD(d.captured)}</span>
-                            <span className="block text-[12px] text-muted-foreground tabular-nums">{pct.toFixed(0)}% of cap</span>
-                          </span>
-                        </div>
-                        <div className="mt-1.5">
-                          <Meter value={pct} tone={done ? "green" : "accent"} />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <p className="m-0 mt-1 text-[12px] text-muted-foreground">{taxYear} estimate · {taxCountryLabel} rules</p>
+                {deductionRows.length === 0 ? (
+                  <p className="m-0 mt-2 text-[13px] leading-relaxed text-muted-foreground">
+                    No deductions captured yet — deductible expenses are counted automatically as you categorise transactions.
+                  </p>
+                ) : (
+                  <>
+                    <ul className="m-0 mt-2 list-none p-0">
+                      {deductionRows.map((d) => {
+                        const done = d.share >= 100;
+                        return (
+                          <li key={d.id} className="border-b border-line py-2 last:border-b-0">
+                            <div className="flex items-center gap-2 text-[13px]">
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium">{d.name}</span>
+                                <span className="block truncate text-[12px] text-muted-foreground">{d.share.toFixed(0)}% of total deductions</span>
+                              </span>
+                              <span className="mono shrink-0 text-right text-[13px] font-medium tabular-nums">{money(d.captured)}</span>
+                            </div>
+                            <div className="mt-1.5">
+                              <Meter value={d.share} tone={done ? "green" : "accent"} />
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <p className="m-0 mt-2 text-[13px]">
+                      <span className="text-muted-foreground">Total deductions </span>
+                      <span className="mono font-semibold tabular-nums">{money(deductionsTotal)}</span>
+                    </p>
+                  </>
+                )}
               </section>
 
               <section aria-label="Tax position">
                 <h2 className="m-0 text-[13px] font-semibold">Tax position</h2>
-                                <p className="m-0 mt-1 text-[12px] text-muted-foreground">Using {jurisdiction === "nigeria" ? "Nigeria" : jurisdiction === "united-kingdom" ? "United Kingdom" : "United States"} deduction rules</p>
+                <p className="m-0 mt-1 text-[12px] text-muted-foreground">Using {taxCountryLabel} deduction rules · {taxYear}</p>
                 <p className="mono m-0 mt-1 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
-                  {formatUSD(taxNow)}
+                  {money(taxNow)}
                 </p>
                 <p className="m-0 text-[12px] text-muted-foreground">
-                  Running estimate · +{formatUSD(taxNow - taxThen)} in selected period
+                  Estimated tax on {money(taxableIncome)} of taxable income
                 </p>
-                <ChartContainer config={taxConfig} className="aspect-auto h-[72px] w-full">
-                  <LineChart accessibilityLayer data={taxData} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
-                    <XAxis dataKey="label" hide />
-                    <YAxis hide domain={["auto", "auto"]} />
-                    <ChartTooltip
-                      cursor={{ stroke: "#4a55c9", strokeOpacity: 0.35, strokeDasharray: "3 3" }}
-                      content={<ChartTooltipContent className="bg-card" formatter={(v) => formatUSD(Number(v))} />}
-                    />
-                    <ReferenceArea
-                      x1={MONTH_LABELS[range.from.getMonth()]}
-                      x2={MONTH_LABELS[range.to.getMonth()]}
-                      fill="#4a55c9"
-                      fillOpacity={0.08}
-                      stroke="none"
-                    />
-                    <Line dataKey="value" type="monotone" stroke="#4a55c9" strokeWidth={1.5} dot={false} activeDot={{ r: 3, fill: "#4a55c9", stroke: "var(--card)", strokeWidth: 2 }} />
-                  </LineChart>
-                </ChartContainer>
-                <p className="m-0 mt-2 text-[13px] leading-relaxed">
-                  At the current pace you&apos;re setting aside roughly
-                  <span className="mono mx-1 rounded bg-secondary px-1.5 py-px text-[12px] font-medium tabular-nums">{formatUSD(Math.round(taxNow / 9))}/mo</span>
-                  toward an $18,240 annual estimate.
-                </p>
+                <div className="mt-3 space-y-1.5 text-[13px] leading-relaxed">
+                  {filingDeadline ? (
+                    <p className="m-0">File or pay by <span className="mono font-medium tabular-nums">{filingDeadline}</span>.</p>
+                  ) : null}
+                  {taxEstimate?.quarterly?.required ? (
+                    <p className="m-0">
+                      Next estimated payment{" "}
+                      <span className="mono font-medium tabular-nums">{money(taxEstimate.quarterly.nextPayment ?? 0)}</span>
+                      {taxEstimate.quarterly.nextDueDate ? (
+                        <>
+                          {" "}due{" "}
+                          <span className="mono font-medium tabular-nums">
+                            {new Date(taxEstimate.quarterly.nextDueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                        </>
+                      ) : null}
+                      .
+                    </p>
+                  ) : (
+                    <p className="m-0 text-muted-foreground">No quarterly estimated payments required at this income level.</p>
+                  )}
+                </div>
+                {taxEstimate?.notes?.[0] ? (
+                  <p className="m-0 mt-2 text-[12px] text-muted-foreground">{taxEstimate.notes[0]}</p>
+                ) : null}
               </section>
             </div>
 

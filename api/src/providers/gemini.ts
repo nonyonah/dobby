@@ -252,7 +252,9 @@ async function generateTextJson(instruction: string, image?: string) {
   throw new AppError(503, "No AI document provider is configured.", "AI_PROVIDER_NOT_CONFIGURED");
 }
 
-function extractPdfPages(bytes: Buffer): Promise<Array<{ page: number; text: string; ocr: boolean; image?: string }>> {
+type PdfPage = { page: number; text: string; ocr: boolean; image?: string };
+
+function extractPdfPages(bytes: Buffer): Promise<{ pages: PdfPage[]; encrypted: boolean }> {
   return new Promise((resolve, reject) => {
     const scriptPath = resolvePath(dirname(fileURLToPath(import.meta.url)), "../../scripts/extract_pdf.py");
     const python = spawn(env.PYTHON_BIN, [scriptPath], { stdio: ["pipe", "pipe", "pipe"] });
@@ -269,11 +271,11 @@ function extractPdfPages(bytes: Buffer): Promise<Array<{ page: number; text: str
       try {
         const output = Buffer.concat(stdout).toString("utf8").trim();
         const candidates = output.split(/\r?\n/).reverse();
-        let payload: { pages?: Array<{ page: number; text: string; ocr: boolean; image?: string }> } | undefined;
+        let payload: { pages?: PdfPage[]; encrypted?: boolean } | undefined;
         for (const candidate of candidates) {
           try {
-            const parsed = JSON.parse(candidate) as { pages?: Array<{ page: number; text: string; ocr: boolean; image?: string }> };
-            if (Array.isArray(parsed.pages)) {
+            const parsed = JSON.parse(candidate) as { pages?: PdfPage[]; encrypted?: boolean };
+            if (parsed.encrypted === true || Array.isArray(parsed.pages)) {
               payload = parsed;
               break;
             }
@@ -281,8 +283,10 @@ function extractPdfPages(bytes: Buffer): Promise<Array<{ page: number; text: str
             // Some PDF dependencies can emit warnings on stdout; ignore those lines.
           }
         }
-        if (!payload?.pages) throw new Error(`No valid page payload found in extractor output: ${output.slice(0, 300)}`);
-        resolve(payload.pages);
+        if (!payload || (!payload.encrypted && !payload.pages)) {
+          throw new Error(`No valid page payload found in extractor output: ${output.slice(0, 300)}`);
+        }
+        resolve({ pages: payload.pages ?? [], encrypted: payload.encrypted === true });
       } catch (error) {
         reject(new Error(`Invalid PDF extractor response: ${error instanceof Error ? error.message : String(error)}`));
       }
@@ -298,6 +302,8 @@ export function extractReceipt(data: { mimeType: string; bytes: string }) {
 export type StatementExtractionReport = {
   transactions: Array<Record<string, unknown>>;
   failedPages: number[];
+  /** The PDF needs a password — nothing could be read. */
+  encrypted?: boolean;
 };
 
 function sourceDescriptorMatch(source: string, descriptor: string) {
@@ -360,7 +366,8 @@ export async function extractStatementReport(data: { mimeType: string; bytes: st
   }
 
   const pdfBytes = Buffer.from(data.bytes, "base64");
-  const pages = await extractPdfPages(pdfBytes);
+  const { pages, encrypted } = await extractPdfPages(pdfBytes);
+  if (encrypted) return { transactions: [], failedPages: [], encrypted: true };
 
   const extracted: Array<Record<string, unknown>> = [];
   const failedPages: number[] = [];

@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
+import { assertPro } from "../middleware/plan.js";
 import { convertCurrencyAmount } from "../providers/frankfurter.js";
 
 export const transactionsRouter = Router();
@@ -73,33 +74,41 @@ transactionsRouter.get("/", async (req, res) => {
     ...(filters.taxable === undefined ? {} : { isTaxable: filters.taxable }),
     ...(filters.review === undefined ? {} : { needsReview: filters.review }),
   };
-  const [items, total] = await prisma.$transaction([
-    prisma.transaction.findMany({
-      where,
-      select: {
-        id: true,
-        type: true,
-        amount: true,
-        currency: true,
-        description: true,
-        merchant: true,
-        occurredAt: true,
-        source: true,
-        assetSymbol: true,
-        isRecurring: true,
-        isTaxable: true,
-        needsReview: true,
-        account: { select: { name: true } },
-        category: { select: { id: true, name: true } },
-      },
-      orderBy: { [filters.sort]: filters.direction },
-      skip: (filters.page - 1) * filters.pageSize,
-      take: filters.pageSize,
+  const profilePromise = prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
+  const [listResult, profile] = await Promise.all([
+    prisma.$transaction(async (tx) => {
+      const [rows, count] = await Promise.all([
+        tx.transaction.findMany({
+          where,
+          select: {
+            id: true,
+            type: true,
+            amount: true,
+            currency: true,
+            description: true,
+            merchant: true,
+            occurredAt: true,
+            source: true,
+            assetSymbol: true,
+            isRecurring: true,
+            isTaxable: true,
+            needsReview: true,
+            account: { select: { name: true } },
+            category: { select: { id: true, name: true } },
+          },
+          orderBy: { [filters.sort]: filters.direction },
+          skip: (filters.page - 1) * filters.pageSize,
+          take: filters.pageSize,
+        }),
+        tx.transaction.count({ where }),
+      ]);
+      return { rows, count };
     }),
-    prisma.transaction.count({ where }),
+    profilePromise,
   ]);
+  const items = listResult.rows;
+  const total = listResult.count;
 
-  const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
   const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
   const factors = new Map<string, number>();
   await Promise.all(
@@ -124,6 +133,7 @@ transactionsRouter.get("/", async (req, res) => {
 });
 
 transactionsRouter.post("/", async (req, res) => {
+  await assertPro(req.auth?.userId, "Adding transactions");
   const input = transactionSchema.parse(req.body);
   const ownerClerkId = req.auth!.userId;
   const relationError = await assertRelations(ownerClerkId, input.accountId, input.categoryId);
@@ -159,6 +169,7 @@ transactionsRouter.get("/:id", async (req, res) => {
 });
 
 transactionsRouter.patch("/:id", async (req, res) => {
+  await assertPro(req.auth?.userId, "Editing transactions");
   const input = transactionSchema.partial().parse(req.body);
   const ownerClerkId = req.auth!.userId;
   const existing = await prisma.transaction.findFirst({ where: { id: req.params.id, ownerClerkId } });
@@ -184,6 +195,7 @@ transactionsRouter.patch("/:id", async (req, res) => {
 });
 
 transactionsRouter.delete("/:id", async (req, res) => {
+  await assertPro(req.auth?.userId, "Deleting transactions");
   const result = await prisma.transaction.deleteMany({ where: { id: req.params.id, ownerClerkId: req.auth!.userId } });
   if (result.count === 0) {
     res.status(404).json({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction was not found." } });
@@ -193,6 +205,7 @@ transactionsRouter.delete("/:id", async (req, res) => {
 });
 
 transactionsRouter.post("/bulk-delete", async (req, res) => {
+  await assertPro(req.auth?.userId, "Deleting transactions");
   const input = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).parse(req.body);
   const result = await prisma.transaction.deleteMany({ where: { id: { in: input.ids }, ownerClerkId: req.auth!.userId } });
   res.json({ data: { deletedCount: result.count } });

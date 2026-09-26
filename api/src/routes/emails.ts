@@ -7,6 +7,7 @@ import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
 import { refreshProviderStatus } from "./integrations.js";
 import { runEmailSync } from "../emails/sync.js";
+import { notifyEmailSyncComplete } from "../lib/mailer.js";
 
 export const emailsRouter = Router();
 emailsRouter.use(requireAuth);
@@ -64,6 +65,7 @@ emailsRouter.post("/sync", async (req, res) => {
     .then(async (counts) => {
       await prisma.emailSyncJob.update({ where: { id: job.id }, data: { ...counts, status: "completed" } });
       logger.info({ jobId: job.id, provider: input.provider, ...counts }, "email sync completed");
+      await notifyEmailSyncComplete(ownerClerkId, input.provider, counts);
     })
     .catch(async (error) => {
       const message = error instanceof Error ? error.message : String(error);

@@ -25,6 +25,7 @@ import { goalsRouter } from "./routes/goals.js";
 import { currencyRouter } from "./routes/currency.js";
 import { integrationsRouter } from "./routes/integrations.js";
 import { emailsRouter } from "./routes/emails.js";
+import { billingRouter, billingWebhookRouter } from "./routes/billing.js";
 
 export const app = express();
 
@@ -47,6 +48,9 @@ app.use(
     legacyHeaders: false,
   }),
 );
+// Bachs signs the raw request body, so the webhook route is parsed before
+// express.json runs and leaves a Buffer in req.body.
+app.use("/v1/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 app.use(express.raw({ type: ["application/pdf", "image/jpeg", "image/png", "image/webp", "text/csv", "text/plain", "application/ofx", "application/x-ofx", "application/qfx"], limit: "15mb" }));
@@ -73,6 +77,8 @@ app.use("/v1/goals", goalsRouter);
 app.use("/v1/currency", currencyRouter);
 app.use("/v1/integrations", integrationsRouter);
 app.use("/v1/emails", emailsRouter);
+app.use("/v1/billing", billingWebhookRouter);
+app.use("/v1/billing", billingRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

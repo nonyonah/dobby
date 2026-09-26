@@ -65,9 +65,12 @@ enum TaxChecklistStatus {
   OUTSTANDING
 }
 
+// TRIAL = inside the 14-day free trial, ACTIVE = paid subscriber,
+// EXPIRED = trial lapsed with no active subscription (view-only).
 enum Plan {
-  FREE
-  PRO
+  TRIAL
+  ACTIVE
+  EXPIRED
 }
 
 model User {
@@ -76,7 +79,15 @@ model User {
   firstName            String?
   lastName             String?
   imageUrl             String?
-  plan                 Plan                     @default(FREE)
+  plan                 Plan                     @default(TRIAL)
+  trialStartedAt       DateTime?                @default(now())
+  bachsCustomerId      String?                  @unique
+  bachsSubscriptionId  String?                  @unique
+  bachsSubscriptionStatus String?
+  bachsTrialEnd         DateTime?
+  bachsCurrentPeriodEnd DateTime?
+  bachsCancelAtPeriodEnd Boolean                @default(false)
+  onboardedAt          DateTime?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
   profile              Profile?
@@ -95,6 +106,7 @@ model User {
   auditEvents          AuditEvent[]
   emailSyncJobs        EmailSyncJob[]
   emailImports         EmailImport[]
+  reminderLogs         ReminderLog[]
 }
 
 model Profile {
@@ -136,6 +148,24 @@ model TaxChecklistItem {
 
   @@unique([taxProfileId, key])
   @@index([taxProfileId, status])
+}
+
+/**
+ * One row per reminder email actually sent — filing-deadline marks (30/14/7/1
+ * days before, -1 for the one-time overdue notice) and monthly digests. The
+ * unique key is the dedupe: a daily job re-checks without re-sending.
+ */
+model ReminderLog {
+  id           String   @id @default(cuid())
+  ownerClerkId String
+  kind         String
+  taxYear      Int
+  daysBefore   Int
+  sentAt       DateTime @default(now())
+  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@unique([ownerClerkId, kind, taxYear, daysBefore])
+  @@index([ownerClerkId, kind])
 }
 
 model Account {
@@ -393,6 +423,61 @@ model EmailImport {
   @@unique([ownerClerkId, provider, messageId])
   @@index([ownerClerkId, createdAt])
   @@index([ownerClerkId, contentHash])
+}
+
+/**
+ * Global bank directory for the email importer — every Nigerian bank from
+ * Paystack plus every active FDIC-insured US institution. Seeded from public
+ * endpoints (no secrets); sender rules carry first-party evidence only.
+ */
+model Bank {
+  id        String   @id @default(cuid())
+  country   String   // "NG" | "US"
+  name      String
+  slug      String?
+  code      String?  // NUBAN/NIBSS institution code (NG)
+  longcode  String?  // 9-digit branch sort code (NG)
+  cert      String?  // FDIC certificate number (US)
+  city      String?
+  state     String?  // STALP (US)
+  website   String?  // FDIC WEBADDR or known corporate domain, for sender matching
+  active    Boolean  @default(true)
+  source    String   // "paystack" | "fdic"
+  sourceId  String?  // Paystack id or FDIC CERT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  senderRules BankSenderRule[]
+
+  @@unique([source, sourceId])
+  @@index([country, name])
+  @@index([country, code])
+}
+
+model BankSenderRule {
+  id        String   @id @default(cuid())
+  bankId    String
+  bank      Bank     @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  matchType String   // "domain" (suffix of From address) | "exact" (full address) | "name" (bank-name keyword)
+  pattern   String   // lowercase: domain, address, or keyword
+  verified  Boolean  @default(false) // true = first-party evidence (bank page or real email)
+  createdAt DateTime @default(now())
+
+  @@unique([bankId, matchType, pattern])
+  @@index([matchType, pattern])
+}
+
+/** Verified merchant/subscription senders (receipts, card charges). */
+model MerchantRule {
+  id        String   @id @default(cuid())
+  merchant  String
+  category  String?
+  matchType String   // "domain" | "exact" | "subject"
+  pattern   String   // lowercase
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([merchant, matchType, pattern])
+  @@index([matchType, pattern])
 }
 
 model AuditEvent {

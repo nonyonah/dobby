@@ -5,6 +5,9 @@ import { AppError } from "../middleware/errors.js";
 import { logger } from "./logger.js";
 import { getBaseWalletBalances } from "../providers/alchemy.js";
 import { getBlockscoutBalances } from "./blockscout.js";
+import { convertCurrencyAmount } from "../providers/frankfurter.js";
+
+const round2 = (value: number) => Math.round(value * 100) / 100;
 
 /**
  * Stablecoin contracts that redeem at $1, keyed by `chain:address`.
@@ -32,6 +35,16 @@ export interface NetWorthHolding {
   usdValue: number | null;
 }
 
+export interface NetWorthAccount {
+  id: string;
+  name: string;
+  currency: string;
+  /** Net ledger position in the account's own currency: income minus expenses. */
+  balance: number;
+  /** Same position in USD; `null` when no rate is available. */
+  balanceUsd: number | null;
+}
+
 export interface NetWorthWalletStatus {
   id: string;
   displayName: string;
@@ -46,6 +59,7 @@ export interface NetWorthSnapshot {
   currency: "USD";
   totalUsd: number;
   holdings: NetWorthHolding[];
+  accounts: NetWorthAccount[];
   wallets: NetWorthWalletStatus[];
   unpricedCount: number;
 }
@@ -60,18 +74,28 @@ function envAlchemyConfigured() {
 }
 
 /**
- * Net worth across the user's connected wallets, from live on-chain balances.
+ * Net worth across everything the user has: connected wallets (live on-chain
+ * stablecoin balances) plus every bank/account's net ledger position.
  *
- * Only audited stablecoin contracts are valued, which keeps the total honest
- * without a price feed: volatile assets (ETH, SOL) and unrecognized tokens come
- * back with `usdValue: null`, and the UI lists them separately rather than
- * inventing a number for them.
+ * Only audited stablecoin contracts are valued, which keeps the wallet total
+ * honest without a price feed: volatile assets (ETH, SOL) and unrecognized
+ * tokens come back with `usdValue: null`, and the UI lists them separately
+ * rather than inventing a number for them. CNGN is Nigeria's stablecoin, so
+ * it is priced off the naira rate like any other NGN amount.
  */
 export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWorthSnapshot> {
-  const wallets = await prisma.walletAccount.findMany({
-    where: { ownerClerkId, isActive: true },
-    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-  });
+  const [wallets, accounts, grouped] = await Promise.all([
+    prisma.walletAccount.findMany({
+      where: { ownerClerkId, isActive: true },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    }),
+    prisma.account.findMany({ where: { ownerClerkId, isActive: true }, orderBy: { createdAt: "asc" } }),
+    prisma.transaction.groupBy({
+      by: ["accountId", "type", "currency"],
+      where: { ownerClerkId },
+      _sum: { amount: true },
+    }),
+  ]);
 
   const resolved = await Promise.all(wallets.map(async (wallet) => {
     try {
@@ -88,26 +112,102 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
     }
   }));
 
-  const holdings: NetWorthHolding[] = [];
+  // One rate per currency covers both sides of every conversion below.
+  const currencies = new Set<string>(["NGN", "USD"]);
+  for (const account of accounts) currencies.add(account.currency.toUpperCase());
+  for (const row of grouped) currencies.add((row.currency ?? "USD").toUpperCase());
+  const usdRates = new Map<string, number | null>();
+  await Promise.all([...currencies].map(async (code) => {
+    if (code === "USD") { usdRates.set(code, 1); return; }
+    try { usdRates.set(code, await convertCurrencyAmount(1, code, "USD")); }
+    catch { usdRates.set(code, null); }
+  }));
+  const rateToUsd = (code: string) => usdRates.get(code.toUpperCase()) ?? null;
+
   let totalUsd = 0;
   let unpricedCount = 0;
+  const holdings: NetWorthHolding[] = [];
   for (const entry of resolved) {
     for (const balance of entry.balances) {
       const symbol = balance.symbol.toUpperCase();
       const key = contractKey(entry.wallet.chain, balance.address);
       const priced = key !== null && STABLE_CONTRACTS.has(key);
-      if (priced) totalUsd += balance.amount;
+      let usdValue: number | null = priced ? balance.amount : null;
+      if (usdValue === null && symbol === "CNGN") {
+        const rate = rateToUsd("NGN");
+        usdValue = rate === null ? null : balance.amount * rate;
+      }
+      if (usdValue !== null) totalUsd += usdValue;
       else unpricedCount += 1;
-      holdings.push({ walletId: entry.wallet.id, symbol, amount: balance.amount, usdValue: priced ? balance.amount : null });
+      holdings.push({ walletId: entry.wallet.id, symbol, amount: balance.amount, usdValue });
     }
   }
   holdings.sort((a, b) => (b.usdValue ?? -1) - (a.usdValue ?? -1) || b.amount - a.amount);
 
+  const rowsByAccount = new Map<string, typeof grouped>();
+  for (const row of grouped) {
+    if (!row.accountId) continue;
+    const list = rowsByAccount.get(row.accountId) ?? [];
+    list.push(row);
+    rowsByAccount.set(row.accountId, list);
+  }
+
+  const accountsSnapshot: NetWorthAccount[] = [];
+  for (const account of accounts) {
+    const accountCurrency = account.currency.toUpperCase();
+    const accountRate = rateToUsd(accountCurrency);
+    let balance = 0;
+    for (const row of rowsByAccount.get(account.id) ?? []) {
+      const magnitude = Math.abs(Number(row._sum.amount ?? 0));
+      const txCurrency = (row.currency ?? "USD").toUpperCase();
+      const txRate = rateToUsd(txCurrency);
+      // Go through USD so an NGN transaction on a USD account converts once.
+      const converted = txRate !== null && accountRate
+        ? (magnitude * txRate) / accountRate
+        : txCurrency === accountCurrency ? magnitude : null;
+      if (converted === null) continue;
+      balance += row.type === "INCOME" ? converted : -converted;
+    }
+    const balanceUsd = accountRate === null ? null : balance * accountRate;
+    accountsSnapshot.push({
+      id: account.id,
+      name: account.name,
+      currency: accountCurrency,
+      balance: round2(balance),
+      balanceUsd: balanceUsd === null ? null : round2(balanceUsd),
+    });
+    if (balanceUsd !== null) totalUsd += balanceUsd;
+  }
+
+  // Imported and manually added transactions usually have no account yet —
+  // they still count. Aggregate them per currency into synthetic rows so the
+  // money is visible instead of silently dropped.
+  const unassigned = new Map<string, number>();
+  for (const row of grouped) {
+    if (row.accountId) continue;
+    const txCurrency = (row.currency ?? "USD").toUpperCase();
+    const magnitude = Math.abs(Number(row._sum.amount ?? 0));
+    unassigned.set(txCurrency, (unassigned.get(txCurrency) ?? 0) + (row.type === "INCOME" ? magnitude : -magnitude));
+  }
+  for (const [txCurrency, balance] of unassigned) {
+    const rate = rateToUsd(txCurrency);
+    const balanceUsd = rate === null ? null : round2(balance * rate);
+    accountsSnapshot.push({
+      id: `unassigned-${txCurrency.toLowerCase()}`,
+      name: `Imported transactions (${txCurrency})`,
+      currency: txCurrency,
+      balance: round2(balance),
+      balanceUsd,
+    });
+    if (balanceUsd !== null) totalUsd += balanceUsd;
+  }
+
   return {
     asOf: new Date().toISOString(),
     currency: "USD",
-    totalUsd: Math.round(totalUsd * 100) / 100,
+    totalUsd: round2(totalUsd),
     holdings,
+    accounts: accountsSnapshot,
     unpricedCount,
     wallets: resolved.map((entry) => ({
       id: entry.wallet.id,

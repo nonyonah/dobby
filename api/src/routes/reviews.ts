@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { convertCurrencyAmount } from "../providers/frankfurter.js";
+import { assertPro } from "../middleware/plan.js";
 
 export const reviewsRouter = Router();
 reviewsRouter.use(requireAuth);
@@ -40,6 +41,7 @@ reviewsRouter.get("/", async (req, res) => {
 });
 
 reviewsRouter.post("/:id/approve", async (req, res) => {
+  await assertPro(req.auth?.userId, "Approving reviewed transactions");
   const ownerClerkId = req.auth!.userId;
   const override = z.object({ categoryId: z.string().trim().min(1).max(80).nullable().optional() }).parse(req.body);
   const item = await prisma.transactionReviewItem.findFirst({ where: { id: req.params.id, ownerClerkId } });
@@ -106,6 +108,7 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
 });
 
 reviewsRouter.post("/:id/reject", async (req, res) => {
+  await assertPro(req.auth?.userId, "Resolving reviewed transactions");
   const item = await prisma.transactionReviewItem.updateMany({
     where: { id: req.params.id, ownerClerkId: req.auth!.userId, status: ReviewStatus.PENDING },
     data: { status: ReviewStatus.REJECTED },

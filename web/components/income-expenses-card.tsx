@@ -7,15 +7,17 @@ import { formatUSD } from "@/lib/format";
 
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { ModuleCard } from "./module-card";
+import { Skeleton } from "./ui/skeleton";
 import { useApi } from "@/hooks/use-api";
 
 export function IncomeExpensesCard() {
   const [summary, setSummary] = useState<{ income: number; expenses: number } | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
-    void api.get<{ data: { totals: { income: number; expenses: number } } }>("/v1/insights/summary").then((response) => setSummary(response.data.totals)).catch(() => setSummary(null));
+    void api.get<{ data: { totals: { income: number; expenses: number } } }>("/v1/insights/summary").then((response) => setSummary(response.data.totals)).catch(() => setSummary(null)).finally(() => setLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
   const income = summary?.income ?? 0;
@@ -32,6 +34,19 @@ export function IncomeExpensesCard() {
     () => ({ v: { label: "Amount", color: "#4a55c9" } }) satisfies ChartConfig,
     []
   );
+
+  if (!loaded) {
+    return (
+      <ModuleCard title="Income vs expenses" linkLabel="Transactions">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2"><Skeleton className="h-3 w-14" /><Skeleton className="h-6 w-24" /></div>
+          <div className="space-y-2"><Skeleton className="h-3 w-16" /><Skeleton className="h-6 w-24" /></div>
+        </div>
+        <Skeleton className="mt-3 h-5 w-36 rounded-full" />
+        <Skeleton className="mt-3 h-[120px] w-full rounded-lg" />
+      </ModuleCard>
+    );
+  }
 
   return (
     <ModuleCard title="Income vs expenses" linkLabel="Transactions">

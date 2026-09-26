@@ -127,9 +127,8 @@ insightsRouter.get("/summary", async (req, res) => {
   });
 });
 
-/** Pro: stablecoin balances across connected wallets, from live chain data. */
+/** Net worth for the greeting: wallet stablecoin balances plus ledger positions. */
 insightsRouter.get("/net-worth", async (req, res) => {
-  await assertPro(req.auth?.userId, "Net worth");
   res.json({ data: await buildNetWorthSnapshot(req.auth!.userId) });
 });
 

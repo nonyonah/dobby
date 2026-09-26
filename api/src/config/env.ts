@@ -1,6 +1,12 @@
 import "dotenv/config";
 import { z } from "zod";
 
+/**
+ * An unset optional variable. `.env.example` ships these as `KEY=`, and an
+ * empty string must read as "not configured" rather than failing validation.
+ */
+const optionalString = z.preprocess((value) => (value === "" ? undefined : value), z.string().min(1).optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
@@ -33,6 +39,10 @@ const envSchema = z.object({
   PYTHON_BIN: z.string().min(1).default("python3"),
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
+  BACHS_API_KEY: optionalString,
+  BACHS_WEBHOOK_SECRET: optionalString,
+  BACHS_PRO_PRODUCT_ID: optionalString,
+  BACHS_PRO_YEARLY_PRODUCT_ID: optionalString,
 });
 
 const parsed = envSchema.safeParse(process.env);

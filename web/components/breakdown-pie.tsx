@@ -31,10 +31,12 @@ interface BreakdownPieProps {
   year: number;
   months: { value: number; label: string }[];
   onMonthChange: (month: number) => void;
+  /** Label for the "everything" option of the item filter, e.g. "All assets". */
+  filterLabel?: string;
 }
 
 /** Breakdown card with aligned controls, a larger donut, and category detail. */
-export function BreakdownPie({ title, items, month, year, months, onMonthChange }: BreakdownPieProps) {
+export function BreakdownPie({ title, items, month, year, months, onMonthChange, filterLabel = "All categories" }: BreakdownPieProps) {
   const [catFilter, setCatFilter] = useState("all");
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   const config = useMemo(
@@ -55,12 +57,12 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange 
         </div>
         <div className="flex flex-nowrap items-center justify-end gap-2">
           <Select className="w-auto shrink-0" value={catFilter} onValueChange={(value) => setCatFilter(value ?? "all")}>
-            <SelectTrigger aria-label="Filter by category" className="h-8 w-36 text-[12px]">
+            <SelectTrigger aria-label={`Filter by ${filterLabel.replace("All ", "").toLowerCase()}`} className="h-8 w-36 text-[12px]">
               <FilterIcon />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
+              <SelectItem value="all">{filterLabel}</SelectItem>
               {items.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
             </SelectContent>
           </Select>

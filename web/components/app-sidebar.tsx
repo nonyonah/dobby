@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { useClerk } from "@clerk/nextjs";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   Sidebar,
@@ -27,6 +28,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { AISidebar, type SidebarResource } from "./agents/ai-sidebar";
+import { useApi } from "@/hooks/use-api";
+import { useAuth } from "@clerk/nextjs";
+import { FEATURES } from "@/lib/features";
 import { SignOut } from "@phosphor-icons/react/dist/ssr";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import {
@@ -41,7 +45,6 @@ import {
   UploadIcon,
   WalletIcon,
 } from "./icons";
-import { FEATURES } from "@/lib/features";
 
 interface NavItem {
   id: string;
@@ -53,32 +56,55 @@ interface NavItem {
 
 const MAIN_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/", icon: DashboardIconFull },
-  { id: "transactions", label: "Ledger", href: "/transactions", icon: TransactionsIcon },
+  { id: "transactions", label: "Transactions", href: "/transactions", icon: TransactionsIcon },
   { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon },
   { id: "settings", label: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 
-const SIDEBAR_RESOURCES: SidebarResource[] = [
-  {
-    id: "connected-accounts",
-    label: "Connected accounts",
-    kind: "folder",
-    children: [
-      { id: "wallet-activity", label: "Wallet activity", kind: "bookmark" },
-      { id: "business-account", label: "Business account", kind: "bookmark" },
-    ],
-  },
-  {
-    id: "bookmarks",
-    label: "Bookmarks",
-    kind: "folder",
-    children: [
-      { id: "category-rules", label: "Category rules", kind: "bookmark" },
-      { id: "recent-insights", label: "Recent insights", kind: "bookmark" },
-      ...(FEATURES.budgeting ? [{ id: "monthly-budget", label: "Monthly budget", kind: "bookmark" } as SidebarResource] : []),
-    ],
-  },
-];
+function shortAddress(address: string): string {
+  return address.length <= 12 ? address : `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+/**
+ * Workspace tree. Connected accounts lists the user's own wallet addresses
+ * (each marked with their accent dot); there are no other workspace folders.
+ */
+function useWorkspaceResources(): SidebarResource[] {
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+  const [wallets, setWallets] = useState<SidebarResource[] | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    void api
+      .get<{ data: Array<{ id: string; address: string }> }>("/v1/wallets")
+      .then((response) => {
+        if (cancelled) return;
+        setWallets(response.data.map((wallet) => ({ id: `wallet-${wallet.id}`, label: shortAddress(wallet.address), kind: "bookmark" as const })));
+      })
+      .catch(() => {
+        if (!cancelled) setWallets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, isLoaded, isSignedIn]);
+
+  return [
+    {
+      id: "connected-accounts",
+      label: "Connected accounts",
+      kind: "folder",
+      children:
+        wallets === null
+          ? []
+          : wallets.length > 0
+            ? wallets
+            : [{ id: "connect-wallet", label: "Connect a wallet", kind: "bookmark" }],
+    },
+  ];
+}
 
 function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: string; onNavigate?: () => void }) {
   return (
@@ -142,6 +168,8 @@ function QuickCreate({ onCreate }: { onCreate: (kind: "import" | "budget" | "goa
 function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNavigate?: () => void; onCreate: (kind: "import" | "budget" | "goal") => void }) {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const { signOut } = useClerk();
+  const router = useRouter();
+  const resources = useWorkspaceResources();
 
   return (
     <>
@@ -173,29 +201,30 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
           <SidebarGroupLabel className="h-7 px-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
             <AISidebar
-              defaultItems={SIDEBAR_RESOURCES}
-              defaultExpandedIds={["connected-accounts", "bookmarks"]}
+              items={resources}
+              defaultExpandedIds={["connected-accounts"]}
               defaultActiveId={active}
-              ariaLabel="Connected accounts and bookmarks"
+              ariaLabel="Connected accounts"
               className="gap-0.5"
               renderIcon={(item) => {
                 if (item.id === "connected-accounts") return <AccountsIcon />;
-                if (item.id === "bookmarks") return <BookmarkIcon />;
-                if (item.id === "wallet-activity") return <WalletIcon />;
-                if (item.id === "business-account") return <AccountsIcon />;
-                if (item.id === "recent-insights") return <ReportsIcon />;
+                if (item.id.startsWith("wallet-")) {
+                  // Status dot in the accent the user picked in Settings.
+                  return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />;
+                }
+                if (item.id === "connect-wallet") return <WalletIcon />;
                 return <BookmarkIcon />;
               }}
               onActiveChange={(id) => {
+                if (id.startsWith("wallet-")) {
+                  router.push("/transactions?source=wallet");
+                  return;
+                }
                 const hrefs: Record<string, string> = {
-                  "wallet-activity": "/transactions?source=wallet",
-                  "business-account": "/insights?account=business",
-                  "category-rules": "/settings/categories-rules",
-                  "recent-insights": "/insights",
-                  "monthly-budget": "/budget",
+                  "connect-wallet": "/settings",
                 };
                 const href = hrefs[id];
-                if (href) window.location.assign(href);
+                if (href) router.push(href);
               }}
             />
           </SidebarGroupContent>

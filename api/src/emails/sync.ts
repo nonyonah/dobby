@@ -7,6 +7,8 @@ import { extractBankAlert } from "../providers/gemini.js";
 import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
 import { classifyEmail, extensionKind } from "./classify.js";
+import { loadSenderDirectory, describeSender, type SenderDirectory } from "./bank-directory.js";
+import { preparsedAlert } from "./alerts.js";
 import { EmailProviderClient, type EmailProvider, type RawAttachment, type RawMessage } from "./providers.js";
 
 /** Cap per run so one inbox cannot turn a sync into a marathon. */
@@ -59,6 +61,8 @@ function importTypeFor(filename: string): { type: ImportType; contentType: strin
   const extension = (filename.split(".").pop() ?? "").toLowerCase();
   if (extension === "ofx") return { type: ImportType.OFX, contentType: "application/ofx" };
   if (extension === "qfx") return { type: ImportType.QFX, contentType: "application/qfx" };
+  if (extension === "xls") return { type: ImportType.CSV, contentType: "application/vnd.ms-excel" };
+  if (extension === "xlsx") return { type: ImportType.CSV, contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
   if (extension === "jpg" || extension === "jpeg" || extension === "png" || extension === "webp") {
     return {
       type: ImportType.RECEIPT,
@@ -112,12 +116,26 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
   const alertRows: PreparedReview[] = [];
 
   const adapter = new EmailProviderClient(provider, ownerClerkId);
-  const messages = await adapter.search(since, limit);
+  // Sender directory (banks + merchants) is loaded once per run and shared by
+  // every classification; a missing table degrades to regex-only matching.
+  const directory = await loadSenderDirectory();
 
   const saveJob = () =>
     prisma.emailSyncJob.update({ where: { id: jobId }, data: { ...counts } }).catch(() => undefined);
 
+  // Walk the lookback newest-first in 30-day windows so a deep history never
+  // buries this month's statements under a year of newsletters. Windows are
+  // non-overlapping; the seen-set guards the boundary seconds.
+  const seenIds = new Set<string>();
+  const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  for (let windowEnd = now; windowEnd > since && counts.scanned < limit; windowEnd = new Date(windowEnd.getTime() - WINDOW_MS)) {
+    const windowStart = new Date(Math.max(since.getTime(), windowEnd.getTime() - WINDOW_MS));
+    const messages = await adapter.search(windowStart, limit - counts.scanned, windowEnd);
+
   for (const message of messages) {
+    if (seenIds.has(message.id)) continue;
+    seenIds.add(message.id);
     counts.scanned += 1;
     try {
       const previous = await prisma.emailImport.findUnique({
@@ -135,6 +153,7 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
         from: full.from,
         body: full.body ?? full.snippet,
         filenames: full.attachments.map((attachment) => attachment.filename),
+        directory,
       });
       if (kind === "none") {
         counts.skipped += 1;
@@ -143,7 +162,7 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
       }
 
       if (kind === "alert") {
-        const queued = await importAlert(ownerClerkId, provider, full, alertRows);
+        const queued = await importAlert(ownerClerkId, provider, full, alertRows, directory);
         if (queued) counts.imported += 1;
         else counts.duplicates += 1;
         await saveJob();
@@ -153,6 +172,24 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
       const attachment = pickAttachment(full.attachments, kind);
       if (!attachment) {
         counts.skipped += 1;
+        // Link-only receipts (Amazon-style: the email links the receipt
+        // instead of attaching it) still get a record that says what to do.
+        if (kind === "receipt") {
+          const attribution = describeSender(full.from, full.subject, directory);
+          await recordEmailImport({
+            ownerClerkId,
+            provider,
+            messageId: full.id,
+            subject: full.subject,
+            fromAddress: full.from,
+            receivedAt: full.receivedAt,
+            kind,
+            status: "skipped",
+            detail: attribution.merchant
+              ? `${attribution.merchant} sent this receipt as a link, not a file — open the email to view it, or import a PDF copy.`
+              : "This receipt has no downloadable file — open the email to view it.",
+          });
+        }
         await saveJob();
         continue;
       }
@@ -227,6 +264,7 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
       await saveJob();
     }
   }
+  }
 
   if (alertRows.length > 0) {
     try {
@@ -273,24 +311,43 @@ async function storeAttachment(ownerClerkId: string, filename: string, contentTy
 }
 
 /** Queue a parsed alert row; all alert rows are persisted as one import at the end of the run. Returns false when the alert is already in the ledger. */
-async function importAlert(ownerClerkId: string, provider: EmailProvider, message: RawMessage, rows: PreparedReview[]): Promise<boolean> {
-  let extraction;
-  try {
-    extraction = await extractBankAlert({ subject: message.subject, from: message.from, body: message.body ?? message.snippet });
-  } catch (error) {
-    const reason = error instanceof AppError ? error.message : "Could not read this alert email.";
-    await recordEmailImport({
-      ownerClerkId,
-      provider,
-      messageId: message.id,
-      subject: message.subject,
-      fromAddress: message.from,
-      receivedAt: message.receivedAt,
-      kind: "alert",
-      status: "failed",
-      detail: reason,
-    });
-    throw error;
+async function importAlert(ownerClerkId: string, provider: EmailProvider, message: RawMessage, rows: PreparedReview[], directory?: SenderDirectory): Promise<boolean> {
+  const attribution = directory ? describeSender(message.from, message.subject, directory) : {};
+  let extraction: {
+    type: "INCOME" | "EXPENSE";
+    amount: number;
+    currency?: string;
+    occurredAt: string;
+    description: string;
+    merchant?: string;
+  };
+  // Deterministic grammars first (free and exact); the LLM only sees residue.
+  const pre = preparsedAlert({ subject: message.subject, from: message.from, body: message.body ?? message.snippet });
+  if (pre) {
+    extraction = {
+      ...pre,
+      occurredAt: message.receivedAt?.toISOString() ?? new Date().toISOString(),
+      ...(attribution.merchant ? { merchant: attribution.merchant } : {}),
+    };
+  } else {
+    try {
+      const ai = await extractBankAlert({ subject: message.subject, from: message.from, body: message.body ?? message.snippet });
+      extraction = { ...ai, merchant: ai.merchant ?? attribution.merchant };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Could not read this alert email.";
+      await recordEmailImport({
+        ownerClerkId,
+        provider,
+        messageId: message.id,
+        subject: message.subject,
+        fromAddress: message.from,
+        receivedAt: message.receivedAt,
+        kind: "alert",
+        status: "failed",
+        detail: reason,
+      });
+      throw error;
+    }
   }
 
   const label = extraction.type === "INCOME" ? "Credit" : "Debit";

@@ -2,17 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { ArrowRight, Briefcase, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, type AccentColor } from "@/lib/theme";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
+import { usePlan } from "@/components/plan-provider";
+import { useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
 
 import {
@@ -26,6 +30,17 @@ import {
 const controlClass = "h-8 w-full rounded-lg border-[#e9e7e2] bg-white px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] focus-visible:border-[#e0ddd7] focus-visible:ring-0 dark:border-[#2d2d31] dark:bg-[#232327]";
 const selectClass = `${controlClass.replace("w-full", "w-fit min-w-0")} pr-8 text-[#2C2D2F] dark:text-[#eceef0]`;
 const rowClass = "flex min-h-15 flex-col items-start justify-between gap-3 px-0 py-3.5 sm:flex-row sm:items-center sm:gap-6";
+
+/** Subscription summary returned by `GET /v1/billing`. */
+type BillingSubscription = {
+  id: string;
+  status?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean | null;
+};
+
+const formatDate = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -52,8 +67,19 @@ function Row({ label, description, children, align = "center" }: { label: React.
   );
 }
 
-function TextField({ id, label, defaultValue, type = "text" }: { id: string; label: string; defaultValue: string; type?: string }) {
-  return <Input id={id} aria-label={label} type={type} defaultValue={defaultValue} className={controlClass} />;
+function TextField({ id, label, defaultValue, value, onChange, readOnly, type = "text" }: { id: string; label: string; defaultValue?: string; value?: string; onChange?: (value: string) => void; readOnly?: boolean; type?: string }) {
+  return (
+    <Input
+      id={id}
+      aria-label={label}
+      type={type}
+      readOnly={readOnly}
+      defaultValue={value === undefined ? defaultValue : undefined}
+      value={value}
+      onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+      className={controlClass}
+    />
+  );
 }
 
 const BRANDFETCH_LOGO = (domain: string) => `https://cdn.brandfetch.io/domain/${domain}/w/64/h/64?c=${process.env.NEXT_PUBLIC_BRANDFETCH_CLIENT_ID ?? ""}`;
@@ -214,40 +240,79 @@ export function SettingsPage() {
   const [jurisdiction, setJurisdiction] = useState("nigeria");
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const { plan, isPro, trialEndsAt, me, refresh: refreshPlan } = usePlan();
+  const trialEndsOn = trialEndsAt
+    ? new Date(trialEndsAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
+  const [fullName, setFullName] = useState("");
+  const { startCheckout, busy: checkoutBusy } = useUpgrade();
+  const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  // Live subscription that has not been set to end: the plan control is then a
+  // cancel button, and only reverts to the monthly/annual picker once cancelled.
+  const subscribed = Boolean(subscription && !subscription.cancelAtPeriodEnd && subscription.status !== "canceled");
 
+  // Cancelling stops the next renewal only: Bachs keeps Pro running until the
+  // period already paid for ends, then sends the webhook that downgrades us.
+  const cancelSubscription = async () => {
+    setCanceling(true);
+    try {
+      const response = await api.post<{ data: { cancelAtPeriodEnd?: boolean; currentPeriodEnd?: string | null } }>("/v1/billing/cancel", {});
+      setSubscription((current) => (current ? { ...current, ...response.data } : current));
+      refreshPlan();
+      const until = formatDate(response.data.currentPeriodEnd);
+      toast.success(until ? `Subscription canceled — Pro stays on until ${until}.` : "Subscription canceled.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not cancel your subscription.");
+    } finally {
+      setCanceling(false);
+      setCancelConfirmOpen(false);
+    }
+  };
+
+  // Prefills come from the shared /v1/me payload (PlanProvider), so this page
+  // never issues its own profile request. The payload lands after mount, so
+  // the fields are seeded from it in an effect.
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    void api.get<{ data: { profile?: { country?: string | null; currency?: string; theme?: string | null; taxJurisdiction?: string | null; accentColor?: string | null } | null } }>("/v1/me").then((response) => {
-      const profile = response.data.profile;
-      if (!profile) return;
-      if (profile.country) setCountry(profile.country.toLowerCase() === "ng" ? "nigeria" : profile.country.toLowerCase() === "us" ? "united-states" : "other");
-      if (profile.currency) {
-        setCurrency(profile.currency.toLowerCase());
-        window.localStorage.setItem("dobby-currency", profile.currency.toUpperCase());
-      } else if (profile.country?.toUpperCase() === "NG") {
-        setCurrency("ngn");
-        window.localStorage.setItem("dobby-currency", "NGN");
-      } else if (profile.country?.toUpperCase() === "US") {
-        setCurrency("usd");
-        window.localStorage.setItem("dobby-currency", "USD");
-      }
-      if (profile.theme) setTheme(profile.theme);
-      if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction);
-      const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
-      if (accent) setAccentColor(accent.id);
-    }).catch(() => {
-      // Keep local defaults when the API is unavailable.
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, isSignedIn]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFullName([me?.firstName, me?.lastName].filter(Boolean).join(" ") || user?.fullName || "");
+    const profile = me?.profile;
+    if (!profile) return;
+    if (profile.country) setCountry(profile.country.toLowerCase() === "ng" ? "nigeria" : profile.country.toLowerCase() === "us" ? "united-states" : "other");
+    if (profile.currency) {
+      setCurrency(profile.currency.toLowerCase());
+      window.localStorage.setItem("dobby-currency", profile.currency.toUpperCase());
+    } else if (profile.country?.toUpperCase() === "NG") {
+      setCurrency("ngn");
+      window.localStorage.setItem("dobby-currency", "NGN");
+    } else if (profile.country?.toUpperCase() === "US") {
+      setCurrency("usd");
+      window.localStorage.setItem("dobby-currency", "USD");
+    }
+    if (profile.theme) setTheme(profile.theme);
+    if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction);
+    const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
+    if (accent) setAccentColor(accent.id);
+  }, [me, user]);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
     const load = async () => {
-      try {
-        const walletResponse = await api.get<{ data: Array<{ id: string; chain: string; address: string; displayName: string; color: string }> }>("/v1/wallets");
-        if (cancelled) return;
+      // Everything below is independent — fetch it in one round trip.
+      const [walletResult, providerResult, duplicateResult, jobResult, billingResult] = await Promise.allSettled([
+        api.get<{ data: Array<{ id: string; chain: string; address: string; displayName: string; color: string }> }>("/v1/wallets"),
+        api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations"),
+        api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25"),
+        api.get<{ data: Array<SyncJob & { provider: string; id: string }> }>("/v1/emails/sync"),
+        api.get<{ data: { subscription: BillingSubscription | null } }>("/v1/billing"),
+      ]);
+      if (cancelled) return;
+
+      if (walletResult.status === "fulfilled") {
+        const walletResponse = walletResult.value;
         setWallets(walletResponse.data);
         void Promise.all(
           walletResponse.data.map(async (wallet) => {
@@ -259,46 +324,35 @@ export function SettingsPage() {
             }
           }),
         );
-      } catch {
-        if (!cancelled) setWallets([]);
+      } else {
+        setWallets([]);
       }
-      try {
-        const providerResponse = await api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations");
-        if (!cancelled) {
-          setProviders(Object.fromEntries(providerResponse.data.map((item) => [item.provider, { status: item.status, live: item.live }])));
-        }
-      } catch {
-        // Provider rows fall back to disconnected until the API responds.
+
+      if (providerResult.status === "fulfilled") {
+        setProviders(Object.fromEntries(providerResult.value.data.map((item) => [item.provider, { status: item.status, live: item.live }])));
       }
-      try {
-        const duplicates = await api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25");
-        if (!cancelled) setDuplicateEmails(duplicates.data);
-      } catch {
-        // The duplicate notice only appears once email sync has run.
-      }
-      try {
-        const jobs = await api.get<{ data: Array<SyncJob & { provider: string; id: string }> }>("/v1/emails/sync");
-        if (!cancelled) {
-          const latestByProvider = new Map<string, SyncJob>();
-          for (const job of jobs.data) if (!latestByProvider.has(job.provider)) latestByProvider.set(job.provider, job);
-          const summaries: Record<string, SyncState> = {};
-          for (const [provider, job] of latestByProvider) {
-            if (job.status === "failed") {
-              toast.error(job.errorMessage ?? "The last email sync failed.");
-              summaries[provider] = { busy: false, summary: "Last sync failed" };
-              continue;
-            }
-            const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
-            if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
-            if (job.failed > 0) parts.push(`${job.failed} failed`);
-            summaries[provider] = job.status === "processing"
-              ? { busy: true }
-              : { busy: false, summary: `${parts.join(" · ")}` };
+
+      if (duplicateResult.status === "fulfilled") setDuplicateEmails(duplicateResult.value.data);
+      if (billingResult.status === "fulfilled") setSubscription(billingResult.value.data.subscription ?? null);
+
+      if (jobResult.status === "fulfilled") {
+        const latestByProvider = new Map<string, SyncJob>();
+        for (const job of jobResult.value.data) if (!latestByProvider.has(job.provider)) latestByProvider.set(job.provider, job);
+        const summaries: Record<string, SyncState> = {};
+        for (const [provider, job] of latestByProvider) {
+          if (job.status === "failed") {
+            toast.error(job.errorMessage ?? "The last email sync failed.");
+            summaries[provider] = { busy: false, summary: "Last sync failed" };
+            continue;
           }
-          setSyncState(summaries);
+          const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
+          if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
+          if (job.failed > 0) parts.push(`${job.failed} failed`);
+          summaries[provider] = job.status === "processing"
+            ? { busy: true }
+            : { busy: false, summary: `${parts.join(" · ")}` };
         }
-      } catch {
-        // Sync status stays empty until the first run.
+        setSyncState(summaries);
       }
     };
     void load();
@@ -357,6 +411,10 @@ export function SettingsPage() {
   };
 
   const connectProvider = async (provider: string) => {
+    if (!isPro) {
+      startCheckout();
+      return;
+    }
     setConnectingProvider(provider);
     // Open synchronously inside the click handler so popup blockers allow it.
     const popup = window.open("about:blank", "dobby-connect", "width=520,height=680");
@@ -419,7 +477,9 @@ export function SettingsPage() {
 
   const saveChanges = async () => {
     try {
+      const nameParts = fullName.trim().split(/\s+/);
       await api.patch("/v1/me", {
+        ...(nameParts[0] ? { firstName: nameParts[0], lastName: nameParts.slice(1).join(" ") } : {}),
         country: country === "nigeria" ? "NG" : country === "united-states" ? "US" : null,
         currency: currency.toUpperCase(),
         theme,
@@ -449,8 +509,8 @@ export function SettingsPage() {
 
         <div className="space-y-5">
           <Section label="Profile">
-            <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" defaultValue="Ada Lovelace" /></Row>
-            <Row label="Email address" description="Used for account messages and notifications."><TextField id="profile-email" label="Email address" defaultValue="ada@riftlabs.co" type="email" /></Row>
+            <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" value={fullName} onChange={setFullName} /></Row>
+            <Row label="Email address" description="Used for account messages and notifications. Managed by your sign-in provider."><TextField id="profile-email" label="Email address" value={user?.primaryEmailAddress?.emailAddress ?? me?.email ?? ""} readOnly type="email" /></Row>
             <Row label="Country"><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); if (next === "nigeria") setCurrency("ngn"); if (next === "united-states") setCurrency("usd"); if (next === "ghana") setCurrency("ghs"); if (next === "kenya") setCurrency("kes"); }} options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "united-states", label: "🇺🇸 United States" }, { value: "ghana", label: "🇬🇭 Ghana" }, { value: "kenya", label: "🇰🇪 Kenya" }, { value: "other", label: "🌐 Other" }]} /></Row>
           </Section>
 
@@ -459,7 +519,7 @@ export function SettingsPage() {
               <Row
                 label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">No wallets connected yet</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => setWalletModalOpen(true)}><LinkSimple /> Connect</Button>
+                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : startCheckout())}><LinkSimple /> Connect</Button>
               </Row>
             ) : (
               wallets.map((wallet) => (
@@ -475,7 +535,7 @@ export function SettingsPage() {
               <Row
                 label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Base or Solana address with a custom color</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => setWalletModalOpen(true)}><LinkSimple /> Connect</Button>
+                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : startCheckout())}><LinkSimple /> Connect</Button>
               </Row>
             ) : null}
             <Row label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Briefcase size={16} /></span><span><span className="block">Bank</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Bank connections are planned for a future release.</span></span></span>}><Button variant="secondary" size="small" disabled>Coming soon</Button></Row>
@@ -525,29 +585,113 @@ export function SettingsPage() {
                 </Row>
               );
             })}
-            <Row label={<span className="flex items-start gap-2.5"><BrandLogo domain="sheets.google.com" /><span><span className="block">Google Sheets</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Export transaction data to a spreadsheet.</span></span></span>}><Button variant="secondary" size="small"><LinkSimple /> Connect</Button></Row>
           </Section>
 
           <Section label="Notifications">
             <Toggle label="Filing deadline reminders" description="Reminder 30 days before configured filing deadlines." initial={false} />
             {FEATURES.budgeting ? <Toggle label="Budget alerts" description="Alert when a category is approaching its limit." /> : null}
             <Toggle label="Import completed" description="Get notified when a statement has finished processing." />
+            <Row
+              label="Monthly tax reminders"
+              description={isPro ? "Included in your plan — a monthly email with your estimate and outstanding documents." : "Included with Pro — a monthly email with your estimate and outstanding documents."}
+            >
+              {isPro ? (
+                <span className="inline-flex w-fit items-center rounded-full border border-line bg-secondary px-2.5 py-1 text-[12px] font-medium text-muted-foreground">Included in Pro</span>
+              ) : (
+                <Button variant="secondary" size="small" disabled={checkoutBusy} onClick={() => startCheckout()}>Upgrade</Button>
+              )}
+            </Row>
           </Section>
 
           <Section label="Preferences">
             <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => setTheme(value ?? "system")} options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
             <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }, { value: "ghs", label: "GHS 🇬🇭" }, { value: "kes", label: "KES 🇰🇪" }, { value: "gbp", label: "GBP 🇬🇧" }]} /></Row>
-            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-kingdom", label: "United Kingdom" }, { value: "united-states", label: "United States" }]} onValueChange={(value) => { const next = value ?? "nigeria"; setJurisdiction(next); window.localStorage.setItem("dobby-tax-jurisdiction", next); }} /></Row>
+            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-kingdom", label: "United Kingdom" }, { value: "united-states", label: "United States" }, { value: "other", label: "Other" }]} onValueChange={(value) => { const next = value ?? "nigeria"; setJurisdiction(next); window.localStorage.setItem("dobby-tax-jurisdiction", next); }} /></Row>
           </Section>
 
           <Section label="Categories & rules">
             <Row label="Categorization" description="Keep categorization consistent across new imports."><Link href="/settings/categories-rules" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-accent-600">Manage categories and rules <ArrowRight size={14} /></Link></Row>
           </Section>
 
-          <Section label="Data & subscription">
-            <Row label="Export transactions" description="Download a CSV of your categorized transactions."><Button variant="secondary" size="small" onClick={() => toast.info("CSV export is ready to connect to the backend.")}><CloudArrowDown /> Export CSV</Button></Row>
-            <Row label="Dobby plan" description="Plan management will be available here."><Button variant="secondary" size="small" disabled>Manage subscription</Button></Row>
+          <Section label="Plan">
+            {subscribed ? (
+              <Row
+                label="Subscription"
+                description={
+                  subscription?.currentPeriodEnd
+                    ? `Billed through Bachs, renews ${formatDate(subscription.currentPeriodEnd)}. Cancelling keeps Pro until then — nothing is deleted.`
+                    : "Billed through Bachs. Cancelling keeps Pro until the end of the paid period — nothing is deleted."
+                }
+              >
+                <Button variant="secondary" size="small" disabled={canceling} onClick={() => setCancelConfirmOpen(true)}>
+                  {canceling ? "Canceling…" : "Cancel"}
+                </Button>
+              </Row>
+            ) : (
+              <Row
+                label="Upgrade to Pro"
+                description={
+                  subscription?.cancelAtPeriodEnd
+                    ? subscription.currentPeriodEnd
+                      ? `Your subscription ends ${formatDate(subscription.currentPeriodEnd)} — pick a plan to keep Dobby Pro running.`
+                      : "Your subscription has ended — pick a plan to keep Dobby Pro running."
+                    : plan === "EXPIRED"
+                      ? "Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a 14-day free trial."
+                      : plan === "TRIAL"
+                        ? "Keep every feature without interruption when your trial ends. Both plans start with a 14-day free trial."
+                        : "Unlocks email auto-fetch, wallet tracking, net worth, proactive flags, and monthly reminders."
+                }
+              >
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="primary" size="small" disabled={checkoutBusy}>
+                        {checkoutBusy ? "Opening checkout…" : "Upgrade to Pro"}
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem className="flex-col items-start gap-0.5 py-2" onClick={() => startCheckout("month")}>
+                      <span className="text-[13px] font-semibold text-foreground">Monthly</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">$5.00 / month · 14-day free trial</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="flex-col items-start gap-0.5 py-2" onClick={() => startCheckout("year")}>
+                      <span className="text-[13px] font-semibold text-foreground">Annual</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">$50.00 / year · two months free</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </Row>
+            )}
+            <Row
+              label="Current plan"
+              description={
+                plan === "ACTIVE"
+                  ? subscription?.currentPeriodEnd
+                    ? `Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders. Renews ${formatDate(subscription.currentPeriodEnd)}.`
+                    : "Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders."
+                  : plan === "TRIAL"
+                    ? `Free trial — every Pro feature unlocked for 14 days, no card required${trialEndsOn ? `, ending ${trialEndsOn}` : ""}.`
+                    : plan === "EXPIRED"
+                      ? "Your free trial has ended. Your ledger, history, and past insights are all still here and fully visible."
+                      : "Reading your plan…"
+              }
+            >
+              <span
+                className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-[12px] font-semibold ${
+                  plan === "ACTIVE"
+                    ? "border-transparent bg-primary/10 text-primary"
+                    : plan === "TRIAL"
+                      ? "border-success/40 bg-success-soft text-success"
+                      : plan === "EXPIRED"
+                        ? "border-warning/40 bg-warning-soft text-warning"
+                        : "border-line bg-secondary text-muted-foreground"
+                }`}
+              >
+                {plan === "ACTIVE" ? "Pro" : plan === "TRIAL" ? "Trial" : plan === "EXPIRED" ? "Trial ended" : "…"}
+              </span>
+            </Row>
           </Section>
         </div>
       </div>
@@ -575,6 +719,28 @@ export function SettingsPage() {
           </ul>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {subscription?.currentPeriodEnd
+                ? `You keep Dobby Pro until ${formatDate(subscription.currentPeriodEnd)}, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are.`
+                : "You keep Dobby Pro until the end of the paid period, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={canceling}>Keep subscription</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={canceling}
+              onClick={() => void cancelSubscription()}
+            >
+              {canceling ? "Canceling…" : "Cancel subscription"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <WalletConnectModal
         open={walletModalOpen}
         onOpenChange={setWalletModalOpen}

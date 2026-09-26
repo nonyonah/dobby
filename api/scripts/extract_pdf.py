@@ -76,10 +76,30 @@ def ocr_page(pdf_bytes: bytes, page_number: int) -> str:
         document.close()
 
 
+def is_encrypted(pdf_bytes: bytes) -> bool:
+    """True when the PDF needs a password — extraction is impossible, so the
+    caller should tell the user instead of failing the whole statement."""
+    try:
+        import fitz
+
+        document = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            return bool(document.is_encrypted)
+        finally:
+            document.close()
+    except Exception as error:
+        message = str(error).lower()
+        return "password" in message or "encrypt" in message
+
+
 def main():
     pdf_bytes = sys.stdin.buffer.read()
     if not pdf_bytes:
         raise ValueError("PDF input is empty")
+
+    if is_encrypted(pdf_bytes):
+        print(json.dumps({"encrypted": True, "pages": []}, ensure_ascii=False))
+        return
 
     try:
         pages = extract_with_pdfplumber(pdf_bytes)
@@ -104,8 +124,15 @@ def main():
             if is_usable(fallback_text):
                 text = fallback_text
         if not is_usable(text):
-            text = ocr_page(pdf_bytes, page_number)
-            used_ocr = True
+            try:
+                text = ocr_page(pdf_bytes, page_number)
+                used_ocr = True
+            except Exception:
+                # OCR is optional (tesseract may not be installed): leave the
+                # page empty so the caller flags it for manual review instead
+                # of failing the whole statement.
+                text = ""
+                used_ocr = False
         result.append({"page": page_number, "text": text.strip(), "ocr": used_ocr, "image": render_page(pdf_bytes, page_number)})
 
     print(json.dumps({"pages": result}, ensure_ascii=False))

@@ -51,6 +51,8 @@ export interface TxFull {
   categoryId?: string;
   categoryName?: string;
   kind?: "INCOME" | "EXPENSE" | "TRANSFER";
+  /** Settlement asset for wallet/chain transactions, e.g. `USDC`, `USDT`, `CNGN`. */
+  asset?: string;
   taxable: boolean;
   source: TxSource;
   parse: { state: ParseState; confidence?: number };

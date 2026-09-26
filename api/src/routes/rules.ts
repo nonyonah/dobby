@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
+import { assertPro } from "../middleware/plan.js";
 
 export const rulesRouter = Router();
 rulesRouter.use(requireAuth);
@@ -27,6 +28,7 @@ rulesRouter.get("/", async (req, res) => {
 });
 
 rulesRouter.post("/", async (req, res) => {
+  await assertPro(req.auth?.userId, "Creating categorization rules");
   const input = ruleSchema.parse(req.body);
   const ownerClerkId = req.auth!.userId;
   if (!(await validCategory(ownerClerkId, input.categoryId))) {
@@ -38,6 +40,7 @@ rulesRouter.post("/", async (req, res) => {
 });
 
 rulesRouter.patch("/:id", async (req, res) => {
+  await assertPro(req.auth?.userId, "Changing categorization rules");
   const input = ruleSchema.partial().parse(req.body);
   const ownerClerkId = req.auth!.userId;
   if (!(await validCategory(ownerClerkId, input.categoryId))) {
@@ -54,6 +57,7 @@ rulesRouter.patch("/:id", async (req, res) => {
 });
 
 rulesRouter.delete("/:id", async (req, res) => {
+  await assertPro(req.auth?.userId, "Deleting categorization rules");
   const deleted = await prisma.categorizationRule.deleteMany({ where: { id: req.params.id, ownerClerkId: req.auth!.userId } });
   if (!deleted.count) {
     res.status(404).json({ error: { code: "RULE_NOT_FOUND", message: "Categorization rule was not found." } });
@@ -63,6 +67,7 @@ rulesRouter.delete("/:id", async (req, res) => {
 });
 
 rulesRouter.post("/reapply", async (req, res) => {
+  await assertPro(req.auth?.userId, "Reapplying categorization rules");
   const ownerClerkId = req.auth!.userId;
   const [rules, transactions] = await prisma.$transaction([
     prisma.categorizationRule.findMany({ where: { ownerClerkId }, orderBy: { matcher: "asc" } }),

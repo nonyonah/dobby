@@ -3,6 +3,7 @@
 import { DownloadSimple, FileCsv, GoogleDriveLogo, MicrosoftExcelLogo } from "@phosphor-icons/react";
 import * as XLSX from "xlsx";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
+import { toast } from "@/components/ui/toast";
 
 import { Dropdown } from "@heroui/react";
 
@@ -11,12 +12,10 @@ interface ExportMenuProps {
   filename: string;
 }
 
-type ExportKind = "sheets" | "xero" | "quickbooks" | "csv" | "xlsx";
+type ExportKind = "sheets" | "csv" | "xlsx";
 
 const OPTIONS: { id: ExportKind; label: string; detail: string }[] = [
-  { id: "sheets", label: "Google Sheets", detail: "XLSX workbook" },
-  { id: "xero", label: "Xero", detail: "XLSX workbook" },
-  { id: "quickbooks", label: "QuickBooks", detail: "XLSX workbook" },
+  // { id: "sheets", label: "Google Sheets", detail: "XLSX workbook" }, — temporarily disabled
   { id: "csv", label: "CSV", detail: "Comma-separated file" },
   { id: "xlsx", label: "XLSX", detail: "Excel workbook" },
 ];
@@ -25,11 +24,14 @@ function OptionIcon({ kind }: { kind: ExportKind }) {
   if (kind === "sheets") return <GoogleDriveLogo size={17} weight="fill" className="text-[#34a853]" aria-hidden="true" />;
   if (kind === "xlsx") return <MicrosoftExcelLogo size={17} weight="fill" className="text-[#217346]" aria-hidden="true" />;
   if (kind === "csv") return <FileCsv size={17} weight="fill" className="text-[#35754e]" aria-hidden="true" />;
-  if (kind === "xero") return <span className="flex size-[17px] items-center justify-center rounded bg-[#13b5ea] text-[9px] font-bold text-white" aria-hidden="true">X</span>;
-  return <span className="flex size-[17px] items-center justify-center rounded bg-[#2ca01c] text-[8px] font-bold text-white" aria-hidden="true">QB</span>;
+  return null;
 }
 
 function exportRows(rows: TxFull[], filename: string, kind: ExportKind) {
+  if (rows.length === 0) {
+    toast.info("There are no transactions to export for this view yet.");
+    return;
+  }
   const data = rows.map((row) => ({
     Date: row.date,
     Merchant: row.name,

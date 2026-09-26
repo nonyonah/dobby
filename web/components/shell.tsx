@@ -15,6 +15,7 @@ import {
 import { QuestionIcon } from "./icons";
 import { useApi } from "@/hooks/use-api";
 import { QuickCreateModals } from "./quick-create-modals";
+import { TrialExpiredBanner } from "./upgrade";
 
 const SIDEBAR_KEY = "rift-sidebar-collapsed";
 
@@ -97,6 +98,7 @@ export function Shell({ title, active, children }: ShellProps) {
       <div className={`min-w-0 flex-1 ${collapsed ? "p-2" : "py-2 pr-2 pl-0 md:pl-1"}`}>
         <main className="min-h-[calc(100vh-16px)] rounded-xl border border-line bg-background shadow-none">
           <TopBar title={title} />
+          <TrialExpiredBanner />
           {children}
         </main>
       </div>

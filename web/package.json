@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@bachs/js": "^0.2.0",
     "@base-ui/react": "^1.8.0",
     "@clerk/nextjs": "^7.9.4",
     "@heroui/react": "^3.2.6",
