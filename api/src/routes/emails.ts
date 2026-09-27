@@ -47,11 +47,13 @@ emailsRouter.post("/sync", async (req, res) => {
 
   const running = await prisma.emailSyncJob.findFirst({
     where: { ownerClerkId, provider: input.provider, status: "processing" },
-    select: { id: true, createdAt: true },
+    select: { id: true, updatedAt: true },
     orderBy: { createdAt: "desc" },
   });
-  // Only treat a recent job as in-flight; a crashed run would otherwise block forever.
-  if (running && Date.now() - running.createdAt.getTime() < 15 * 60_000) {
+  // Only treat a recently-heartbeated job as in-flight; a crashed run would
+  // otherwise block forever. saveJob bumps updatedAt on every message, so a
+  // long but live sync never looks stale.
+  if (running && Date.now() - running.updatedAt.getTime() < 15 * 60_000) {
     throw new AppError(409, "An email sync is already running for this account.", "EMAIL_SYNC_IN_PROGRESS");
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { ArrowRight, Briefcase, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
@@ -297,6 +297,74 @@ export function SettingsPage() {
     if (accent) setAccentColor(accent.id);
   }, [me, user]);
 
+  const mountedRef = useRef(true);
+  const inflightSyncs = useRef(new Set<string>());
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Poll a sync job to completion and render its outcome. Shared by manual
+  // syncs and by resuming an in-flight sync when Settings is reopened, so
+  // leaving the page mid-sync never loses the result. Never throws.
+  const pollSyncJob = useCallback(async (provider: string, jobId: string) => {
+    let job: SyncJob | null = null;
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      try {
+        const response = await api.get<{ data: SyncJob }>(`/v1/emails/sync/${jobId}`);
+        job = response.data;
+      } catch {
+        break;
+      }
+      if (job.status !== "processing") break;
+    }
+    if (!mountedRef.current) return;
+    if (!job || job.status === "processing") {
+      setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary: "Still running — check back in a minute." } }));
+      return;
+    }
+    if (job.status === "failed") {
+      setSyncState((prev) => ({ ...prev, [provider]: { busy: false } }));
+      toast.error(job.errorMessage ?? "The email sync failed.");
+      return;
+    }
+    const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
+    if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
+    if (job.failed > 0) parts.push(`${job.failed} failed`);
+    let duplicates: EmailImportRow[] = [];
+    try {
+      duplicates = job.duplicates > 0
+        ? (await api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25")).data
+        : [];
+    } catch {
+      duplicates = [];
+    }
+    if (!mountedRef.current) return;
+    setDuplicateEmails(duplicates);
+    setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary: parts.join(" · ") } }));
+    toast.success(
+      job.imported === 0 && job.duplicates === 0
+        ? "Nothing new to import from this inbox."
+        : `Imported ${job.imported} email item${job.imported === 1 ? "" : "s"} · ${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"}`,
+    );
+  }, [api]);
+
+  // One watcher per job: manual syncs, mount resumes, and StrictMode
+  // double-effects all funnel here without duplicate toasts.
+  const finishSync = useCallback(async (provider: string, jobId: string) => {
+    const key = `${provider}:${jobId}`;
+    if (inflightSyncs.current.has(key)) return;
+    inflightSyncs.current.add(key);
+    try {
+      await pollSyncJob(provider, jobId);
+    } finally {
+      inflightSyncs.current.delete(key);
+    }
+  }, [pollSyncJob]);
+
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
@@ -336,7 +404,7 @@ export function SettingsPage() {
       if (billingResult.status === "fulfilled") setSubscription(billingResult.value.data.subscription ?? null);
 
       if (jobResult.status === "fulfilled") {
-        const latestByProvider = new Map<string, SyncJob>();
+        const latestByProvider = new Map<string, SyncJob & { provider: string; id: string }>();
         for (const job of jobResult.value.data) if (!latestByProvider.has(job.provider)) latestByProvider.set(job.provider, job);
         const summaries: Record<string, SyncState> = {};
         for (const [provider, job] of latestByProvider) {
@@ -348,9 +416,14 @@ export function SettingsPage() {
           const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
           if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
           if (job.failed > 0) parts.push(`${job.failed} failed`);
-          summaries[provider] = job.status === "processing"
-            ? { busy: true }
-            : { busy: false, summary: `${parts.join(" · ")}` };
+          if (job.status === "processing") {
+            summaries[provider] = { busy: true };
+            // A sync started earlier (this device or another) is still running
+            // server-side — resume watching it so the result lands here.
+            void finishSync(provider, job.id);
+          } else {
+            summaries[provider] = { busy: false, summary: `${parts.join(" · ")}` };
+          }
         }
         setSyncState(summaries);
       }
@@ -378,31 +451,7 @@ export function SettingsPage() {
     setSyncState((prev) => ({ ...prev, [provider]: { busy: true } }));
     try {
       const started = await api.post<{ data: { jobId: string } }>("/v1/emails/sync", { provider });
-      let job: SyncJob | null = null;
-      for (let attempt = 0; attempt < 120; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        const response = await api.get<{ data: SyncJob }>(`/v1/emails/sync/${started.data.jobId}`);
-        job = response.data;
-        if (job.status !== "processing") break;
-      }
-      if (!job || job.status === "processing") throw new Error("The email sync is still running. Check back in a minute.");
-      if (job.status === "failed") throw new Error(job.errorMessage ?? "The email sync failed.");
-
-      const parts = [`Scanned ${job.scanned}`, `Imported ${job.imported}`, `Duplicates ${job.duplicates}`];
-      if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
-      if (job.failed > 0) parts.push(`${job.failed} failed`);
-      const summary = parts.join(" · ");
-
-      const duplicates = job.duplicates > 0
-        ? (await api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25")).data
-        : [];
-      setDuplicateEmails(duplicates);
-      setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary } }));
-      toast.success(
-        job.imported === 0 && job.duplicates === 0
-          ? "Nothing new to import from this inbox."
-          : `Imported ${job.imported} email item${job.imported === 1 ? "" : "s"} · ${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"}`,
-      );
+      await finishSync(provider, started.data.jobId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not sync this inbox.";
       setSyncState((prev) => ({ ...prev, [provider]: { busy: false } }));

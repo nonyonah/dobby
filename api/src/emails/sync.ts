@@ -137,6 +137,9 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
     if (seenIds.has(message.id)) continue;
     seenIds.add(message.id);
     counts.scanned += 1;
+    // Heartbeat per message start (not just per completed message) so the
+    // job row — and its updatedAt — stays live through multi-minute PDFs.
+    await saveJob();
     try {
       const previous = await prisma.emailImport.findUnique({
         where: { ownerClerkId_provider_messageId: { ownerClerkId, provider, messageId: message.id } },
