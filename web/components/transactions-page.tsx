@@ -110,6 +110,7 @@ function mapReview(item: ApiReview): TxFull {
 function TransactionsInner() {
   const [rows, setRows] = useState<TxFull[]>([]);
   const [reviewRows, setReviewRows] = useState<TxFull[]>([]);
+  const [approving, setApproving] = useState(false);
   const [view, setView] = useState<"ledger" | "review">("review");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -253,19 +254,27 @@ function TransactionsInner() {
   };
 
   const approveReview = async (ids: string[], overrides: Record<string, string> = {}) => {
+    setApproving(true);
     try {
-      await Promise.all(
-        ids.map((id) =>
-          api.post(`/v1/reviews/${id}/approve`, overrides[id] ? { categoryId: overrides[id] } : {}),
-        ),
+      const response = await api.post<{ data: { approved: string[]; duplicates: string[]; failed: Array<{ id: string; message: string }> } }>(
+        "/v1/reviews/approve-many",
+        { items: ids.map((id) => ({ id, ...(overrides[id] ? { categoryId: overrides[id] } : {}) })) },
       );
-      setReviewRows((prev) => prev.filter((transaction) => !ids.includes(transaction.id)));
+      const { approved, duplicates, failed } = response.data;
+      const resolved = new Set([...approved, ...duplicates]);
+      setReviewRows((prev) => prev.filter((transaction) => !resolved.has(transaction.id)));
       setRows((await fetchAllTransactions(month)).map(mapTransaction));
+      if (failed.length > 0) {
+        toast.error(failed.length === 1 ? (failed[0]?.message ?? "Could not approve this transaction.") : `${failed.length} of ${ids.length} could not be approved.`);
+        return;
+      }
     } catch {
       toast.error(ids.length === 1 ? "Could not approve this transaction." : "Could not approve these transactions.");
       return;
+    } finally {
+      setApproving(false);
     }
-    toast.success(ids.length === 1 ? "Transaction approved" : `${ids.length} transactions approved`);
+    toast.success(ids.length === 1 ? "Transaction approved" : "Everything approved");
     setView("ledger");
   };
 
@@ -330,7 +339,7 @@ function TransactionsInner() {
           </div>
           {view === "review" ? <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Approve items to add them to Ledger</p> : null}
         </div>
-        {view === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} /> : <>
+        {view === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving} /> : <>
           <TxTable
             rows={rows}
             selectedId={selectedId}

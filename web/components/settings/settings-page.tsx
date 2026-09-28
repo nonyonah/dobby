@@ -39,6 +39,14 @@ type BillingSubscription = {
   cancelAtPeriodEnd?: boolean | null;
 };
 
+type BillingTerm = {
+  provider: string;
+  plan: string;
+  periodEndsAt: string | null;
+  amount: string;
+  currency: string;
+};
+
 const formatDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
 
@@ -246,8 +254,18 @@ export function SettingsPage() {
     ? new Date(trialEndsAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : null;
   const [fullName, setFullName] = useState("");
-  const { startCheckout, busy: checkoutBusy } = useUpgrade();
+  const { startCheckout, busy: checkoutBusy, options } = useUpgrade();
+  const monthOption = options.find((option) => option.interval === "month");
+  const yearOption = options.find((option) => option.interval === "year");
+  const priceOf = (option: { label: string } | undefined) => (option?.label ?? "").replace(/\/(mo|yr)$/, "");
+  const monthSub = monthOption
+    ? `${priceOf(monthOption)} / month${monthOption.provider === "flutterwave" ? " · one-time, no auto-renew" : " · 14-day free trial"}`
+    : "$5.00 / month · 14-day free trial";
+  const yearSub = yearOption
+    ? `${priceOf(yearOption)} / year · two months free`
+    : "$50.00 / year · two months free";
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
+  const [billingTerm, setBillingTerm] = useState<BillingTerm | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   // Live subscription that has not been set to end: the plan control is then a
@@ -375,7 +393,7 @@ export function SettingsPage() {
         api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations"),
         api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25"),
         api.get<{ data: Array<SyncJob & { provider: string; id: string }> }>("/v1/emails/sync"),
-        api.get<{ data: { subscription: BillingSubscription | null } }>("/v1/billing"),
+        api.get<{ data: { subscription: BillingSubscription | null; term: BillingTerm | null } }>("/v1/billing"),
       ]);
       if (cancelled) return;
 
@@ -401,7 +419,10 @@ export function SettingsPage() {
       }
 
       if (duplicateResult.status === "fulfilled") setDuplicateEmails(duplicateResult.value.data);
-      if (billingResult.status === "fulfilled") setSubscription(billingResult.value.data.subscription ?? null);
+      if (billingResult.status === "fulfilled") {
+        setSubscription(billingResult.value.data.subscription ?? null);
+        setBillingTerm(billingResult.value.data.term ?? null);
+      }
 
       if (jobResult.status === "fulfilled") {
         const latestByProvider = new Map<string, SyncJob & { provider: string; id: string }>();
@@ -432,6 +453,32 @@ export function SettingsPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
+
+  // Flutterwave returns here after payment (?payment=flutterwave&transaction_id=…&tx_ref=…):
+  // verify server-side, then clean the URL so a refresh never re-verifies.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") !== "flutterwave") return;
+    const transactionId = params.get("transaction_id") ?? undefined;
+    const txRef = params.get("tx_ref") ?? undefined;
+    window.history.replaceState(null, "", window.location.pathname);
+    void (async () => {
+      try {
+        const response = await api.post<{ data: { granted?: boolean; already?: boolean } }>("/v1/billing/flutterwave/verify", {
+          ...(transactionId ? { transactionId: Number(transactionId) || transactionId } : {}),
+          ...(txRef ? { txRef } : {}),
+        });
+        if (response.data.granted) {
+          refreshPlan();
+          toast.success(response.data.already ? "Dobby Pro is already active on this payment." : "Payment confirmed — Dobby Pro is active.");
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not confirm the payment.");
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
@@ -703,11 +750,11 @@ export function SettingsPage() {
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuItem className="flex-col items-start gap-0.5 py-2" onClick={() => startCheckout("month")}>
                       <span className="text-[13px] font-semibold text-foreground">Monthly</span>
-                      <span className="text-[11px] font-medium text-muted-foreground">$5.00 / month · 14-day free trial</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">{monthSub}</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem className="flex-col items-start gap-0.5 py-2" onClick={() => startCheckout("year")}>
                       <span className="text-[13px] font-semibold text-foreground">Annual</span>
-                      <span className="text-[11px] font-medium text-muted-foreground">$50.00 / year · two months free</span>
+                      <span className="text-[11px] font-medium text-muted-foreground">{yearSub}</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -717,7 +764,9 @@ export function SettingsPage() {
               label="Current plan"
               description={
                 plan === "ACTIVE"
-                  ? subscription?.currentPeriodEnd
+                  ? billingTerm?.periodEndsAt
+                    ? `Dobby Pro until ${formatDate(billingTerm.periodEndsAt)} (one-time ${billingTerm.plan === "year" ? "annual" : "monthly"} term, no auto-renew).`
+                    : subscription?.currentPeriodEnd
                     ? `Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders. Renews ${formatDate(subscription.currentPeriodEnd)}.`
                     : "Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders."
                   : plan === "TRIAL"

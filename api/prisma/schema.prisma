@@ -87,6 +87,7 @@ model User {
   bachsTrialEnd         DateTime?
   bachsCurrentPeriodEnd DateTime?
   bachsCancelAtPeriodEnd Boolean                @default(false)
+  planExpiresAt          DateTime?
   onboardedAt          DateTime?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
@@ -107,6 +108,7 @@ model User {
   emailSyncJobs        EmailSyncJob[]
   emailImports         EmailImport[]
   reminderLogs         ReminderLog[]
+  payments             Payment[]
 }
 
 model Profile {
@@ -166,6 +168,30 @@ model ReminderLog {
 
   @@unique([ownerClerkId, kind, taxYear, daysBefore])
   @@index([ownerClerkId, kind])
+}
+
+/**
+ * One-time Pro term purchases (Flutterwave NGN). Bachs subscriptions live on
+ * the User row; these rows are the audit trail plus the idempotency key
+ * (txRef) shared by checkout, verify, and webhook fulfillment.
+ */
+model Payment {
+  id              String    @id @default(cuid())
+  ownerClerkId    String
+  provider        String    @default("flutterwave")
+  txRef           String    @unique
+  providerTxId    String?
+  plan            String    // "month" | "year"
+  amount          Decimal   @db.Decimal(19, 4)
+  currency        String    @default("NGN")
+  status          String    @default("pending") // pending | paid | failed
+  paidAt          DateTime?
+  periodEndsAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  owner           User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@index([ownerClerkId, status])
 }
 
 model Account {

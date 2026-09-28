@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { loadBachs, type Bachs, type BachsCheckoutEvent } from "@bachs/js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,14 +11,35 @@ import { usePlan } from "@/components/plan-provider";
 /** The two cadences Dobby Pro is sold on. */
 export type BillingInterval = "month" | "year";
 
+/** One priced way to buy Pro: Bachs subscription (USD) or Flutterwave term (NGN). */
+export type BillingOption = {
+  provider: "bachs" | "flutterwave";
+  interval: BillingInterval;
+  amount: number;
+  currency: string;
+  label: string;
+};
+
+const FALLBACK_OPTIONS: BillingOption[] = [
+  { provider: "bachs", interval: "month", amount: 5, currency: "USD", label: "$5/mo" },
+  { provider: "bachs", interval: "year", amount: 50, currency: "USD", label: "$50/yr" },
+];
+
+export function optionLabel(options: BillingOption[], interval: BillingInterval, fallback: string): string {
+  return options.find((option) => option.interval === interval)?.label ?? fallback;
+}
+
 type UpgradeContextValue = {
-  /** Opens the Bachs-hosted checkout as an in-page overlay; no plan picker of our own. */
+  /** Opens checkout for the region's provider: Bachs overlay (USD) or Flutterwave redirect (NGN). */
   startCheckout: (interval?: BillingInterval) => void;
   /** True while a checkout is being prepared or is on screen. */
   busy: boolean;
+  /** Region-aware prices for labels; USD Bachs until the options load. */
+  options: BillingOption[];
+  region: "NG" | "US" | null;
 };
 
-const UpgradeContext = createContext<UpgradeContextValue>({ startCheckout: () => {}, busy: false });
+const UpgradeContext = createContext<UpgradeContextValue>({ startCheckout: () => {}, busy: false, options: FALLBACK_OPTIONS, region: null });
 
 /**
  * Owns checkout creation so every upgrade control shares one request path and
@@ -31,8 +52,40 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
   const { refresh: refreshPlan } = usePlan();
   const [busy, setBusy] = useState(false);
+  const [options, setOptions] = useState<BillingOption[]>(FALLBACK_OPTIONS);
+  const [region, setRegion] = useState<"NG" | "US" | null>(null);
+  const optionsRef = useRef<BillingOption[] | null>(null);
   const bachsRef = useRef<Bachs | null>(null);
   const completedRef = useRef(false);
+
+  // Region-aware prices (NG → Flutterwave NGN, otherwise Bachs USD), loaded
+  // once; USD Bachs labels render until then so nothing flashes empty.
+  const ensureOptions = useCallback(async () => {
+    if (optionsRef.current) return optionsRef.current;
+    try {
+      const response = await api.get<{ data: { region: "NG" | "US"; options: BillingOption[] } }>("/v1/billing/options");
+      if (response.data.options.length > 0) {
+        optionsRef.current = response.data.options;
+        setOptions(response.data.options);
+      }
+      setRegion(response.data.region);
+    } catch {
+      // Offline or logged out — keep the USD fallback labels.
+    }
+    return optionsRef.current ?? FALLBACK_OPTIONS;
+  }, [api]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      await ensureOptions();
+      if (cancelled) return;
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureOptions]);
 
   // The browser event is only a UI hint — Bachs' webhook is what activates the
   // plan — so after a completed checkout we poll until the subscription shows.
@@ -95,7 +148,18 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
       completedRef.current = false;
       void (async () => {
         try {
-          const response = await api.post<{ data: { url: string } }>("/v1/billing/checkout", { interval });
+          const opts = await ensureOptions();
+          const option = opts.find((item) => item.interval === interval) ?? opts[0];
+          if (option?.provider === "flutterwave") {
+            // One-time NGN term: Flutterwave hosts the whole page, so leave
+            // the app; the return URL verifies and the webhook fulfills.
+            const response = await api.post<{ data: { link: string } }>("/v1/billing/flutterwave/checkout", {
+              interval: option.interval,
+            });
+            window.location.assign(response.data.link);
+            return;
+          }
+          const response = await api.post<{ data: { url: string } }>("/v1/billing/checkout", { interval: option?.interval ?? interval });
           // Load the script from the same origin that serves this session, so a
           // sandbox checkout talks to the sandbox and live to live.
           const bachs = bachsRef.current ?? (await loadBachs({ baseUrl: new URL(response.data.url).origin }));
@@ -109,10 +173,10 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
         }
       })();
     },
-    [api, busy, handleEvent],
+    [api, busy, ensureOptions, handleEvent],
   );
 
-  return <UpgradeContext.Provider value={{ startCheckout, busy }}>{children}</UpgradeContext.Provider>;
+  return <UpgradeContext.Provider value={{ startCheckout, busy, options, region }}>{children}</UpgradeContext.Provider>;
 }
 
 export function useUpgrade() {
@@ -126,7 +190,7 @@ export function useUpgrade() {
  */
 export function TrialExpiredBanner() {
   const { expired } = usePlan();
-  const { startCheckout, busy } = useUpgrade();
+  const { startCheckout, busy, options } = useUpgrade();
   if (!expired) return null;
 
   return (
@@ -137,10 +201,10 @@ export function TrialExpiredBanner() {
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="secondary" size="small" disabled={busy} onClick={() => startCheckout("year")}>
-            Annual $50
+            Annual {optionLabel(options, "year", "$50/yr").replace("/yr", "")}
           </Button>
           <Button variant="primary" size="small" disabled={busy} onClick={() => startCheckout("month")}>
-            {busy ? "Opening checkout…" : "Upgrade $5/mo"}
+            {busy ? "Opening checkout…" : `Upgrade ${optionLabel(options, "month", "$5/mo")}`}
           </Button>
         </div>
       </div>
@@ -174,7 +238,7 @@ export function UpgradeCard({
   description?: string;
   className?: string;
 }) {
-  const { startCheckout, busy } = useUpgrade();
+  const { startCheckout, busy, options } = useUpgrade();
 
   return (
     <Card className={`border-0 shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] ${className}`}>
@@ -190,7 +254,7 @@ export function UpgradeCard({
             </p>
           </div>
           <Button variant="primary" size="small" className="shrink-0" disabled={busy} onClick={() => startCheckout()}>
-            {busy ? "Opening…" : "Upgrade $5/mo"}
+            {busy ? "Opening…" : `Upgrade ${optionLabel(options, "month", "$5/mo")}`}
           </Button>
         </div>
       </CardContent>

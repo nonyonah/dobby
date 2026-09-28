@@ -40,48 +40,64 @@ reviewsRouter.get("/", async (req, res) => {
   res.json({ data });
 });
 
-reviewsRouter.post("/:id/approve", async (req, res) => {
-  await assertPro(req.auth?.userId, "Approving reviewed transactions");
-  const ownerClerkId = req.auth!.userId;
-  const override = z.object({ categoryId: z.string().trim().min(1).max(80).nullable().optional() }).parse(req.body);
-  const item = await prisma.transactionReviewItem.findFirst({ where: { id: req.params.id, ownerClerkId } });
-  if (!item) {
-    res.status(404).json({ error: { code: "REVIEW_ITEM_NOT_FOUND", message: "Review item was not found." } });
-    return;
-  }
-  if (item.status !== ReviewStatus.PENDING) {
-    res.status(409).json({ error: { code: "REVIEW_ITEM_ALREADY_RESOLVED", message: "Review item has already been resolved." } });
-    return;
-  }
-  const proposed = proposedTransactionSchema.safeParse(item.proposedData);
-  if (!proposed.success) {
-    res.status(400).json({ error: { code: "REVIEW_ITEM_INVALID", message: "This row has no valid proposed transaction." } });
-    return;
-  }
-  if (override.categoryId) {
-    const category = await prisma.category.findFirst({ where: { id: override.categoryId, ownerClerkId, isArchived: false }, select: { id: true } });
-    if (!category) {
-      res.status(400).json({ error: { code: "INVALID_CATEGORY", message: "The chosen category is not available." } });
-      return;
-    }
-    proposed.data.categoryId = override.categoryId;
-  }
+type ApproveInput = { id: string; categoryId?: string | null };
+type ApproveResult =
+  | { id: string; ok: true; duplicate: boolean }
+  | { id: string; ok: false; code: string; message: string };
 
-  const rawCurrency = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined;
-  const sourceCurrency = proposed.data.currency ?? rawCurrency ?? "USD";
-  if (proposed.data.categoryId) {
-    const category = await prisma.category.findFirst({ where: { id: proposed.data.categoryId, ownerClerkId, isArchived: false }, select: { id: true } });
-    if (!category) {
-      res.status(400).json({ error: { code: "INVALID_CATEGORY", message: "The suggested category is not available." } });
-      return;
+/**
+ * Approve review items sequentially in one request. Bulk approval used to fan
+ * out N concurrent single-item POSTs, each holding pool connections across an
+ * interactive transaction — approve-all on a real queue starved the pool.
+ * Sequential writes plus one cached category lookup per id keep this flat.
+ */
+async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]): Promise<ApproveResult[]> {
+  const items = await prisma.transactionReviewItem.findMany({
+    where: { id: { in: inputs.map((input) => input.id) }, ownerClerkId },
+  });
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const categoryCache = new Map<string, boolean>();
+  const results: ApproveResult[] = [];
+  for (const input of inputs) {
+    const item = byId.get(input.id);
+    if (!item) {
+      results.push({ id: input.id, ok: false, code: "REVIEW_ITEM_NOT_FOUND", message: "Pending review item was not found." });
+      continue;
     }
-  }
-  const result = await prisma.$transaction(async (tx) => {
+    if (item.status !== ReviewStatus.PENDING) {
+      results.push({ id: input.id, ok: false, code: "REVIEW_ITEM_ALREADY_RESOLVED", message: "Review item has already been resolved." });
+      continue;
+    }
+    const proposed = proposedTransactionSchema.safeParse(item.proposedData);
+    if (!proposed.success) {
+      results.push({ id: input.id, ok: false, code: "REVIEW_ITEM_INVALID", message: "This row has no valid proposed transaction." });
+      continue;
+    }
+    const categoryId = input.categoryId ?? proposed.data.categoryId;
+    if (categoryId) {
+      let valid = categoryCache.get(categoryId);
+      if (valid === undefined) {
+        const category = await prisma.category.findFirst({ where: { id: categoryId, ownerClerkId, isArchived: false }, select: { id: true } });
+        valid = Boolean(category);
+        categoryCache.set(categoryId, valid);
+      }
+      if (!valid) {
+        results.push({ id: input.id, ok: false, code: "INVALID_CATEGORY", message: "The chosen category is not available." });
+        continue;
+      }
+      proposed.data.categoryId = categoryId;
+    }
+
+    const rawCurrency = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined;
+    const sourceCurrency = proposed.data.currency ?? rawCurrency ?? "USD";
     if (item.fingerprint) {
-      const duplicate = await tx.transaction.findFirst({ where: { ownerClerkId, fingerprint: item.fingerprint } });
-      if (duplicate) return { duplicate: true as const };
+      const duplicate = await prisma.transaction.findFirst({ where: { ownerClerkId, fingerprint: item.fingerprint }, select: { id: true } });
+      if (duplicate) {
+        results.push({ id: input.id, ok: true, duplicate: true });
+        continue;
+      }
     }
-    const origin = await tx.transactionImport.findFirst({ where: { id: item.importId, ownerClerkId }, select: { type: true } });
+    const origin = await prisma.transactionImport.findFirst({ where: { id: item.importId, ownerClerkId }, select: { type: true } });
     const transactionData: Prisma.TransactionUncheckedCreateInput = {
       ownerClerkId,
       type: proposed.data.type,
@@ -95,16 +111,46 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
       source: origin?.type === "RECEIPT" ? "receipt" : "statement",
       needsReview: false,
     };
-    const transaction = await tx.transaction.create({ data: transactionData });
-    await tx.transactionReviewItem.update({ where: { id: item.id }, data: { status: ReviewStatus.APPROVED } });
-    return { transaction };
-  });
+    try {
+      await prisma.transaction.create({ data: transactionData });
+      await prisma.transactionReviewItem.update({ where: { id: item.id }, data: { status: ReviewStatus.APPROVED } });
+      results.push({ id: input.id, ok: true, duplicate: false });
+    } catch (error) {
+      results.push({ id: input.id, ok: false, code: "APPROVE_FAILED", message: error instanceof Error ? error.message : "Could not approve this transaction." });
+    }
+  }
+  return results;
+}
 
-  if ("duplicate" in result && result.duplicate) {
+reviewsRouter.post("/approve-many", async (req, res) => {
+  await assertPro(req.auth?.userId, "Approving reviewed transactions");
+  const input = z
+    .object({ items: z.array(z.object({ id: z.string().min(1), categoryId: z.string().trim().min(1).max(80).nullable().optional() })).min(1).max(200) })
+    .parse(req.body);
+  const results = await approveReviewItems(req.auth!.userId, input.items);
+  const approved = results.filter((result) => result.ok && !result.duplicate).map((result) => result.id);
+  const duplicates = results.filter((result) => result.ok && result.duplicate).map((result) => result.id);
+  const failed = results.filter((result) => !result.ok);
+  res.json({ data: { results, approved, duplicates, failed } });
+});
+
+reviewsRouter.post("/:id/approve", async (req, res) => {
+  await assertPro(req.auth?.userId, "Approving reviewed transactions");
+  const ownerClerkId = req.auth!.userId;
+  const override = z.object({ categoryId: z.string().trim().min(1).max(80).nullable().optional() }).parse(req.body);
+  const [result] = await approveReviewItems(ownerClerkId, [{ id: req.params.id, categoryId: override.categoryId }]);
+  if (!result || !result.ok) {
+    const code = result && !result.ok ? result.code : "REVIEW_ITEM_NOT_FOUND";
+    const message = result && !result.ok ? result.message : "Review item was not found.";
+    const status = code === "REVIEW_ITEM_NOT_FOUND" ? 404 : code === "REVIEW_ITEM_ALREADY_RESOLVED" ? 409 : 400;
+    res.status(status).json({ error: { code, message } });
+    return;
+  }
+  if (result.duplicate) {
     res.status(409).json({ error: { code: "DUPLICATE_TRANSACTION", message: "A transaction with this fingerprint already exists." } });
     return;
   }
-  res.json({ data: result.transaction });
+  res.json({ data: { approvedId: result.id } });
 });
 
 reviewsRouter.post("/:id/reject", async (req, res) => {

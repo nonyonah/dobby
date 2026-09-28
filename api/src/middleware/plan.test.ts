@@ -77,3 +77,23 @@ describe("trialEndsAt", () => {
     expect(trialEndsAt({ plan: "TRIAL", trialStartedAt: null })).toBeNull();
   });
 });
+
+describe("computeEffectivePlan with a one-time term", () => {
+  it("keeps stored ACTIVE alive while the term is in the future", () => {
+    expect(
+      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: inDays(10) }),
+    ).toBe("ACTIVE");
+  });
+
+  it("expires stored ACTIVE once the term lapses", () => {
+    expect(
+      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: daysAgo(1) }),
+    ).toBe("EXPIRED");
+  });
+
+  it("prefers a live Bachs subscription over a lapsed term", () => {
+    expect(
+      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: daysAgo(1), bachsSubscriptionStatus: "active" }),
+    ).toBe("ACTIVE");
+  });
+});

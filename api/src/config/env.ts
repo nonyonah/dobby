@@ -43,6 +43,8 @@ const envSchema = z.object({
   BACHS_WEBHOOK_SECRET: optionalString,
   BACHS_PRO_PRODUCT_ID: optionalString,
   BACHS_PRO_YEARLY_PRODUCT_ID: optionalString,
+  FLUTTERWAVE_SECRET_KEY: optionalString,
+  FLUTTERWAVE_SECRET_HASH: optionalString,
 });
 
 const parsed = envSchema.safeParse(process.env);

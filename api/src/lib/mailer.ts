@@ -15,14 +15,41 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
     logger.info({ to, subject }, "email skipped: RESEND_NOT_CONFIGURED");
     return false;
   }
+  const resend = new Resend(apiKey);
   try {
-    await new Resend(apiKey).emails.send({ from, to, subject, text });
+    await resend.emails.send({ from, to, subject, text });
     logger.info({ to, subject }, "email sent");
     return true;
   } catch (error) {
+    // The sending domain (e.g. riftlabs.xyz) may not be verified in Resend
+    // (403 "domain is not verified"). Fall back to Resend's test sender,
+    // which delivers to the Resend account owner — better than silence.
+    if (isDomainNotVerified(error) && from !== RESEND_TEST_SENDER) {
+      logger.warn({ to, subject, from }, "sending domain unverified, retrying via Resend test sender");
+      try {
+        await resend.emails.send({ from: RESEND_TEST_SENDER, to, subject, text });
+        logger.info({ to, subject }, "email sent via Resend test sender");
+        return true;
+      } catch (fallbackError) {
+        logger.warn(
+          { to, subject, error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError) },
+          "test-sender fallback failed — verify the domain at https://resend.com/domains (SPF + DKIM)",
+        );
+        return false;
+      }
+    }
     logger.warn({ to, subject, error: error instanceof Error ? error.message : String(error) }, "email send failed");
     return false;
   }
+}
+
+/** Resend's sender for unverified domains — only reaches the account owner. */
+export const RESEND_TEST_SENDER = "onboarding@resend.dev";
+
+/** Matches Resend's 403 "domain is not verified" validation error. */
+export function isDomainNotVerified(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /domain is not verified/i.test(message);
 }
 
 /** The address reminders go to — null when the user never shared one. */

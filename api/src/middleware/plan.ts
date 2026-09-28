@@ -13,6 +13,8 @@ type PlanRow = {
   trialStartedAt: Date | null;
   bachsSubscriptionStatus?: string | null;
   bachsTrialEnd?: Date | null;
+  /** Term end for one-time purchases (Flutterwave). Null for subscriptions/trials. */
+  planExpiresAt?: Date | null;
 };
 
 /**
@@ -42,6 +44,9 @@ export function computeEffectivePlan(user: PlanRow): EffectivePlan {
   const status = user.bachsSubscriptionStatus;
   if (status === "trialing") return "TRIAL";
   if (status === "active" || status === "past_due") return "ACTIVE";
+  // One-time terms (Flutterwave) lapse on their own clock, independent of the
+  // signup trial: a stored ACTIVE with a past term end is EXPIRED.
+  if (user.planExpiresAt && user.planExpiresAt.getTime() <= Date.now()) return "EXPIRED";
   return computeLocalPlan(user);
 }
 
@@ -61,7 +66,7 @@ export async function loadEffectivePlan(
 ): Promise<{ plan: EffectivePlan; trialStartedAt: Date | null; trialEndsAt: Date | null }> {
   const user = await prisma.user.findUnique({
     where: { clerkId },
-    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true },
+    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true, planExpiresAt: true },
   });
   if (!user) return { plan: "EXPIRED", trialStartedAt: null, trialEndsAt: null };
 
@@ -95,7 +100,7 @@ export async function assertPro(userId: string | undefined, feature: string): Pr
   }
   const user = await prisma.user.findUnique({
     where: { clerkId: userId },
-    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true },
+    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true, planExpiresAt: true },
   });
   if (!user) {
     throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
