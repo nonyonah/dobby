@@ -7,7 +7,7 @@ import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
-import { billingConfigured, cancelProSubscription, createPortalSession, createProCheckout, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
+import { BACHS_USD_PRICES, billingConfigured, cancelProSubscription, createCryptoCheckout, createPortalSession, createProCheckout, getCheckoutSession, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
 import { FLUTTERWAVE_PRICES, createFlutterwavePayment, flutterwaveConfigured, flutterwaveWebhookValid, newTxRef, verifyFlutterwaveTransaction, type FlutterwaveInterval, type VerifiedFlutterwaveTransaction } from "../lib/flutterwave.js";
 import { computeEffectivePlan, computeLocalPlan, trialEndsAt } from "../middleware/plan.js";
 
@@ -147,6 +147,17 @@ billingWebhookRouter.post(WEBHOOK_PATH, async (req, res) => {
     case "customer.subscription.deleted":
       await cancelSubscription(data);
       break;
+    case "checkout.completed":
+    case "collection.succeeded": {
+      const handled = await applyCryptoCollection(data, event.type);
+      if (!handled) logger.info({ eventId: event.id, eventType: event.type }, "bachs crypto event not fulfilled");
+      break;
+    }
+    case "checkout.expired":
+    case "collection.failed":
+    case "collection.underpaid":
+      await failCryptoCollection(data, event.type);
+      break;
     default:
       logger.info({ eventId: event.id, eventType: event.type }, "bachs webhook ignored");
   }
@@ -175,9 +186,9 @@ billingRouter.get("/", async (req, res) => {
     },
   });
   const term = await prisma.payment.findFirst({
-    where: { ownerClerkId: req.auth!.userId, provider: "flutterwave", status: "paid" },
+    where: { ownerClerkId: req.auth!.userId, provider: { in: ["flutterwave", "bachs"] }, status: "paid" },
     orderBy: { paidAt: "desc" },
-    select: { plan: true, periodEndsAt: true, currency: true, amount: true },
+    select: { provider: true, plan: true, periodEndsAt: true, currency: true, amount: true },
   });
 
   res.json({
@@ -205,6 +216,10 @@ billingRouter.post("/checkout", async (req, res) => {
   const requested = req.body?.interval;
   if (requested !== undefined && requested !== "month" && requested !== "year") {
     throw new AppError(400, 'interval must be "month" or "year".', "VALIDATION_ERROR");
+  }
+  const method = req.body?.method ?? "card";
+  if (method !== "card" && method !== "crypto") {
+    throw new AppError(400, 'method must be "card" or "crypto".', "VALIDATION_ERROR");
   }
   const interval: BillingInterval = requested ?? "month";
 
@@ -236,11 +251,33 @@ billingRouter.post("/checkout", async (req, res) => {
   }
 
   const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;
+  if (method === "crypto") {
+    // One-time crypto term: subscriptions reject non-card methods, so this
+    // sells the same cadence as pure pricing and fulfills a 30/365-day term
+    // through the shared Payment row (webhook + status poll below).
+    const price = BACHS_USD_PRICES[interval];
+    const txRef = `dobby-bachs-${Date.now().toString(36)}-${clerkId.slice(-6)}`;
+    await prisma.payment.create({
+      data: {
+        ownerClerkId: clerkId,
+        provider: "bachs",
+        txRef,
+        plan: interval,
+        amount: new Prisma.Decimal(price.amount),
+        currency: "USD",
+        status: "pending",
+      },
+    });
+    const session = await createCryptoCheckout({ email, name, clerkUserId: clerkId, interval, reference: txRef });
+    res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url } });
+    return;
+  }
   const session = await createProCheckout({
     email,
     name,
     clerkUserId: clerkId,
     interval,
+    method,
   });
 
   res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url } });
@@ -479,3 +516,116 @@ billingWebhookRouter.post("/flutterwave/webhook", async (req, res) => {
     res.status(500).json({ error: { code: "WEBHOOK_FAILED", message: "Webhook processing failed." } });
   }
 });
+
+/**
+ * Fulfill a paid Bachs crypto checkout as a 30/365-day Pro term — the same
+ * shape as a Flutterwave term. Idempotent on txRef; strict on amount.
+ */
+async function grantBachsTerm(ownerClerkId: string, txRef: string, providerTxId: string, amount: number, currency: string) {
+  const payment = await prisma.payment.findUnique({ where: { txRef } });
+  if (!payment || payment.provider !== "bachs") throw new AppError(404, "No matching payment request.", "PAYMENT_NOT_FOUND");
+  if (payment.ownerClerkId !== ownerClerkId) throw new AppError(403, "This payment belongs to a different account.", "PAYMENT_OWNER_MISMATCH");
+  if (payment.status === "paid") return { granted: true, already: true as const, periodEndsAt: payment.periodEndsAt };
+  const expected = payment.plan === "year" ? 50 : 5;
+  if (currency !== "USD" || amount < expected) {
+    throw new AppError(402, "Paid amount does not match the plan price.", "PAYMENT_AMOUNT_MISMATCH");
+  }
+  const days = payment.plan === "year" ? BACHS_USD_PRICES.year.days : BACHS_USD_PRICES.month.days;
+  const paidAt = new Date();
+  const periodEndsAt = new Date(paidAt.getTime() + days * 86_400_000);
+  await prisma.payment.update({
+    where: { txRef },
+    data: { status: "paid", providerTxId, paidAt, periodEndsAt },
+  });
+  await prisma.user.update({ where: { clerkId: ownerClerkId }, data: { plan: Plan.ACTIVE, planExpiresAt: periodEndsAt } });
+  logger.info({ clerkId: ownerClerkId, txRef, plan: payment.plan }, "bachs crypto term granted");
+  return { granted: true, already: false as const, periodEndsAt };
+}
+
+/** Poll target for the overlay after a crypto checkout completes in-browser. */
+billingRouter.post("/bachs/status", async (req, res) => {
+  const checkoutId = z.object({ checkoutId: z.string().min(1) }).parse(req.body).checkoutId;
+  const clerkId = req.auth!.userId;
+  const session = await getCheckoutSession(checkoutId);
+  const paymentStatus = session.payment_status ?? session.status ?? null;
+  if (paymentStatus !== "succeeded") {
+    res.json({ data: { paymentStatus, granted: false } });
+    return;
+  }
+  const txRef = session.reference ?? undefined;
+  const amount = Number(session.amount ?? NaN);
+  const currency = (session.currency ?? "").toUpperCase();
+  if (!txRef || !Number.isFinite(amount) || !currency) {
+    throw new AppError(502, "Checkout session is missing payment details.", "PAYMENT_DETAILS_MISSING");
+  }
+  res.json({ data: { paymentStatus, ...(await grantBachsTerm(clerkId, txRef, session.checkout_id ?? checkoutId, amount, currency)) } });
+});
+
+type CollectionData = {
+  reference?: unknown;
+  client_reference?: unknown;
+  checkout_id?: unknown;
+  checkoutId?: unknown;
+  amount?: unknown;
+  total?: unknown;
+  currency?: unknown;
+  metadata?: Record<string, unknown>;
+};
+
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+/**
+ * Fulfill a one-time crypto checkout from a webhook event. Parses leniently
+ * (Bachs may add fields) and verifies through the session whenever the event
+ * names one. Business mismatches return false (acknowledged, no retry);
+ * transport failures throw (non-2xx retries the delivery).
+ */
+async function applyCryptoCollection(data: SubscriptionData & CollectionData, eventType: string): Promise<boolean> {
+  const txRef = stringField(data.reference) ?? stringField(data.client_reference);
+  if (!txRef) {
+    logger.warn({ eventType }, "bachs crypto event has no reference");
+    return false;
+  }
+  const payment = await prisma.payment.findUnique({ where: { txRef } });
+  if (!payment || payment.provider !== "bachs") return false;
+  if (payment.status === "paid") return true;
+  const checkoutId = stringField(data.checkout_id) ?? stringField(data.checkoutId);
+  try {
+    if (checkoutId) {
+      const session = await getCheckoutSession(checkoutId);
+      if ((session.payment_status ?? session.status) !== "succeeded") return false;
+      const amount = Number(session.amount ?? data.amount ?? data.total ?? NaN);
+      const currency = String(session.currency ?? data.currency ?? "").toUpperCase();
+      if (!Number.isFinite(amount) || !currency) return false;
+      await grantBachsTerm(payment.ownerClerkId, txRef, session.checkout_id ?? checkoutId, amount, currency);
+      return true;
+    }
+    const amount = Number(data.amount ?? data.total ?? NaN);
+    const currency = String(data.currency ?? "").toUpperCase();
+    if (!Number.isFinite(amount) || !currency) {
+      logger.warn({ txRef, eventType }, "bachs collection event missing amount/currency");
+      return false;
+    }
+    await grantBachsTerm(payment.ownerClerkId, txRef, txRef, amount, currency);
+    return true;
+  } catch (error) {
+    if (error instanceof AppError) {
+      logger.warn({ txRef, error: error.message }, "bachs crypto event rejected");
+      return false;
+    }
+    throw error;
+  }
+}
+
+/** A failed/underpaid/expired crypto checkout fails its pending payment row. */
+async function failCryptoCollection(data: SubscriptionData & CollectionData, eventType: string): Promise<void> {
+  const txRef = stringField(data.reference) ?? stringField(data.client_reference);
+  if (!txRef) return;
+  try {
+    await prisma.payment.updateMany({ where: { txRef, status: "pending" }, data: { status: "failed" } });
+  } catch (error) {
+    logger.warn({ txRef, eventType, error: error instanceof Error ? error.message : String(error) }, "could not fail crypto payment");
+  }
+}

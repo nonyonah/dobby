@@ -255,15 +255,34 @@ export function SettingsPage() {
     : null;
   const [fullName, setFullName] = useState("");
   const { startCheckout, busy: checkoutBusy, options } = useUpgrade();
-  const monthOption = options.find((option) => option.interval === "month");
-  const yearOption = options.find((option) => option.interval === "year");
   const priceOf = (option: { label: string } | undefined) => (option?.label ?? "").replace(/\/(mo|yr)$/, "");
-  const monthSub = monthOption
-    ? `${priceOf(monthOption)} / month${monthOption.provider === "flutterwave" ? " · one-time, no auto-renew" : " · 14-day free trial"}`
-    : "$5.00 / month · 14-day free trial";
-  const yearSub = yearOption
-    ? `${priceOf(yearOption)} / year · two months free`
-    : "$50.00 / year · two months free";
+  /** Plan rows: one per cadence, plus a crypto variant wherever Bachs bills. */
+  const planItems = options.flatMap((option) => {
+    const per = option.interval === "month" ? "month" : "year";
+    const title = option.interval === "month" ? "Monthly" : "Annual";
+    if (option.provider === "flutterwave") {
+      return [{
+        key: `flutterwave:${option.interval}`,
+        title,
+        sub: `${priceOf(option)} / ${per} · one-time, no auto-renew`,
+        run: () => startCheckout(option.interval),
+      }];
+    }
+    return [
+      {
+        key: `bachs:${option.interval}:card`,
+        title,
+        sub: `${priceOf(option)} / ${per} · 7-day free trial`,
+        run: () => startCheckout(option.interval, "card"),
+      },
+      {
+        key: `bachs:${option.interval}:crypto`,
+        title,
+        sub: `${priceOf(option)} / ${per} · pay with crypto`,
+        run: () => startCheckout(option.interval, "crypto"),
+      },
+    ];
+  });
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
   const [billingTerm, setBillingTerm] = useState<BillingTerm | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
@@ -733,9 +752,9 @@ export function SettingsPage() {
                       ? `Your subscription ends ${formatDate(subscription.currentPeriodEnd)} — pick a plan to keep Dobby Pro running.`
                       : "Your subscription has ended — pick a plan to keep Dobby Pro running."
                     : plan === "EXPIRED"
-                      ? "Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a 14-day free trial."
+                      ? "Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a 7-day free trial."
                       : plan === "TRIAL"
-                        ? "Keep every feature without interruption when your trial ends. Both plans start with a 14-day free trial."
+                        ? "Keep every feature without interruption when your trial ends. Both plans start with a 7-day free trial."
                         : "Unlocks email auto-fetch, wallet tracking, net worth, proactive flags, and monthly reminders."
                 }
               >
@@ -748,14 +767,12 @@ export function SettingsPage() {
                     }
                   />
                   <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem className="flex-col items-start gap-0.5 py-2" onClick={() => startCheckout("month")}>
-                      <span className="text-[13px] font-semibold text-foreground">Monthly</span>
-                      <span className="text-[11px] font-medium text-muted-foreground">{monthSub}</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="flex-col items-start gap-0.5 py-2" onClick={() => startCheckout("year")}>
-                      <span className="text-[13px] font-semibold text-foreground">Annual</span>
-                      <span className="text-[11px] font-medium text-muted-foreground">{yearSub}</span>
-                    </DropdownMenuItem>
+                    {planItems.map((item) => (
+                      <DropdownMenuItem key={item.key} className="flex-col items-start gap-0.5 py-2" onClick={item.run}>
+                        <span className="text-[13px] font-semibold text-foreground">{item.title}</span>
+                        <span className="text-[11px] font-medium text-muted-foreground">{item.sub}</span>
+                      </DropdownMenuItem>
+                    ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </Row>
@@ -770,7 +787,7 @@ export function SettingsPage() {
                     ? `Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders. Renews ${formatDate(subscription.currentPeriodEnd)}.`
                     : "Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders."
                   : plan === "TRIAL"
-                    ? `Free trial — every Pro feature unlocked for 14 days, no card required${trialEndsOn ? `, ending ${trialEndsOn}` : ""}.`
+                    ? `Free trial — every Pro feature unlocked for 7 days, no card required${trialEndsOn ? `, ending ${trialEndsOn}` : ""}.`
                     : plan === "EXPIRED"
                       ? "Your free trial has ended. Your ledger, history, and past insights are all still here and fully visible."
                       : "Reading your plan…"

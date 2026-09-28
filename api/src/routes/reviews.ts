@@ -74,44 +74,46 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
       continue;
     }
     const categoryId = input.categoryId ?? proposed.data.categoryId;
-    if (categoryId) {
-      let valid = categoryCache.get(categoryId);
-      if (valid === undefined) {
-        const category = await prisma.category.findFirst({ where: { id: categoryId, ownerClerkId, isArchived: false }, select: { id: true } });
-        valid = Boolean(category);
-        categoryCache.set(categoryId, valid);
-      }
-      if (!valid) {
-        results.push({ id: input.id, ok: false, code: "INVALID_CATEGORY", message: "The chosen category is not available." });
-        continue;
-      }
-      proposed.data.categoryId = categoryId;
-    }
-
-    const rawCurrency = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined;
-    const sourceCurrency = proposed.data.currency ?? rawCurrency ?? "USD";
-    if (item.fingerprint) {
-      const duplicate = await prisma.transaction.findFirst({ where: { ownerClerkId, fingerprint: item.fingerprint }, select: { id: true } });
-      if (duplicate) {
-        results.push({ id: input.id, ok: true, duplicate: true });
-        continue;
-      }
-    }
-    const origin = await prisma.transactionImport.findFirst({ where: { id: item.importId, ownerClerkId }, select: { type: true } });
-    const transactionData: Prisma.TransactionUncheckedCreateInput = {
-      ownerClerkId,
-      type: proposed.data.type,
-      amount: proposed.data.amount,
-      currency: sourceCurrency,
-      categoryId: proposed.data.categoryId,
-      description: proposed.data.description,
-      merchant: proposed.data.merchant,
-      occurredAt: proposed.data.occurredAt,
-      fingerprint: item.fingerprint,
-      source: origin?.type === "RECEIPT" ? "receipt" : "statement",
-      needsReview: false,
-    };
+    // Everything below touches the database — one slow query must fail only
+    // its own row, never abort the whole batch.
     try {
+      if (categoryId) {
+        let valid = categoryCache.get(categoryId);
+        if (valid === undefined) {
+          const category = await prisma.category.findFirst({ where: { id: categoryId, ownerClerkId, isArchived: false }, select: { id: true } });
+          valid = Boolean(category);
+          categoryCache.set(categoryId, valid);
+        }
+        if (!valid) {
+          results.push({ id: input.id, ok: false, code: "INVALID_CATEGORY", message: "The chosen category is not available." });
+          continue;
+        }
+        proposed.data.categoryId = categoryId;
+      }
+
+      const rawCurrency = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined;
+      const sourceCurrency = proposed.data.currency ?? rawCurrency ?? "USD";
+      if (item.fingerprint) {
+        const duplicate = await prisma.transaction.findFirst({ where: { ownerClerkId, fingerprint: item.fingerprint }, select: { id: true } });
+        if (duplicate) {
+          results.push({ id: input.id, ok: true, duplicate: true });
+          continue;
+        }
+      }
+      const origin = await prisma.transactionImport.findFirst({ where: { id: item.importId, ownerClerkId }, select: { type: true } });
+      const transactionData: Prisma.TransactionUncheckedCreateInput = {
+        ownerClerkId,
+        type: proposed.data.type,
+        amount: proposed.data.amount,
+        currency: sourceCurrency,
+        categoryId: proposed.data.categoryId,
+        description: proposed.data.description,
+        merchant: proposed.data.merchant,
+        occurredAt: proposed.data.occurredAt,
+        fingerprint: item.fingerprint,
+        source: origin?.type === "RECEIPT" ? "receipt" : "statement",
+        needsReview: false,
+      };
       await prisma.transaction.create({ data: transactionData });
       await prisma.transactionReviewItem.update({ where: { id: item.id }, data: { status: ReviewStatus.APPROVED } });
       results.push({ id: input.id, ok: true, duplicate: false });

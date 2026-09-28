@@ -24,6 +24,11 @@ import { useCategories } from "@/hooks/use-categories";
 import { TX_CATEGORIES } from "@/lib/transactions";
 import { toast } from "@/components/ui/toast";
 
+/** Approvals go out in small sequential chunks: one bulk request beats N
+ * concurrent single approves (which starved the connection pool), and a
+ * stalled chunk fails only its own rows instead of aborting everything. */
+const APPROVE_CHUNK = 25;
+
 type ApiTransaction = {
   id: string;
   description: string;
@@ -111,6 +116,7 @@ function TransactionsInner() {
   const [rows, setRows] = useState<TxFull[]>([]);
   const [reviewRows, setReviewRows] = useState<TxFull[]>([]);
   const [approving, setApproving] = useState(false);
+  const [approveProgress, setApproveProgress] = useState<string | null>(null);
   const [view, setView] = useState<"ledger" | "review">("review");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -255,24 +261,42 @@ function TransactionsInner() {
 
   const approveReview = async (ids: string[], overrides: Record<string, string> = {}) => {
     setApproving(true);
-    try {
-      const response = await api.post<{ data: { approved: string[]; duplicates: string[]; failed: Array<{ id: string; message: string }> } }>(
-        "/v1/reviews/approve-many",
-        { items: ids.map((id) => ({ id, ...(overrides[id] ? { categoryId: overrides[id] } : {}) })) },
-      );
-      const { approved, duplicates, failed } = response.data;
-      const resolved = new Set([...approved, ...duplicates]);
-      setReviewRows((prev) => prev.filter((transaction) => !resolved.has(transaction.id)));
-      setRows((await fetchAllTransactions(month)).map(mapTransaction));
-      if (failed.length > 0) {
-        toast.error(failed.length === 1 ? (failed[0]?.message ?? "Could not approve this transaction.") : `${failed.length} of ${ids.length} could not be approved.`);
-        return;
+    const approved: string[] = [];
+    const duplicates: string[] = [];
+    const failed: Array<{ id: string; message: string }> = [];
+    for (let index = 0; index < ids.length; index += APPROVE_CHUNK) {
+      const chunk = ids.slice(index, index + APPROVE_CHUNK);
+      if (ids.length > APPROVE_CHUNK) setApproveProgress(`Approving ${Math.min(index + APPROVE_CHUNK, ids.length)} of ${ids.length}…`);
+      try {
+        const response = await api.post<{ data: { approved: string[]; duplicates: string[]; failed: Array<{ id: string; message: string }> } }>(
+          "/v1/reviews/approve-many",
+          { items: chunk.map((id) => ({ id, ...(overrides[id] ? { categoryId: overrides[id] } : {}) })) },
+          { timeoutMs: 120_000 },
+        );
+        approved.push(...response.data.approved);
+        duplicates.push(...response.data.duplicates);
+        failed.push(...response.data.failed);
+      } catch {
+        for (const id of ids.slice(index)) failed.push({ id, message: "Request did not complete." });
+        break;
       }
+    }
+    const resolved = new Set([...approved, ...duplicates]);
+    setReviewRows((prev) => prev.filter((transaction) => !resolved.has(transaction.id)));
+    try {
+      setRows((await fetchAllTransactions(month)).map(mapTransaction));
     } catch {
+      // The ledger refreshes on the next visit; approvals already landed.
+    }
+    setApproving(false);
+    setApproveProgress(null);
+    if (failed.length > 0 && approved.length === 0 && duplicates.length === 0) {
       toast.error(ids.length === 1 ? "Could not approve this transaction." : "Could not approve these transactions.");
       return;
-    } finally {
-      setApproving(false);
+    }
+    if (failed.length > 0) {
+      toast.error(`${failed.length} of ${ids.length} could not be approved — the rest are done. Review the leftovers and retry.`);
+      return;
     }
     toast.success(ids.length === 1 ? "Transaction approved" : "Everything approved");
     setView("ledger");
@@ -339,7 +363,7 @@ function TransactionsInner() {
           </div>
           {view === "review" ? <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Approve items to add them to Ledger</p> : null}
         </div>
-        {view === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving} /> : <>
+        {view === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving ? (approveProgress ?? true) : false} /> : <>
           <TxTable
             rows={rows}
             selectedId={selectedId}

@@ -75,39 +75,38 @@ transactionsRouter.get("/", async (req, res) => {
     ...(filters.review === undefined ? {} : { needsReview: filters.review }),
   };
   const profilePromise = prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
-  const [listResult, profile] = await Promise.all([
-    prisma.$transaction(async (tx) => {
-      const [rows, count] = await Promise.all([
-        tx.transaction.findMany({
-          where,
-          select: {
-            id: true,
-            type: true,
-            amount: true,
-            currency: true,
-            description: true,
-            merchant: true,
-            occurredAt: true,
-            source: true,
-            assetSymbol: true,
-            isRecurring: true,
-            isTaxable: true,
-            needsReview: true,
-            account: { select: { name: true } },
-            category: { select: { id: true, name: true } },
-          },
-          orderBy: { [filters.sort]: filters.direction },
-          skip: (filters.page - 1) * filters.pageSize,
-          take: filters.pageSize,
-        }),
-        tx.transaction.count({ where }),
-      ]);
-      return { rows, count };
+  // Two plain reads instead of an interactive transaction: the count is only
+  // used for pagination, and interactive transactions stall on the pooler
+  // ("Unable to start a transaction in the given time").
+  const transactionSelect = {
+    id: true,
+    type: true,
+    amount: true,
+    currency: true,
+    description: true,
+    merchant: true,
+    occurredAt: true,
+    source: true,
+    assetSymbol: true,
+    isRecurring: true,
+    isTaxable: true,
+    needsReview: true,
+    account: { select: { name: true } },
+    category: { select: { id: true, name: true } },
+  } as const;
+  const [rows, count, profile] = await Promise.all([
+    prisma.transaction.findMany({
+      where,
+      select: transactionSelect,
+      orderBy: { [filters.sort]: filters.direction },
+      skip: (filters.page - 1) * filters.pageSize,
+      take: filters.pageSize,
     }),
+    prisma.transaction.count({ where }),
     profilePromise,
   ]);
-  const items = listResult.rows;
-  const total = listResult.count;
+  const items = rows;
+  const total = count;
 
   const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
   const factors = new Map<string, number>();

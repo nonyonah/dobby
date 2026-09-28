@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import { AppError } from "./errors.js";
 
 /** Length of the free trial granted at sign-up. No payment card is collected. */
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 7;
 const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
 /** What the account is right now, after applying the trial clock. */
@@ -18,9 +18,9 @@ type PlanRow = {
 };
 
 /**
- * The signup clock alone: a 14-day window from `trialStartedAt`, ignoring any
+ * The signup clock alone: a 7-day window from `trialStartedAt`, ignoring any
  * subscription state. EXPIRED is terminal; TRIAL expires lazily once
- * `trialStartedAt + 14 days` has passed, so expiry is computed rather than
+ * `trialStartedAt + 7 days` has passed, so expiry is computed rather than
  * pre-written and a back-dated row still fails closed.
  */
 export function computeLocalPlan(user: PlanRow): EffectivePlan {
@@ -81,7 +81,7 @@ export async function loadEffectivePlan(
 
 /**
  * Throws unless the signed-in account currently has Pro access — an active
- * subscription or a trial still inside its 14-day window.
+ * subscription or a trial still inside its 7-day window.
  *
  * Call it as the first line of a gated handler rather than as route
  * middleware: Express infers `req.params` types from the route signature, and

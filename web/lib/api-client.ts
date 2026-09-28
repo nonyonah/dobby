@@ -40,7 +40,7 @@ export function createApiClient(
 ) {
   const root = baseUrl.replace(/\/$/, "");
 
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async function request<T>(path: string, init: RequestInit = {}, options: { timeoutMs?: number } = {}): Promise<T> {
     const token = await getToken();
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
@@ -48,7 +48,7 @@ export function createApiClient(
     if (token) headers.set("authorization", `Bearer ${token}`);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 15000);
     let response: Response;
     try {
       response = await fetch(`${root}${path}`, {
@@ -108,7 +108,7 @@ export function createApiClient(
 
   return {
     get,
-    post: <T>(path: string, body: unknown) => request<T>(path, { method: "POST", body: JSON.stringify(body) }).then((value) => { invalidateCache(); return value; }),
+    post: <T>(path: string, body: unknown, options?: { timeoutMs?: number }) => request<T>(path, { method: "POST", body: JSON.stringify(body) }, options ?? {}).then((value) => { invalidateCache(); return value; }),
     put: <T>(path: string, body: BodyInit, contentType: string) => request<T>(path, { method: "PUT", body, headers: { "content-type": contentType } }).then((value) => { invalidateCache(); return value; }),
     patch: <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH", body: JSON.stringify(body) }).then((value) => { invalidateCache(); return value; }),
     delete: <T>(path: string) => request<T>(path, { method: "DELETE" }).then((value) => { invalidateCache(); return value; }),

@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 
-/** Effective plan: inside the 14-day trial, a paid subscriber, or lapsed (view-only). */
+/** Effective plan: inside the 7-day trial, a paid subscriber, or lapsed (view-only). */
 export type Plan = "TRIAL" | "ACTIVE" | "EXPIRED";
 
 export type MeProfile = {

@@ -345,7 +345,7 @@ function ConnectStep() {
 
       {plan === "TRIAL" ? (
         <p className="mt-4 text-center text-[12px] text-muted-foreground">
-          Every feature is unlocked during your 14-day free trial — no card required.
+          Every feature is unlocked during your 7-day free trial — no card required.
         </p>
       ) : null}
 

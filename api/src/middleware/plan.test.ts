@@ -10,7 +10,7 @@ describe("computeLocalPlan", () => {
     expect(computeLocalPlan({ plan: "TRIAL", trialStartedAt: daysAgo(2) })).toBe("TRIAL");
   });
 
-  it("expires a window that has run past 14 days", () => {
+  it("expires a window that has run past 7 days", () => {
     expect(computeLocalPlan({ plan: "TRIAL", trialStartedAt: daysAgo(TRIAL_DAYS + 1) })).toBe("EXPIRED");
   });
 

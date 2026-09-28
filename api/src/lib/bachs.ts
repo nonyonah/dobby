@@ -60,6 +60,12 @@ export type CheckoutSession = { checkout_id: string; checkout_url: string };
 /** The two cadences Dobby Pro is sold on. */
 export type BillingInterval = "month" | "year";
 
+/** One-time USD prices mirroring the subscription catalog ($5/mo, $50/yr). */
+export const BACHS_USD_PRICES = {
+  month: { amount: "5.00", days: 30 },
+  year: { amount: "50.00", days: 365 },
+} as const;
+
 const productIdFor = (interval: BillingInterval) =>
   interval === "year" ? env.BACHS_PRO_YEARLY_PRODUCT_ID : env.BACHS_PRO_PRODUCT_ID;
 
@@ -71,12 +77,17 @@ const productIdFor = (interval: BillingInterval) =>
  * in-browser while the webhook confirms it, so nothing depends on a public
  * address. `metadata.clerk_user_id` is copied onto the subscription when
  * checkout succeeds, which is how a webhook event finds the user it belongs to.
+ *
+ * `method` narrows the hosted page: `crypto` offers only crypto assets
+ * (e.g. USDT_TRC20 — every asset the account has enabled); anything else
+ * leaves the full enabled set (card, transfer, mobile money, crypto).
  */
 export async function createProCheckout(input: {
   email: string;
   name?: string;
   clerkUserId: string;
   interval: BillingInterval;
+  method?: "card" | "crypto";
 }): Promise<CheckoutSession> {
   const productId = productIdFor(input.interval);
   if (!productId) {
@@ -89,6 +100,7 @@ export async function createProCheckout(input: {
       product_cart: [{ product_id: productId, quantity: 1 }],
       customer: input.name ? { email: input.email, name: input.name } : { email: input.email },
       metadata: { clerk_user_id: input.clerkUserId },
+      ...(input.method === "crypto" ? { payment_method_options: { crypto: {} } } : {}),
     }),
   });
 }
@@ -96,6 +108,46 @@ export async function createProCheckout(input: {
 /** Mints a short-lived URL that opens the hosted portal for an existing customer. */
 export async function createPortalSession(customerId: string): Promise<{ id: string; url: string }> {
   return bachsFetch(`/v1/customers/${customerId}/portal-sessions`, { method: "POST", body: "{}" });
+}
+
+/**
+ * One-time crypto checkout (USDT etc.): pure pricing instead of a recurring
+ * product, because subscription checkouts reject non-card methods. The hosted
+ * overlay renders the wallet address + QR; fulfillment below grants a
+ * 30/365-day term exactly like a Flutterwave purchase.
+ */
+export async function createCryptoCheckout(input: {
+  email: string;
+  name?: string;
+  clerkUserId: string;
+  interval: BillingInterval;
+  reference: string;
+}): Promise<CheckoutSession> {
+  const price = BACHS_USD_PRICES[input.interval];
+  return bachsFetch<CheckoutSession>("/v1/checkout-sessions", {
+    method: "POST",
+    body: JSON.stringify({
+      pricing: { base_currency: "USD", amount: price.amount },
+      payment_method_options: { crypto: {} },
+      customer: input.name ? { email: input.email, name: input.name } : { email: input.email },
+      reference: input.reference,
+      metadata: { clerk_user_id: input.clerkUserId, interval: input.interval, method: "crypto" },
+    }),
+  });
+}
+
+export type CheckoutSessionStatus = {
+  checkout_id?: string;
+  status?: string;
+  payment_status?: string;
+  amount?: string;
+  currency?: string;
+  reference?: string;
+};
+
+/** Live status of a checkout session, for crypto fulfillment polling. */
+export async function getCheckoutSession(checkoutId: string): Promise<CheckoutSessionStatus> {
+  return bachsFetch<CheckoutSessionStatus>(`/v1/checkout-sessions/${encodeURIComponent(checkoutId)}`);
 }
 
 export type SubscriptionState = {

@@ -30,8 +30,11 @@ export function optionLabel(options: BillingOption[], interval: BillingInterval,
 }
 
 type UpgradeContextValue = {
-  /** Opens checkout for the region's provider: Bachs overlay (USD) or Flutterwave redirect (NGN). */
-  startCheckout: (interval?: BillingInterval) => void;
+  /**
+   * Opens checkout for the region's provider: Bachs overlay (USD, card or
+   * crypto) or Flutterwave redirect (NGN). Defaults to monthly by card.
+   */
+  startCheckout: (interval?: BillingInterval, method?: "card" | "crypto") => void;
   /** True while a checkout is being prepared or is on screen. */
   busy: boolean;
   /** Region-aware prices for labels; USD Bachs until the options load. */
@@ -57,6 +60,8 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const optionsRef = useRef<BillingOption[] | null>(null);
   const bachsRef = useRef<Bachs | null>(null);
   const completedRef = useRef(false);
+  const methodRef = useRef<"card" | "crypto">("card");
+  const checkoutRef = useRef<string | null>(null);
 
   // Region-aware prices (NG → Flutterwave NGN, otherwise Bachs USD), loaded
   // once; USD Bachs labels render until then so nothing flashes empty.
@@ -108,13 +113,44 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
     toast.warning("Your payment is still being confirmed — Pro will activate shortly.");
   }, [api, refreshPlan]);
 
+  // After a crypto checkout completes in-browser, the wallet transfer still
+  // needs on-chain confirmations — poll the session until it succeeds, then
+  // fulfill the term server-side (the webhook does the same if this misses).
+  const confirmCryptoTerm = useCallback(async (checkoutId: string) => {
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      try {
+        const status = await api.post<{ data: { paymentStatus?: string | null; granted?: boolean } }>(
+          "/v1/billing/bachs/status",
+          { checkoutId },
+        );
+        if (status.data.granted) {
+          refreshPlan();
+          setBusy(false);
+          toast.success("Payment confirmed — Dobby Pro is active.");
+          return;
+        }
+        if (status.data.paymentStatus && ["failed", "canceled", "expired"].includes(status.data.paymentStatus)) {
+          setBusy(false);
+          toast.error("The crypto payment didn't complete — your plan is unchanged.");
+          return;
+        }
+      } catch {
+        // Keep polling; the transfer may still confirm on-chain.
+      }
+    }
+    setBusy(false);
+    toast.warning("Your crypto payment is still confirming — Pro will activate once it lands.");
+  }, [api, refreshPlan]);
+
   const handleEvent = useCallback(
     (event: BachsCheckoutEvent) => {
       switch (event.type) {
         case "checkout.completed":
           completedRef.current = true;
           toast.success("Payment received — activating Dobby Pro…");
-          void confirmSubscription();
+          if (methodRef.current === "crypto" && checkoutRef.current) void confirmCryptoTerm(checkoutRef.current);
+          else void confirmSubscription();
           break;
         case "checkout.failed":
           setBusy(false);
@@ -138,14 +174,16 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
           break;
       }
     },
-    [confirmSubscription],
+    [confirmCryptoTerm, confirmSubscription],
   );
 
   const startCheckout = useCallback(
-    (interval: BillingInterval = "month") => {
+    (interval: BillingInterval = "month", method: "card" | "crypto" = "card") => {
       if (busy) return;
       setBusy(true);
       completedRef.current = false;
+      methodRef.current = method;
+      checkoutRef.current = null;
       void (async () => {
         try {
           const opts = await ensureOptions();
@@ -159,7 +197,11 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
             window.location.assign(response.data.link);
             return;
           }
-          const response = await api.post<{ data: { url: string } }>("/v1/billing/checkout", { interval: option?.interval ?? interval });
+          const response = await api.post<{ data: { url: string; checkoutId?: string } }>("/v1/billing/checkout", {
+            interval: option?.interval ?? interval,
+            ...(method === "crypto" ? { method: "crypto" as const } : {}),
+          });
+          if (response.data.checkoutId) checkoutRef.current = response.data.checkoutId;
           // Load the script from the same origin that serves this session, so a
           // sandbox checkout talks to the sandbox and live to live.
           const bachs = bachsRef.current ?? (await loadBachs({ baseUrl: new URL(response.data.url).origin }));
