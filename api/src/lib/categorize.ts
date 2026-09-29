@@ -117,9 +117,8 @@ export function suggestCategory(
     const category = resolveCategory(canonical, categories);
     if (category) return { categoryId: category.id, method: "keyword" };
   }
-  if (type === "INCOME") {
-    const income = categories.find((category) => category.name.toLowerCase().includes("income"));
-    if (income) return { categoryId: income.id, method: "keyword" };
-  }
+  // No confident match: return null and let the caller route to Uncategorized.
+  // Type (direction of money) must never imply category (purpose of money) —
+  // defaulting every unmatched income to "Income" hid real miscategorizations.
   return null;
 }

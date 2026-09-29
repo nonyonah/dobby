@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Button } from "./ui/button";
+import { Switch } from "./ui/switch";
 import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
 import { getAppCurrency } from "@/lib/format";
@@ -33,7 +34,7 @@ interface TxEditDialogProps {
   tx: TxFull | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (tx: TxFull) => void;
+  onSave: (tx: TxFull, opts?: { rememberRule: boolean }) => void;
   categories?: DialogCategoryOption[];
 }
 
@@ -58,6 +59,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
   const [taxable, setTaxable] = useState("non-taxable");
   const [source, setSource] = useState<TxSource>("manual");
   const [note, setNote] = useState("");
+  const [rememberRule, setRememberRule] = useState(false);
   const options =
     categories.length > 0
       ? categories
@@ -65,6 +67,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
 
   useEffect(() => {
     if (tx && open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- form reset on open
       setName(tx.name);
       setAmount(String(Math.abs(tx.amount)));
       setDate(tx.date);
@@ -73,11 +76,23 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       setTaxable(tx.taxable ? "taxable" : "non-taxable");
       setSource(tx.source);
       setNote(tx.note);
+      // Uncategorized rows offer to remember the fix; categorized rows don't.
+      setRememberRule(!tx.categoryId || tx.categoryName === "Uncategorized");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tx, open]);
 
   if (!tx) return null;
+
+  const amountCurrency = getAppCurrency();
+  const amountSymbol = (() => {
+    try {
+      const parts = new Intl.NumberFormat("en-US", { style: "currency", currency: amountCurrency }).formatToParts(0);
+      return parts.find((part) => part.type === "currency")?.value ?? amountCurrency;
+    } catch {
+      return amountCurrency;
+    }
+  })();
 
   const commit = () => {
     const parsed = Number.parseFloat(amount.replace(/[^0-9.]/g, ""));
@@ -97,7 +112,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       taxable: taxable === "taxable",
       source,
       note: note.trim(),
-    });
+    }, { rememberRule });
     onOpenChange(false);
   };
 
@@ -117,13 +132,13 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
           <Field label="Amount">
             <div className="relative">
               <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">
-                $
+                {amountSymbol}
               </span>
               <Input
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 inputMode="decimal"
-                aria-label="Amount in dollars"
+                aria-label={`Amount in ${amountCurrency}`}
                 className="mono h-8 bg-white dark:bg-[#232327] pr-2 pl-7 text-[13px]"
               />
             </div>
@@ -179,6 +194,10 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
                 className="bg-white dark:bg-[#232327] text-[13px]"
               />
             </Field>
+          </div>
+          <div className="col-span-2 flex items-center justify-between gap-3 rounded-lg bg-secondary px-3 py-2">
+            <span className="text-[12px] font-medium text-foreground">Remember for similar transactions</span>
+            <Switch id="remember-rule" checked={rememberRule} onCheckedChange={setRememberRule} aria-label="Remember for similar transactions" />
           </div>
         </div>
         <DialogFooter className="sm:justify-between">

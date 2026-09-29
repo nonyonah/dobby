@@ -34,6 +34,8 @@ export type MonthlySummary = {
   month: string;
   income: number;
   expenses: number;
+  uncategorizedIncome?: number;
+  uncategorizedExpenses?: number;
 };
 
 export type MonthlyCategory = {
@@ -52,7 +54,7 @@ export type MonthlyIncomeSource = {
 
 export type InsightsSummary = {
   currency: string;
-  totals: { income: number; expenses: number; net: number; savingRate: number };
+  totals: { income: number; expenses: number; net: number; savingRate: number; uncategorizedIncome?: number; uncategorizedExpenses?: number };
   spendingByCategory: InsightCategory[];
   incomeAndSpendingBySource: InsightSource[];
   monthly: MonthlySummary[];

@@ -32,14 +32,17 @@ categoriesRouter.post("/", async (req, res) => {
 });
 
 function isProtectedDefault(name: string): boolean {
-  return name.trim().toLowerCase() === "other";
+  const normalized = name.trim().toLowerCase();
+  return normalized === "other" || normalized === "uncategorized";
 }
 
 async function forbidProtectedDefault(ownerClerkId: string, id: string): Promise<string | null> {
   const existing = await prisma.category.findFirst({ where: { id, ownerClerkId }, select: { name: true } });
   if (!existing) return null;
   if (isProtectedDefault(existing.name)) {
-    return "The default Other category cannot be archived or deleted because uncategorized transactions fall back to it.";
+    return existing.name.trim().toLowerCase() === "uncategorized"
+      ? "The Uncategorized category cannot be archived or deleted because low-confidence transactions are routed to it."
+      : "The default Other category cannot be archived or deleted because uncategorized transactions fall back to it.";
   }
   return null;
 }

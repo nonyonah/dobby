@@ -36,7 +36,7 @@ meRouter.get("/", async (req, res) => {
   ]);
   if (categoryCount === 0) {
     await prisma.category.createMany({
-      data: ["Housing", "Groceries", "Utilities", "Transport", "Dining", "Shopping", "Education", "Income", "Investments", "Other"].map((name) => ({ ownerClerkId: clerkId, name })),
+      data: ["Housing", "Groceries", "Utilities", "Transport", "Dining", "Shopping", "Education", "Income", "Investments", "Other", "Uncategorized"].map((name) => ({ ownerClerkId: clerkId, name })),
       skipDuplicates: true,
     });
   }

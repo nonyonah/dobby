@@ -24,6 +24,7 @@ type ApiYearTx = {
   id: string;
   type: "INCOME" | "EXPENSE";
   amount: number | string;
+  displayAmount?: number | string | null;
   description: string;
   merchant?: string | null;
   occurredAt: string;
@@ -40,12 +41,15 @@ const NO_TRANSACTIONS: TxFull[] = [];
 
 function toTxFull(item: ApiYearTx): TxFull {
   const source = item.source ?? "";
+  // The list route returns displayAmount converted to the profile currency —
+  // always render that, never the raw source-currency amount.
+  const display = Number(item.displayAmount ?? item.amount);
   return {
     id: item.id,
     name: item.merchant || item.description,
     account: item.account?.name ?? "Ledger",
     date: item.occurredAt.slice(0, 10),
-    amount: item.type === "INCOME" ? Number(item.amount) : -Math.abs(Number(item.amount)),
+    amount: item.type === "INCOME" ? display : -Math.abs(display),
     category: item.category?.id ?? "other",
     categoryId: item.category?.id,
     categoryName: item.category?.name,
@@ -79,6 +83,13 @@ function CashflowSection({ year, summary }: { year: number; summary: InsightsSum
           { label: "Saving rate", value: rate, delta: null, format: (n) => `${n.toFixed(0)}%` },
         ]}
       />
+      {(summary?.totals.uncategorizedIncome ?? 0) > 0 || (summary?.totals.uncategorizedExpenses ?? 0) > 0 ? (
+        <p className="m-0 -mt-4 text-[12px] leading-relaxed text-muted-foreground">
+          Excluded from the totals above — <span className="mono tabular-nums text-foreground">{formatCurrency(summary?.totals.uncategorizedIncome ?? 0, summary?.currency ?? "USD")}</span> uncategorized
+          inflow · <span className="mono tabular-nums text-foreground">{formatCurrency(summary?.totals.uncategorizedExpenses ?? 0, summary?.currency ?? "USD")}</span> uncategorized
+          outflow. Categorize them in Transactions to count them.
+        </p>
+      ) : null}
       <CashflowViz
         year={year}
         sources={summary?.incomeAndSpendingBySource ?? []}

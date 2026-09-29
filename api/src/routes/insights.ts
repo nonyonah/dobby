@@ -64,47 +64,69 @@ insightsRouter.get("/summary", async (req, res) => {
   for (const currency of new Set(transactions.map((transaction) => transaction.currency.toUpperCase()))) {
     try { conversionFactors.set(currency, await convertCurrencyAmount(1, currency, activeCurrency)); } catch { conversionFactors.set(currency, 1); }
   }
+  // Uncategorized (explicit bucket or legacy null) is broken out separately
+  // and excluded from every income/expense total, consistently.
+  const uncategorizedIds = new Set(
+    (await prisma.category.findMany({ where: { ownerClerkId, name: { equals: "uncategorized", mode: "insensitive" } }, select: { id: true } })).map((row) => row.id),
+  );
   let income = 0;
   let expenses = 0;
+  let uncategorizedIncome = 0;
+  let uncategorizedExpenses = 0;
   const byCategory = new Map<string, { categoryId: string | null; name: string; color: string | null; amount: number; count: number }>();
   const bySource = new Map<string, { source: string; income: number; expenses: number; count: number }>();
-  const byMonth = new Map<string, { month: string; income: number; expenses: number }>();
+  const byMonth = new Map<string, { month: string; income: number; expenses: number; uncategorizedIncome: number; uncategorizedExpenses: number }>();
   const byMonthCategory = new Map<string, { month: string; categoryId: string | null; name: string; color: string | null; amount: number; count: number }>();
   const byMonthIncomeSource = new Map<string, { month: string; source: string; amount: number; count: number }>();
 
   for (const transaction of transactions) {
     const amount = Number(transaction.amount) * (conversionFactors.get(transaction.currency.toUpperCase()) ?? 1);
     const month = transaction.occurredAt.toISOString().slice(0, 7);
-    const monthly = byMonth.get(month) ?? { month, income: 0, expenses: 0 };
+    const monthly = byMonth.get(month) ?? { month, income: 0, expenses: 0, uncategorizedIncome: 0, uncategorizedExpenses: 0 };
     const source = transaction.source ?? "Unknown";
     const sourceItem = bySource.get(source) ?? { source, income: 0, expenses: 0, count: 0 };
-    sourceItem.count += 1;
+    const uncategorized = !transaction.category || uncategorizedIds.has(transaction.category.id);
 
     if (transaction.type === TransactionType.INCOME) {
-      income += amount;
-      monthly.income += amount;
-      sourceItem.income += amount;
-      const sourceKey = `${month}|${source}`;
-      const monthlySource = byMonthIncomeSource.get(sourceKey) ?? { month, source, amount: 0, count: 0 };
-      monthlySource.amount += amount;
-      monthlySource.count += 1;
-      byMonthIncomeSource.set(sourceKey, monthlySource);
+      if (uncategorized) {
+        uncategorizedIncome += amount;
+        monthly.uncategorizedIncome += amount;
+      } else {
+        income += amount;
+        monthly.income += amount;
+        sourceItem.income += amount;
+        const sourceKey = `${month}|${source}`;
+        const monthlySource = byMonthIncomeSource.get(sourceKey) ?? { month, source, amount: 0, count: 0 };
+        monthlySource.amount += amount;
+        monthlySource.count += 1;
+        byMonthIncomeSource.set(sourceKey, monthlySource);
+      }
+      sourceItem.count += 1;
     } else if (transaction.type === TransactionType.EXPENSE) {
-      expenses += amount;
-      monthly.expenses += amount;
-      sourceItem.expenses += amount;
-      const categoryId = transaction.category?.id ?? null;
-      const categoryName = transaction.category?.name ?? "Uncategorized";
-      const key = categoryId ?? "uncategorized";
-      const category = byCategory.get(key) ?? { categoryId, name: categoryName, color: transaction.category?.color ?? null, amount: 0, count: 0 };
-      category.amount += amount;
-      category.count += 1;
-      byCategory.set(key, category);
-      const monthlyCategoryKey = `${month}|${key}`;
-      const monthlyCategory = byMonthCategory.get(monthlyCategoryKey) ?? { month, categoryId, name: categoryName, color: transaction.category?.color ?? null, amount: 0, count: 0 };
-      monthlyCategory.amount += amount;
-      monthlyCategory.count += 1;
-      byMonthCategory.set(monthlyCategoryKey, monthlyCategory);
+      if (uncategorized) {
+        uncategorizedExpenses += amount;
+        monthly.uncategorizedExpenses += amount;
+      } else {
+        expenses += amount;
+        monthly.expenses += amount;
+        sourceItem.expenses += amount;
+        const categoryId = transaction.category?.id ?? null;
+        const categoryName = transaction.category?.name ?? "Uncategorized";
+        const key = categoryId ?? "uncategorized";
+        const category = byCategory.get(key) ?? { categoryId, name: categoryName, color: transaction.category?.color ?? null, amount: 0, count: 0 };
+        category.amount += amount;
+        category.count += 1;
+        byCategory.set(key, category);
+        const monthlyCategoryKey = `${month}|${key}`;
+        const monthlyCategory = byMonthCategory.get(monthlyCategoryKey) ?? { month, categoryId, name: categoryName, color: transaction.category?.color ?? null, amount: 0, count: 0 };
+        monthlyCategory.amount += amount;
+        monthlyCategory.count += 1;
+        byMonthCategory.set(monthlyCategoryKey, monthlyCategory);
+      }
+      sourceItem.count += 1;
+    } else {
+      // TRANSFER and any future types: counted in activity, never in totals.
+      sourceItem.count += 1;
     }
     byMonth.set(month, monthly);
     bySource.set(source, sourceItem);
@@ -116,7 +138,7 @@ insightsRouter.get("/summary", async (req, res) => {
       from: from?.toISOString() ?? null,
       to: to?.toISOString() ?? null,
       currency: activeCurrency,
-      totals: { income, expenses, net, savingRate: income === 0 ? 0 : net / income },
+      totals: { income, expenses, net, savingRate: income === 0 ? 0 : net / income, uncategorizedIncome, uncategorizedExpenses },
       spendingByCategory: [...byCategory.values()].sort((a, b) => b.amount - a.amount),
       incomeAndSpendingBySource: [...bySource.values()].sort((a, b) => (b.income + b.expenses) - (a.income + a.expenses)),
       monthly: [...byMonth.values()],

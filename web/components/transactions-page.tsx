@@ -225,7 +225,8 @@ function TransactionsInner() {
     setDrawerOpen(true);
   };
 
-  const save = async (next: TxFull) => {
+  const save = async (next: TxFull, opts?: { rememberRule?: boolean }) => {
+    let mapped: TxFull | null = null;
     try {
       const liveIds = new Set(liveCategories.map((c) => c.id));
       const response = await api.patch<{ data: ApiTransaction }>(`/v1/transactions/${next.id}`, {
@@ -238,13 +239,27 @@ function TransactionsInner() {
         categoryId: (next.categoryId && liveIds.has(next.categoryId) ? next.categoryId : null) ?? categoryIds[next.category] ?? null,
         isTaxable: next.taxable,
       });
-      const mapped = mapTransaction(response.data);
-      setRows((prev) => prev.map((t) => (t.id === next.id ? mapped : t)));
-      setReviewRows((prev) => prev.map((t) => (t.id === next.id ? mapped : t)));
-      toast.success("Transaction updated");
+      mapped = mapTransaction(response.data);
+      setRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
+      setReviewRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
     } catch {
       toast.error("Could not save this transaction. Try again.");
+      return;
     }
+    // Offer kept: persist a rule so the same merchant/description self-categorizes next time.
+    if (opts?.rememberRule && mapped?.categoryId) {
+      const matcher = (next.name || "").trim().slice(0, 80);
+      if (matcher) {
+        try {
+          await api.post("/v1/rules", { matcher, categoryId: mapped.categoryId, isTaxable: mapped.taxable });
+          toast.success("Transaction updated — similar ones will categorize themselves from now on.");
+          return;
+        } catch {
+          // Rule creation is a bonus; the save itself already landed.
+        }
+      }
+    }
+    toast.success("Transaction updated");
   };
 
   const declineReview = async (ids: string[]) => {

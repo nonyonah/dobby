@@ -20,9 +20,6 @@ const STEP_KEY = "dobby-onboarding-step";
 const COUNTRIES = [
   { value: "nigeria", label: "🇳🇬 Nigeria", iso: "NG", currency: "NGN", jurisdiction: "nigeria" },
   { value: "united-states", label: "🇺🇸 United States", iso: "US", currency: "USD", jurisdiction: "united-states" },
-  { value: "ghana", label: "🇬🇭 Ghana", iso: "GH", currency: "GHS", jurisdiction: "other" },
-  { value: "kenya", label: "🇰🇪 Kenya", iso: "KE", currency: "KES", jurisdiction: "other" },
-  { value: "other", label: "🌐 Other", iso: null as string | null, currency: null, jurisdiction: "other" },
 ];
 
 const controlClass =

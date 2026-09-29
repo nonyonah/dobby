@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { loadBachs, type Bachs, type BachsCheckoutEvent } from "@bachs/js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { usePlan } from "@/components/plan-provider";
@@ -11,45 +12,83 @@ import { usePlan } from "@/components/plan-provider";
 /** The two cadences Dobby Pro is sold on. */
 export type BillingInterval = "month" | "year";
 
-/** One priced way to buy Pro: Bachs subscription (USD) or Flutterwave term (NGN). */
+/** One priced way to buy Pro. The option travels whole from picker to payment — never re-inferred. */
 export type BillingOption = {
   provider: "bachs" | "flutterwave";
   interval: BillingInterval;
+  /** Card = Bachs subscription; crypto/Flutterwave = one-time terms. */
+  method: "card" | "crypto" | "flutterwave";
   amount: number;
   currency: string;
   label: string;
 };
 
 const FALLBACK_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", amount: 5, currency: "USD", label: "$5/mo" },
-  { provider: "bachs", interval: "year", amount: 50, currency: "USD", label: "$50/yr" },
+  { provider: "bachs", interval: "month", method: "card", amount: 5, currency: "USD", label: "$5/mo" },
+  { provider: "bachs", interval: "month", method: "crypto", amount: 5, currency: "USD", label: "$5/mo · Crypto" },
+  { provider: "bachs", interval: "year", method: "card", amount: 50, currency: "USD", label: "$50/yr" },
+  { provider: "bachs", interval: "year", method: "crypto", amount: 50, currency: "USD", label: "$50/yr · Crypto" },
 ];
 
-export function optionLabel(options: BillingOption[], interval: BillingInterval, fallback: string): string {
-  return options.find((option) => option.interval === interval)?.label ?? fallback;
+const optionKey = (option: BillingOption) => `${option.provider}:${option.interval}:${option.method}`;
+
+function pillPrice(options: BillingOption[], region: "NG" | "US" | null, interval: BillingInterval): string {
+  const primary =
+    options.find((item) => item.interval === interval && (region === "NG" ? item.provider === "flutterwave" : item.method === "card")) ??
+    options.find((item) => item.interval === interval);
+  if (!primary) return "";
+  try {
+    const formatted = new Intl.NumberFormat(primary.currency === "NGN" ? "en-NG" : "en-US", {
+      style: "currency",
+      currency: primary.currency,
+      maximumFractionDigits: 0,
+    }).format(primary.amount);
+    return `${formatted}/${interval === "month" ? "mo" : "yr"}`;
+  } catch {
+    return primary.label;
+  }
+}
+
+function methodCopy(option: BillingOption): { title: string; sub: string } {
+  if (option.method === "card") return { title: "Card", sub: "Recurring subscription · 7-day free trial" };
+  if (option.method === "crypto") {
+    return {
+      title: "Crypto",
+      sub: `One-time USDT payment · ${option.interval === "month" ? "30 days" : "12 months"} of Pro, no auto-renew`,
+    };
+  }
+  return { title: "Flutterwave", sub: "Card, bank transfer or USSD · one-time, no auto-renew" };
 }
 
 type UpgradeContextValue = {
-  /**
-   * Opens checkout for the region's provider: Bachs overlay (USD, card or
-   * crypto) or Flutterwave redirect (NGN). Defaults to monthly by card.
-   */
-  startCheckout: (interval?: BillingInterval, method?: "card" | "crypto") => void;
+  /** Opens the plan picker dialog. */
+  openCheckout: (preset?: BillingInterval) => void;
+  /** Starts payment for one explicit option — no inference, no surprises. */
+  startCheckout: (option: BillingOption) => void;
   /** True while a checkout is being prepared or is on screen. */
   busy: boolean;
-  /** Region-aware prices for labels; USD Bachs until the options load. */
+  /** Region-aware prices; USD Bachs until the options load. */
   options: BillingOption[];
   region: "NG" | "US" | null;
+  /** Drop the cached options so the next open re-reads the region. */
+  refreshOptions: () => void;
 };
 
-const UpgradeContext = createContext<UpgradeContextValue>({ startCheckout: () => {}, busy: false, options: FALLBACK_OPTIONS, region: null });
+const UpgradeContext = createContext<UpgradeContextValue>({
+  openCheckout: () => {},
+  startCheckout: () => {},
+  busy: false,
+  options: FALLBACK_OPTIONS,
+  region: null,
+  refreshOptions: () => {},
+});
 
 /**
  * Owns checkout creation so every upgrade control shares one request path and
- * one busy flag. The cadence is chosen by the caller (Settings offers both,
- * everything else defaults to monthly); the payment UI itself is Bachs' hosted
- * checkout, loaded through `@bachs/js` into an overlay so the browser never
- * needs a public return address and the customer stays in the app.
+ * one busy flag. Upgrade buttons open the picker dialog; the dialog hands one
+ * explicit option to `startCheckout`. Bachs card/crypto open as an in-page
+ * overlay (no public return address needed); Flutterwave redirects to its
+ * hosted page and verifies on return. Webhooks fulfill in all cases.
  */
 export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
@@ -57,14 +96,16 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [options, setOptions] = useState<BillingOption[]>(FALLBACK_OPTIONS);
   const [region, setRegion] = useState<"NG" | "US" | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogInterval, setDialogInterval] = useState<BillingInterval>("month");
   const optionsRef = useRef<BillingOption[] | null>(null);
   const bachsRef = useRef<Bachs | null>(null);
   const completedRef = useRef(false);
   const methodRef = useRef<"card" | "crypto">("card");
   const checkoutRef = useRef<string | null>(null);
 
-  // Region-aware prices (NG → Flutterwave NGN, otherwise Bachs USD), loaded
-  // once; USD Bachs labels render until then so nothing flashes empty.
+  // Region-aware prices (NG → Flutterwave NGN + crypto, otherwise Bachs),
+  // loaded once; USD Bachs labels render until then so nothing flashes empty.
   const ensureOptions = useCallback(async () => {
     if (optionsRef.current) return optionsRef.current;
     try {
@@ -177,18 +218,36 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
     [confirmCryptoTerm, confirmSubscription],
   );
 
+  const openCheckout = useCallback(
+    (preset: BillingInterval = "month") => {
+      if (busy) return;
+      // The region can change at any time (Country setting), so never serve
+      // a stale matrix: drop the cache and reload as the dialog opens. The
+      // dialog renders fallback prices until the fresh rows land.
+      optionsRef.current = null;
+      setDialogInterval(preset);
+      setDialogOpen(true);
+      void ensureOptions();
+    },
+    [busy, ensureOptions],
+  );
+
+  const refreshOptions = useCallback(() => {
+    optionsRef.current = null;
+    void ensureOptions();
+  }, [ensureOptions]);
+
   const startCheckout = useCallback(
-    (interval: BillingInterval = "month", method: "card" | "crypto" = "card") => {
+    (option: BillingOption) => {
       if (busy) return;
       setBusy(true);
       completedRef.current = false;
-      methodRef.current = method;
+      methodRef.current = option.method === "crypto" ? "crypto" : "card";
       checkoutRef.current = null;
+      setDialogOpen(false);
       void (async () => {
         try {
-          const opts = await ensureOptions();
-          const option = opts.find((item) => item.interval === interval) ?? opts[0];
-          if (option?.provider === "flutterwave") {
+          if (option.provider === "flutterwave") {
             // One-time NGN term: Flutterwave hosts the whole page, so leave
             // the app; the return URL verifies and the webhook fulfills.
             const response = await api.post<{ data: { link: string } }>("/v1/billing/flutterwave/checkout", {
@@ -198,8 +257,8 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
             return;
           }
           const response = await api.post<{ data: { url: string; checkoutId?: string } }>("/v1/billing/checkout", {
-            interval: option?.interval ?? interval,
-            ...(method === "crypto" ? { method: "crypto" as const } : {}),
+            interval: option.interval,
+            ...(option.method === "crypto" ? { method: "crypto" as const } : {}),
           });
           if (response.data.checkoutId) checkoutRef.current = response.data.checkoutId;
           // Load the script from the same origin that serves this session, so a
@@ -215,14 +274,103 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
         }
       })();
     },
-    [api, busy, ensureOptions, handleEvent],
+    [api, busy, handleEvent],
   );
 
-  return <UpgradeContext.Provider value={{ startCheckout, busy, options, region }}>{children}</UpgradeContext.Provider>;
+  return (
+    <UpgradeContext.Provider value={{ openCheckout, startCheckout, busy, options, region, refreshOptions }}>
+      {children}
+      {dialogOpen ? (
+        <CheckoutDialog preset={dialogInterval} onClose={() => setDialogOpen(false)} />
+      ) : null}
+    </UpgradeContext.Provider>
+  );
 }
 
 export function useUpgrade() {
   return useContext(UpgradeContext);
+}
+
+/** Plan picker: cadence pills, then one row per payment method. Mounts fresh per open. */
+function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose: () => void }) {
+  const { options, region, busy, startCheckout } = useUpgrade();
+  const [interval, setInterval] = useState<BillingInterval>(preset);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const rows = options.filter((option) => option.interval === interval);
+  const selected = rows.find((row) => optionKey(row) === selectedKey) ?? rows[0] ?? null;
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Upgrade to Dobby Pro</DialogTitle>
+          <DialogDescription>
+            {region === "NG"
+              ? "Billed in naira via Flutterwave, or once in crypto (USD)."
+              : "Billed in USD via Bachs — card subscription or one-time crypto."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex gap-2" role="group" aria-label="Billing cadence">
+          {(["month", "year"] as BillingInterval[]).map((cadence) => (
+            <button
+              key={cadence}
+              type="button"
+              onClick={() => { setInterval(cadence); setSelectedKey(null); }}
+              aria-pressed={interval === cadence}
+              className={`flex-1 cursor-pointer rounded-xl border px-3 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
+                interval === cadence ? "border-primary bg-primary/5" : "border-line hover:border-muted-foreground/40"
+              }`}
+            >
+              <span className="block text-[13px] font-semibold capitalize text-foreground">{cadence}ly</span>
+              <span className="mono mt-0.5 block text-[12px] tabular-nums text-muted-foreground">
+                {pillPrice(options, region, cadence)}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Payment method">
+          {rows.map((option) => {
+            const copy = methodCopy(option);
+            const active = selected?.provider === option.provider && selected?.method === option.method;
+            return (
+              <button
+                key={optionKey(option)}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setSelectedKey(optionKey(option))}
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
+                  active ? "border-primary bg-primary/5" : "border-line hover:border-muted-foreground/40"
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                    active ? "border-primary" : "border-muted-foreground/40"
+                  }`}
+                >
+                  {active ? <span className="size-2 rounded-full bg-primary" /> : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-foreground">{copy.title}</span>
+                  <span className="block truncate text-[12px] text-muted-foreground">{copy.sub}</span>
+                </span>
+                <span className="mono shrink-0 text-[13px] font-semibold tabular-nums text-foreground">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="small" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="small" disabled={busy || !selected} onClick={() => { if (selected) startCheckout(selected); }}>
+            {busy ? "Opening…" : "Continue"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /**
@@ -232,7 +380,7 @@ export function useUpgrade() {
  */
 export function TrialExpiredBanner() {
   const { expired } = usePlan();
-  const { startCheckout, busy, options } = useUpgrade();
+  const { openCheckout, busy } = useUpgrade();
   if (!expired) return null;
 
   return (
@@ -242,11 +390,11 @@ export function TrialExpiredBanner() {
           Your free trial has ended — everything you already imported is still here, untouched and fully visible. Upgrade to start adding new data again.
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="secondary" size="small" disabled={busy} onClick={() => startCheckout("year")}>
-            Annual {optionLabel(options, "year", "$50/yr").replace("/yr", "")}
+          <Button variant="secondary" size="small" disabled={busy} onClick={() => openCheckout("year")}>
+            See annual plans
           </Button>
-          <Button variant="primary" size="small" disabled={busy} onClick={() => startCheckout("month")}>
-            {busy ? "Opening checkout…" : `Upgrade ${optionLabel(options, "month", "$5/mo")}`}
+          <Button variant="primary" size="small" disabled={busy} onClick={() => openCheckout("month")}>
+            {busy ? "Opening checkout…" : "Upgrade to Pro"}
           </Button>
         </div>
       </div>
@@ -280,7 +428,7 @@ export function UpgradeCard({
   description?: string;
   className?: string;
 }) {
-  const { startCheckout, busy, options } = useUpgrade();
+  const { openCheckout, busy } = useUpgrade();
 
   return (
     <Card className={`border-0 shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] ${className}`}>
@@ -295,8 +443,8 @@ export function UpgradeCard({
               {description ?? `${feature} is part of Dobby Pro. Your ledger, history, and past insights stay visible either way — upgrade to turn this back on.`}
             </p>
           </div>
-          <Button variant="primary" size="small" className="shrink-0" disabled={busy} onClick={() => startCheckout()}>
-            {busy ? "Opening…" : `Upgrade ${optionLabel(options, "month", "$5/mo")}`}
+          <Button variant="primary" size="small" className="shrink-0" disabled={busy} onClick={() => openCheckout()}>
+            {busy ? "Opening…" : "Upgrade"}
           </Button>
         </div>
       </CardContent>

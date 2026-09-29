@@ -11,7 +11,7 @@ import { Skeleton } from "./ui/skeleton";
 import { useApi } from "@/hooks/use-api";
 
 export function IncomeExpensesCard() {
-  const [summary, setSummary] = useState<{ income: number; expenses: number } | null>(null);
+  const [summary, setSummary] = useState<{ income: number; expenses: number; uncategorizedIncome?: number; uncategorizedExpenses?: number } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
@@ -22,6 +22,8 @@ export function IncomeExpensesCard() {
   }, [isLoaded, isSignedIn]);
   const income = summary?.income ?? 0;
   const expenses = summary?.expenses ?? 0;
+  const uncategorizedIncome = summary?.uncategorizedIncome ?? 0;
+  const uncategorizedExpenses = summary?.uncategorizedExpenses ?? 0;
   const net = income - expenses;
   const data = useMemo(
     () => [
@@ -69,6 +71,13 @@ export function IncomeExpensesCard() {
           +{formatUSD(net)} saved
         </span>
       </div>
+      {uncategorizedIncome > 0 || uncategorizedExpenses > 0 ? (
+        <p className="m-0 mt-2 text-[12px] leading-relaxed text-muted-foreground">
+          Excluded from totals — <span className="mono tabular-nums text-foreground">{formatUSD(uncategorizedIncome)}</span> uncategorized
+          inflow · <span className="mono tabular-nums text-foreground">{formatUSD(uncategorizedExpenses)}</span> uncategorized outflow.
+          Categorize them in Transactions to count them.
+        </p>
+      ) : null}
       <ChartContainer config={config} className="aspect-auto h-[120px] w-full">
         <BarChart accessibilityLayer data={data} margin={{ top: 12, right: 4, left: 4, bottom: 0 }} barCategoryGap="28%">
           <XAxis dataKey="k" tickLine={false} axisLine={false} dy={8} tick={{ fill: "var(--chart-tick)", fontSize: 11 }} />

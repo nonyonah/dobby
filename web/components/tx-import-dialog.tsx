@@ -260,8 +260,8 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
                 e.target.value = "";
               }}
             />
-            <Button variant="secondary" onClick={() => fileRef.current?.click()}>{fileName || "Choose file"}</Button>
-            {selectedFile && parsed.length > 0 ? <p className="m-0 text-[13px]" aria-live="polite"><span className="font-semibold">{parsed.length}</span>{" "}<span className="text-[#8a8b91] dark:text-[#a2a3a8]">transactions ready from {fileName}</span></p> : selectedFile ? <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]" aria-live="polite">Ready to process {fileName} securely.</p> : null}
+            <Button variant="secondary" onClick={() => fileRef.current?.click()} className="max-w-full"><span className="min-w-0 flex-1 truncate">{fileName || "Choose file"}</span></Button>
+            {selectedFile && parsed.length > 0 ? <p className="m-0 text-[13px]" aria-live="polite"><span className="font-semibold">{parsed.length}</span>{" "}<span className="text-[#8a8b91] dark:text-[#a2a3a8]">transactions ready from <span className="break-all">{fileName}</span></span></p> : selectedFile ? <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]" aria-live="polite">Ready to process <span className="break-all">{fileName}</span> securely.</p> : null}
           </div>
         ) : null}
 

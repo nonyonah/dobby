@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { ArrowRight, Briefcase, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, type AccentColor } from "@/lib/theme";
@@ -254,35 +253,7 @@ export function SettingsPage() {
     ? new Date(trialEndsAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : null;
   const [fullName, setFullName] = useState("");
-  const { startCheckout, busy: checkoutBusy, options } = useUpgrade();
-  const priceOf = (option: { label: string } | undefined) => (option?.label ?? "").replace(/\/(mo|yr)$/, "");
-  /** Plan rows: one per cadence, plus a crypto variant wherever Bachs bills. */
-  const planItems = options.flatMap((option) => {
-    const per = option.interval === "month" ? "month" : "year";
-    const title = option.interval === "month" ? "Monthly" : "Annual";
-    if (option.provider === "flutterwave") {
-      return [{
-        key: `flutterwave:${option.interval}`,
-        title,
-        sub: `${priceOf(option)} / ${per} · one-time, no auto-renew`,
-        run: () => startCheckout(option.interval),
-      }];
-    }
-    return [
-      {
-        key: `bachs:${option.interval}:card`,
-        title,
-        sub: `${priceOf(option)} / ${per} · 7-day free trial`,
-        run: () => startCheckout(option.interval, "card"),
-      },
-      {
-        key: `bachs:${option.interval}:crypto`,
-        title,
-        sub: `${priceOf(option)} / ${per} · pay with crypto`,
-        run: () => startCheckout(option.interval, "crypto"),
-      },
-    ];
-  });
+  const { openCheckout, busy: checkoutBusy, refreshOptions } = useUpgrade();
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
   const [billingTerm, setBillingTerm] = useState<BillingTerm | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
@@ -290,6 +261,17 @@ export function SettingsPage() {
   // Live subscription that has not been set to end: the plan control is then a
   // cancel button, and only reverts to the monthly/annual picker once cancelled.
   const subscribed = Boolean(subscription && !subscription.cancelAtPeriodEnd && subscription.status !== "canceled");
+  // Paid Pro by any route: a live Bachs subscription or an unexpired one-time
+  // term. Either way the upgrade control morphs into Subscribed + Cancel.
+  // The clock is frozen at mount — term boundaries move in days, not seconds.
+  const [pageOpenedAt] = useState(() => Date.now());
+  const termActive = useMemo(
+    () => plan === "ACTIVE" && !subscribed && billingTerm?.periodEndsAt
+      ? new Date(billingTerm.periodEndsAt).getTime() > pageOpenedAt
+      : false,
+    [plan, subscribed, billingTerm, pageOpenedAt],
+  );
+  const paidPro = subscribed || termActive;
 
   // Cancelling stops the next renewal only: Bachs keeps Pro running until the
   // period already paid for ends, then sends the webhook that downgrades us.
@@ -309,6 +291,23 @@ export function SettingsPage() {
     }
   };
 
+  // Cancelling a one-time term forfeits the remaining days immediately —
+  // there is no subscription to stop renewing.
+  const cancelTerm = async () => {
+    setCanceling(true);
+    try {
+      await api.post("/v1/billing/term/cancel", {});
+      setBillingTerm(null);
+      refreshPlan();
+      toast.success("Pro ended — you're back on the free view. Nothing was deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not end Pro.");
+    } finally {
+      setCanceling(false);
+      setCancelConfirmOpen(false);
+    }
+  };
+
   // Prefills come from the shared /v1/me payload (PlanProvider), so this page
   // never issues its own profile request. The payload lands after mount, so
   // the fields are seeded from it in an effect.
@@ -317,10 +316,11 @@ export function SettingsPage() {
     setFullName([me?.firstName, me?.lastName].filter(Boolean).join(" ") || user?.fullName || "");
     const profile = me?.profile;
     if (!profile) return;
-    if (profile.country) setCountry(profile.country.toLowerCase() === "ng" ? "nigeria" : profile.country.toLowerCase() === "us" ? "united-states" : "other");
+    if (profile.country) setCountry(profile.country.toLowerCase() === "us" ? "united-states" : "nigeria");
     if (profile.currency) {
-      setCurrency(profile.currency.toLowerCase());
-      window.localStorage.setItem("dobby-currency", profile.currency.toUpperCase());
+      const supported = profile.currency.toLowerCase() === "usd" ? "usd" : "ngn";
+      setCurrency(supported);
+      window.localStorage.setItem("dobby-currency", supported.toUpperCase());
     } else if (profile.country?.toUpperCase() === "NG") {
       setCurrency("ngn");
       window.localStorage.setItem("dobby-currency", "NGN");
@@ -329,7 +329,7 @@ export function SettingsPage() {
       window.localStorage.setItem("dobby-currency", "USD");
     }
     if (profile.theme) setTheme(profile.theme);
-    if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction);
+    if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction === "united-states" ? "united-states" : "nigeria");
     const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
     if (accent) setAccentColor(accent.id);
   }, [me, user]);
@@ -527,7 +527,7 @@ export function SettingsPage() {
 
   const connectProvider = async (provider: string) => {
     if (!isPro) {
-      startCheckout();
+      openCheckout();
       return;
     }
     setConnectingProvider(provider);
@@ -603,6 +603,7 @@ export function SettingsPage() {
       });
       window.localStorage.setItem("dobby-currency", currency.toUpperCase());
       window.dispatchEvent(new CustomEvent("dobby-currency-change", { detail: currency.toUpperCase() }));
+      refreshOptions();
       toast.success("Settings saved");
     } catch {
       toast.error("Could not save your settings. Try again.");
@@ -626,7 +627,7 @@ export function SettingsPage() {
           <Section label="Profile">
             <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" value={fullName} onChange={setFullName} /></Row>
             <Row label="Email address" description="Used for account messages and notifications. Managed by your sign-in provider."><TextField id="profile-email" label="Email address" value={user?.primaryEmailAddress?.emailAddress ?? me?.email ?? ""} readOnly type="email" /></Row>
-            <Row label="Country"><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); if (next === "nigeria") setCurrency("ngn"); if (next === "united-states") setCurrency("usd"); if (next === "ghana") setCurrency("ghs"); if (next === "kenya") setCurrency("kes"); }} options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "united-states", label: "🇺🇸 United States" }, { value: "ghana", label: "🇬🇭 Ghana" }, { value: "kenya", label: "🇰🇪 Kenya" }, { value: "other", label: "🌐 Other" }]} /></Row>
+            <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); if (next === "nigeria") setCurrency("ngn"); if (next === "united-states") setCurrency("usd"); }} options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "united-states", label: "🇺🇸 United States" }]} /></Row>
           </Section>
 
           <Section label="Connections">
@@ -634,7 +635,7 @@ export function SettingsPage() {
               <Row
                 label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">No wallets connected yet</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : startCheckout())}><LinkSimple /> Connect</Button>
+                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><LinkSimple /> Connect</Button>
               </Row>
             ) : (
               wallets.map((wallet) => (
@@ -650,7 +651,7 @@ export function SettingsPage() {
               <Row
                 label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Base or Solana address with a custom color</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : startCheckout())}><LinkSimple /> Connect</Button>
+                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><LinkSimple /> Connect</Button>
               </Row>
             ) : null}
             <Row label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Briefcase size={16} /></span><span><span className="block">Bank</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Bank connections are planned for a future release.</span></span></span>}><Button variant="secondary" size="small" disabled>Coming soon</Button></Row>
@@ -713,7 +714,7 @@ export function SettingsPage() {
               {isPro ? (
                 <span className="inline-flex w-fit items-center rounded-full border border-line bg-secondary px-2.5 py-1 text-[12px] font-medium text-muted-foreground">Included in Pro</span>
               ) : (
-                <Button variant="secondary" size="small" disabled={checkoutBusy} onClick={() => startCheckout()}>Upgrade</Button>
+                <Button variant="secondary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>Upgrade</Button>
               )}
             </Row>
           </Section>
@@ -721,8 +722,12 @@ export function SettingsPage() {
           <Section label="Preferences">
             <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => setTheme(value ?? "system")} options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
-            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }, { value: "ghs", label: "GHS 🇬🇭" }, { value: "kes", label: "KES 🇰🇪" }, { value: "gbp", label: "GBP 🇬🇧" }]} /></Row>
-            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-kingdom", label: "United Kingdom" }, { value: "united-states", label: "United States" }, { value: "other", label: "Other" }]} onValueChange={(value) => { const next = value ?? "nigeria"; setJurisdiction(next); window.localStorage.setItem("dobby-tax-jurisdiction", next); }} /></Row>
+            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }]} /></Row>
+            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-states", label: "United States" }]} onValueChange={(value) => {
+              const next = value ?? "nigeria";
+              setJurisdiction(next);
+              window.localStorage.setItem("dobby-tax-jurisdiction", next);
+            }} /></Row>
           </Section>
 
           <Section label="Categories & rules">
@@ -730,18 +735,27 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Plan">
-            {subscribed ? (
+            {paidPro ? (
               <Row
-                label="Subscription"
+                label="Dobby Pro"
                 description={
-                  subscription?.currentPeriodEnd
-                    ? `Billed through Bachs, renews ${formatDate(subscription.currentPeriodEnd)}. Cancelling keeps Pro until then — nothing is deleted.`
-                    : "Billed through Bachs. Cancelling keeps Pro until the end of the paid period — nothing is deleted."
+                  subscribed
+                    ? subscription?.currentPeriodEnd
+                      ? `Billed through Bachs, renews ${formatDate(subscription.currentPeriodEnd)}. Cancelling keeps Pro until then — nothing is deleted.`
+                      : "Billed through Bachs. Cancelling keeps Pro until the end of the paid period — nothing is deleted."
+                    : billingTerm?.periodEndsAt
+                      ? `One-time ${billingTerm.plan === "year" ? "annual" : "monthly"} term — Pro until ${formatDate(billingTerm.periodEndsAt)}. No auto-renew.`
+                      : "Dobby Pro is active on a one-time term. No auto-renew."
                 }
               >
-                <Button variant="secondary" size="small" disabled={canceling} onClick={() => setCancelConfirmOpen(true)}>
-                  {canceling ? "Canceling…" : "Cancel"}
-                </Button>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="secondary" size="small" disabled>
+                    Subscribed
+                  </Button>
+                  <Button variant="secondary" size="small" disabled={canceling} onClick={() => setCancelConfirmOpen(true)}>
+                    {canceling ? "Canceling…" : "Cancel"}
+                  </Button>
+                </div>
               </Row>
             ) : (
               <Row
@@ -758,23 +772,9 @@ export function SettingsPage() {
                         : "Unlocks email auto-fetch, wallet tracking, net worth, proactive flags, and monthly reminders."
                 }
               >
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button variant="primary" size="small" disabled={checkoutBusy}>
-                        {checkoutBusy ? "Opening checkout…" : "Upgrade to Pro"}
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end" className="w-56">
-                    {planItems.map((item) => (
-                      <DropdownMenuItem key={item.key} className="flex-col items-start gap-0.5 py-2" onClick={item.run}>
-                        <span className="text-[13px] font-semibold text-foreground">{item.title}</span>
-                        <span className="text-[11px] font-medium text-muted-foreground">{item.sub}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button variant="primary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>
+                  {checkoutBusy ? "Opening checkout…" : "Upgrade to Pro"}
+                </Button>
               </Row>
             )}
             <Row
@@ -837,21 +837,25 @@ export function SettingsPage() {
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
+            <AlertDialogTitle>{subscribed ? "Cancel your subscription?" : "End Pro now?"}</AlertDialogTitle>
             <AlertDialogDescription>
-              {subscription?.currentPeriodEnd
-                ? `You keep Dobby Pro until ${formatDate(subscription.currentPeriodEnd)}, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are.`
-                : "You keep Dobby Pro until the end of the paid period, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are."}
+              {subscribed ? (
+                subscription?.currentPeriodEnd
+                  ? `You keep Dobby Pro until ${formatDate(subscription.currentPeriodEnd)}, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are.`
+                  : "You keep Dobby Pro until the end of the paid period, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are."
+              ) : (
+                "Your one-time term ends immediately and the workspace goes back to view-only. The remaining days are forfeited — nothing is deleted."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={canceling}>Keep subscription</AlertDialogCancel>
+            <AlertDialogCancel disabled={canceling}>{subscribed ? "Keep subscription" : "Keep Pro"}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={canceling}
-              onClick={() => void cancelSubscription()}
+              onClick={() => void (subscribed ? cancelSubscription() : cancelTerm())}
             >
-              {canceling ? "Canceling…" : "Cancel subscription"}
+              {canceling ? "Canceling…" : subscribed ? "Cancel subscription" : "End Pro now"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

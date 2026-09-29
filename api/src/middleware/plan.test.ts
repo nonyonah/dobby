@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { TRIAL_DAYS, computeEffectivePlan, computeLocalPlan, trialEndsAt } from "./plan.js";
+import { TRIAL_DAYS, computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "./plan.js";
+
+describe("isTrialLive", () => {
+  it("is true inside the window and false outside it", () => {
+    expect(isTrialLive(daysAgo(2))).toBe(true);
+    expect(isTrialLive(daysAgo(TRIAL_DAYS + 1))).toBe(false);
+    expect(isTrialLive(null)).toBe(false);
+  });
+});
 
 const DAY = 24 * 60 * 60 * 1000;
 const daysAgo = (days: number) => new Date(Date.now() - days * DAY);
@@ -95,5 +103,19 @@ describe("computeEffectivePlan with a one-time term", () => {
     expect(
       computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: daysAgo(1), bachsSubscriptionStatus: "active" }),
     ).toBe("ACTIVE");
+  });
+});
+
+describe("trial preservation", () => {
+  it("falls back to a live trial when a one-time term lapses", () => {
+    expect(
+      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(2), planExpiresAt: daysAgo(1) }),
+    ).toBe("TRIAL");
+  });
+
+  it("expires when both the term and the trial have lapsed", () => {
+    expect(
+      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: daysAgo(1) }),
+    ).toBe("EXPIRED");
   });
 });

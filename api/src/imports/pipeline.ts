@@ -75,8 +75,7 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
   }
   if (aiCandidates.length > 0 && aiUnlocked) {
     try {
-      const names = categories.map((category) => category.name);
-      const byIndex = new Map(aiCandidates.map((entry) => [entry.index, entry]));
+      const names = categories.map((category) => category.name);      const byIndex = new Map(aiCandidates.map((entry) => [entry.index, entry]));
       for (let offset = 0; offset < aiCandidates.length; offset += 100) {
         const chunk = aiCandidates.slice(offset, offset + 100);
         const suggestions = await categorizeDescriptions(
@@ -85,7 +84,6 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
             return {
               index,
               description: String(proposed.merchant ?? proposed.description ?? ""),
-              type: String(proposed.type ?? ""),
             };
           }),
           names,
@@ -104,6 +102,23 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
       logger.info({ error: error instanceof Error ? error.message : String(error) }, "AI categorization skipped; leftovers stay in review");
     }
   }
+  // Anything still without a category becomes explicitly Uncategorized —
+  // never null, never a document-type string — so cash-flow totals can
+  // exclude it honestly and the user can filter it down in the ledger.
+  const uncategorized = await ensureUncategorizedCategory(
+    ownerClerkId,
+    categories.map((category) => ({ id: category.id, name: category.name })),
+  );
+  enriched.forEach((item, index) => {
+    if (!item.proposedData || typeof item.proposedData !== "object" || Array.isArray(item.proposedData)) return;
+    const proposed = item.proposedData as Record<string, unknown>;
+    if (typeof proposed.categoryId === "string" || item.errorMessage) return;
+    enriched[index] = {
+      ...item,
+      proposedData: { ...proposed, categoryId: uncategorized.id, categoryName: uncategorized.name } as Prisma.InputJsonValue,
+    };
+    aiConfidence.set(index, 0.1);
+  });
   const fingerprints = enriched.map((item) => item.fingerprint);
   const existing = await prisma.transaction.findMany({ where: { ownerClerkId, fingerprint: { in: fingerprints } }, select: { fingerprint: true } });
   const existingFingerprints = new Set(existing.map((item) => item.fingerprint));
@@ -133,6 +148,17 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
     count: reviewItems.length,
     duplicateRows: reviewItems.filter((item) => item.errorMessage === "Duplicate transaction fingerprint.").length,
   };
+}
+
+/** The explicit low-confidence bucket. Created on demand so old accounts get it without a migration. */
+export async function ensureUncategorizedCategory(
+  ownerClerkId: string,
+  known: Array<{ id: string; name: string }>,
+): Promise<{ id: string; name: string }> {
+  const existing = known.find((category) => category.name.toLowerCase() === "uncategorized");
+  if (existing) return { id: existing.id, name: existing.name };
+  const created = await prisma.category.create({ data: { ownerClerkId, name: "Uncategorized" } });
+  return { id: created.id, name: created.name };
 }
 
 function normalizeKey(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }

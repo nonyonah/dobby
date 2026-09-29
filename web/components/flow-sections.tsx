@@ -49,7 +49,7 @@ function useLiveMonth(month: number, year: number, income: boolean) {
 
     const loadRows = async () => {
       const first = await api.get<{
-        data: Array<{ id: string; description: string; merchant?: string | null; amount: number | string; occurredAt: string }>;
+        data: Array<{ id: string; description: string; merchant?: string | null; amount: number | string; displayAmount?: number | string | null; occurredAt: string }>;
         meta: { total: number };
       }>(`/v1/transactions?${query}&page=1`);
       const pageCount = Math.ceil(first.meta.total / 100);
@@ -67,7 +67,9 @@ function useLiveMonth(month: number, year: number, income: boolean) {
         name: item.merchant || item.description,
         account: "Ledger",
         date: item.occurredAt.slice(0, 10),
-        amount: income ? Number(item.amount) : -Math.abs(Number(item.amount)),
+        // displayAmount is already converted to the profile currency —
+        // rendering the raw source amount here showed ₦1000 as $1000.
+        amount: income ? Number(item.displayAmount ?? item.amount) : -Math.abs(Number(item.displayAmount ?? item.amount)),
         category: "other",
         taxable: false,
         source: "manual" as TxSource,

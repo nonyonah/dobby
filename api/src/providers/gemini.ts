@@ -449,7 +449,6 @@ export async function extractStatement(data: { mimeType: string; bytes: string }
 export interface CategorizeInput {
   index: number;
   description: string;
-  type: string;
 }
 
 export interface CategorizeSuggestion {
@@ -474,8 +473,8 @@ export async function categorizeDescriptions(
     "Respond with ONLY a JSON array, no other text.",
     'Each element must be {"index": <number>, "category": <exact category name or "UNCERTAIN">, "confidence": <0 to 1>}.',
     `Valid categories: ${categories.map((name) => JSON.stringify(name)).join(", ")}.`,
-    'Use "UNCERTAIN" with confidence 0 when nothing fits; never invent a category.',
-    `Transactions: ${JSON.stringify(items.map((item) => ({ index: item.index, description: item.description, type: item.type })))}`,
+    'Judge purpose only, from the description text — never invent a category.',
+    `Transactions: ${JSON.stringify(items.map((item) => ({ index: item.index, description: item.description })))}`,
   ].join("\n");
   const raw = (await generateTextJson(instruction)) as unknown;
   const list = Array.isArray(raw) ? raw : [];

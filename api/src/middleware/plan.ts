@@ -18,6 +18,16 @@ type PlanRow = {
 };
 
 /**
+ * Whether the signup trial clock is still running, independent of any
+ * stored plan or purchase. Cancelling or lapsing a paid term must fall back
+ * to this — never force-expire an account whose trial is still live.
+ */
+export function isTrialLive(trialStartedAt: Date | null): boolean {
+  if (!trialStartedAt) return false;
+  return Date.now() - trialStartedAt.getTime() < TRIAL_MS;
+}
+
+/**
  * The signup clock alone: a 7-day window from `trialStartedAt`, ignoring any
  * subscription state. EXPIRED is terminal; TRIAL expires lazily once
  * `trialStartedAt + 7 days` has passed, so expiry is computed rather than
@@ -46,7 +56,11 @@ export function computeEffectivePlan(user: PlanRow): EffectivePlan {
   if (status === "active" || status === "past_due") return "ACTIVE";
   // One-time terms (Flutterwave) lapse on their own clock, independent of the
   // signup trial: a stored ACTIVE with a past term end is EXPIRED.
-  if (user.planExpiresAt && user.planExpiresAt.getTime() <= Date.now()) return "EXPIRED";
+  if (user.planExpiresAt && user.planExpiresAt.getTime() <= Date.now()) {
+    // A lapsed one-time term falls back to the signup trial clock — it never
+    // force-expires an account whose trial is still running.
+    return computeLocalPlan({ ...user, plan: "TRIAL" });
+  }
   return computeLocalPlan(user);
 }
 

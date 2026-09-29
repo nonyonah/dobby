@@ -71,3 +71,28 @@ describe("suggestCategory — general behavior", () => {
     expect(suggestCategory("NIP transfer to Adaeze", "EXPENSE", categories, noRules)).toBeNull();
   });
 });
+
+describe("suggestCategory — real OPay statement descriptions", () => {
+  const refs = [
+    { id: "c-income", name: "Income" },
+    { id: "c-util", name: "Utilities" },
+    { id: "c-other", name: "Other" },
+  ];
+  const noRules: RuleRef[] = [];
+
+  it("never defaults unmatched income to Income (the conflation bug)", () => {
+    expect(suggestCategory("Transfer to tochukwu igwe | PalmPay | 8038652604", "INCOME", refs, noRules)).toBeNull();
+    expect(suggestCategory("VAT on Transfer Fee", "INCOME", refs, noRules)).toBeNull();
+    expect(suggestCategory("OWealth Withdrawal(Transaction Payment)", "INCOME", refs, noRules)).toBeNull();
+  });
+
+  it("leaves ambiguous debits unmatched for Uncategorized routing", () => {
+    expect(suggestCategory("Auto-save to OWealth", "EXPENSE", refs, noRules)).toBeNull();
+    expect(suggestCategory("USSD Charge", "EXPENSE", refs, noRules)).toBeNull();
+  });
+
+  it("still catches confident keywords in real descriptions", () => {
+    expect(suggestCategory("Mobile Data | 8153324197 | Glo | 1GB 3 Days Plan", "EXPENSE", refs, noRules)?.categoryId).toBe("c-util");
+    expect(suggestCategory("Salary payment", "INCOME", refs, noRules)?.categoryId).toBe("c-income");
+  });
+});

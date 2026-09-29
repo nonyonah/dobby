@@ -9,7 +9,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 import { BACHS_USD_PRICES, billingConfigured, cancelProSubscription, createCryptoCheckout, createPortalSession, createProCheckout, getCheckoutSession, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
 import { FLUTTERWAVE_PRICES, createFlutterwavePayment, flutterwaveConfigured, flutterwaveWebhookValid, newTxRef, verifyFlutterwaveTransaction, type FlutterwaveInterval, type VerifiedFlutterwaveTransaction } from "../lib/flutterwave.js";
-import { computeEffectivePlan, computeLocalPlan, trialEndsAt } from "../middleware/plan.js";
+import { computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "../middleware/plan.js";
 
 const WEBHOOK_PATH = "/webhook";
 
@@ -95,7 +95,9 @@ async function cancelSubscription(data: SubscriptionData) {
   await prisma.user.update({
     where: { clerkId: user.clerkId },
     data: {
-      plan: computeLocalPlan(user) === "TRIAL" ? Plan.TRIAL : Plan.EXPIRED,
+      // A cancelled subscription falls back to the signup trial clock — never
+      // force-expire an account whose trial is still running.
+      plan: isTrialLive(user.trialStartedAt) ? Plan.TRIAL : Plan.EXPIRED,
       bachsSubscriptionStatus: "canceled",
       bachsCancelAtPeriodEnd: true,
       ...(data.current_period_end ? { bachsCurrentPeriodEnd: new Date(data.current_period_end) } : {}),
@@ -342,14 +344,21 @@ export type BillingRegion = "NG" | "US";
 export type BillingOption = {
   provider: "bachs" | "flutterwave";
   interval: BillingInterval;
+  /** Card = Bachs subscription; crypto/Flutterwave = one-time terms. */
+  method: "card" | "crypto" | "flutterwave";
   amount: number;
   currency: string;
   label: string;
 };
 
-const USD_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", amount: 5, currency: "USD", label: "$5/mo" },
-  { provider: "bachs", interval: "year", amount: 50, currency: "USD", label: "$50/yr" },
+const USD_CARD_OPTIONS: BillingOption[] = [
+  { provider: "bachs", interval: "month", method: "card", amount: 5, currency: "USD", label: "$5/mo" },
+  { provider: "bachs", interval: "year", method: "card", amount: 50, currency: "USD", label: "$50/yr" },
+];
+
+const USD_CRYPTO_OPTIONS: BillingOption[] = [
+  { provider: "bachs", interval: "month", method: "crypto", amount: 5, currency: "USD", label: "$5/mo · Crypto" },
+  { provider: "bachs", interval: "year", method: "crypto", amount: 50, currency: "USD", label: "$50/yr · Crypto" },
 ];
 
 function ngnLabel(amount: number, interval: BillingInterval): string {
@@ -361,30 +370,38 @@ function flutterwaveOptions(): BillingOption[] {
   return (Object.keys(FLUTTERWAVE_PRICES) as FlutterwaveInterval[]).map((interval) => ({
     provider: "flutterwave",
     interval,
+    method: "flutterwave",
     amount: FLUTTERWAVE_PRICES[interval].amount,
     currency: FLUTTERWAVE_PRICES[interval].currency,
     label: ngnLabel(FLUTTERWAVE_PRICES[interval].amount, interval),
   }));
 }
 
-/** NGN billing for Nigeria (tax profile, else profile country); USD everywhere else. */
+/** The app bills in two regions: NGN (Nigeria) and USD (US). The universal
+ * Country setting is authoritative; the tax profile is the fallback. */
 export async function billingRegionFor(clerkId: string): Promise<BillingRegion> {
-  const [taxProfile, profile] = await Promise.all([
-    prisma.taxProfile.findUnique({ where: { ownerClerkId: clerkId }, select: { country: true } }),
+  const [profile, taxProfile] = await Promise.all([
     prisma.profile.findUnique({ where: { clerkId }, select: { country: true } }),
+    prisma.taxProfile.findUnique({ where: { ownerClerkId: clerkId }, select: { country: true } }),
   ]);
+  const explicit = profile?.country?.toUpperCase();
+  if (explicit === "US") return "US";
+  if (explicit === "NG") return "NG";
   if (taxProfile?.country === "US") return "US";
-  if (taxProfile) return "NG";
-  if (profile?.country && /united states|\busa?\b/i.test(profile.country)) return "US";
   return "NG";
 }
 
 billingRouter.get("/options", async (req, res) => {
   const region = await billingRegionFor(req.auth!.userId);
-  const bachs = billingConfigured() ? USD_OPTIONS : [];
+  const card = billingConfigured() ? USD_CARD_OPTIONS : [];
+  const crypto = billingConfigured() ? USD_CRYPTO_OPTIONS : [];
   const wave = flutterwaveConfigured() ? flutterwaveOptions() : [];
-  // The region's provider first; the other configured provider stays available.
-  const options = region === "NG" ? [...wave, ...bachs] : [...bachs, ...wave];
+  // US bills by card subscription or crypto terms; Nigeria bills by
+  // Flutterwave or crypto terms. The other configured provider stays as a
+  // fallback so checkout never renders empty.
+  const primary = region === "NG" ? [...wave, ...crypto] : [...card, ...crypto];
+  const fallback = region === "NG" ? [...card, ...crypto] : [...wave, ...crypto];
+  const options = primary.length > 0 ? primary : fallback;
   res.json({ data: { region, options } });
 });
 
@@ -463,8 +480,34 @@ async function fulfillFlutterwavePayment(ownerClerkId: string, verified: Verifie
   return { granted: true, already: false as const, periodEndsAt };
 }
 
-billingRouter.post("/flutterwave/verify", async (req, res) => {
-  const input = z.object({ transactionId: z.union([z.number(), z.string()]).optional(), txRef: z.string().min(1).optional() }).parse(req.body);
+/**
+ * Cancel a one-time Pro term (Flutterwave/crypto): there is nothing to
+ * unsubscribe from, so this forfeits the remaining days immediately. Bachs
+ * subscriptions must use /cancel instead.
+ */
+billingRouter.post("/term/cancel", async (req, res) => {
+  const clerkId = req.auth!.userId;
+  const user = await prisma.user.findUnique({
+    where: { clerkId },
+    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true, planExpiresAt: true },
+  });
+  if (!user || computeEffectivePlan(user) !== "ACTIVE") {
+    throw new AppError(400, "There is no active Pro access to cancel.", "NO_ACTIVE_TERM");
+  }
+  if (user.bachsSubscriptionStatus === "active" || user.bachsSubscriptionStatus === "past_due" || user.bachsSubscriptionStatus === "trialing") {
+    throw new AppError(400, "This account bills through a subscription — cancel that instead.", "USE_SUBSCRIPTION_CANCEL");
+  }
+  if (!user.planExpiresAt || user.planExpiresAt.getTime() <= Date.now()) {
+    throw new AppError(400, "There is no active prepaid term to cancel.", "NO_TERM");
+  }
+  // Forfeiting a term must not also eat a still-running signup trial.
+  const fallback = computeLocalPlan({ plan: "TRIAL", trialStartedAt: user.trialStartedAt });
+  await prisma.user.update({ where: { clerkId }, data: { planExpiresAt: new Date(), plan: fallback === "TRIAL" ? Plan.TRIAL : Plan.EXPIRED } });
+  logger.info({ clerkId }, "one-time Pro term forfeited");
+  res.json({ data: { canceled: true } });
+});
+
+billingRouter.post("/flutterwave/verify", async (req, res) => {  const input = z.object({ transactionId: z.union([z.number(), z.string()]).optional(), txRef: z.string().min(1).optional() }).parse(req.body);
   if (input.transactionId === undefined && !input.txRef) {
     throw new AppError(400, "Provide transactionId or txRef.", "VALIDATION_ERROR");
   }

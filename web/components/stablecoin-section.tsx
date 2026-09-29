@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
-import { formatUSD } from "@/lib/format";
+import { formatCurrency, formatUSD, getAppCurrency } from "@/lib/format";
 import { MONTH_LABELS } from "@/lib/insights-data";
 import type { TxFull } from "@/lib/transactions";
 import { MoneyStats } from "@/components/money-stats";
@@ -53,21 +53,38 @@ export function StablecoinSection({
 }) {
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
-  const [holdingsUsd, setHoldingsUsd] = useState<number | null>(null);
+  const [holdings, setHoldings] = useState<{ amount: number; currency: string } | null>(null);
   const [walletCount, setWalletCount] = useState(0);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
+    // Holdings price in USD; convert to the display currency so the Balance
+    // stat never wears the wrong symbol the way raw amounts used to.
     void api
       .get<{ data: NetWorthPayload }>("/v1/insights/net-worth")
       .then((response) => {
         if (cancelled) return;
         const priced = response.data.holdings.filter((holding) => holding.usdValue !== null);
-        setHoldingsUsd(priced.reduce((sum, holding) => sum + (holding.usdValue ?? 0), 0));
+        const usd = priced.reduce((sum, holding) => sum + (holding.usdValue ?? 0), 0);
         setWalletCount(new Set(priced.map((holding) => holding.walletId)).size);
+        const target = getAppCurrency();
+        if (target === "USD") {
+          setHoldings({ amount: usd, currency: "USD" });
+          return;
+        }
+        void api
+          .get<{ data: { convertedAmount: number } }>(
+            `/v1/currency/convert?amount=${encodeURIComponent(usd)}&from=USD&to=${encodeURIComponent(target)}`,
+          )
+          .then((conversion) => {
+            if (!cancelled) setHoldings({ amount: conversion.data.convertedAmount, currency: target });
+          })
+          .catch(() => {
+            if (!cancelled) setHoldings({ amount: usd, currency: "USD" });
+          });
       })
-      .catch(() => { if (!cancelled) setHoldingsUsd(null); });
+      .catch(() => { if (!cancelled) setHoldings(null); });
     return () => { cancelled = true; };
   }, [api, isLoaded, isSignedIn]);
 
@@ -91,7 +108,7 @@ export function StablecoinSection({
     <div className="flex flex-col gap-4">
       <MoneyStats
         stats={[
-          { label: "Balance", value: holdingsUsd ?? 0, delta: null },
+          { label: "Balance", value: holdings?.amount ?? 0, delta: null },
           { label: "Income", value: income, delta: null },
           { label: "Expense", value: expense, delta: null, invert: true, minus: true },
           { label: "Total earnings", value: earnings, delta: null, minus: earnings < 0 },
@@ -123,7 +140,7 @@ export function StablecoinSection({
         </div>
         <FlowNarrative title="Stablecoin summary">
           <p className="m-0">
-            You hold <strong>{formatUSD(holdingsUsd ?? 0)}</strong> in stablecoins
+            You hold <strong>{formatCurrency(holdings?.amount ?? 0, holdings?.currency ?? "USD")}</strong> in stablecoins
             {walletCount > 0 ? ` across ${walletCount} connected wallet${walletCount === 1 ? "" : "s"}` : ""}.
           </p>
           <p className="m-0">
