@@ -112,8 +112,10 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
     }
   }));
 
-  // One rate per currency covers both sides of every conversion below.
-  const currencies = new Set<string>(["NGN", "USD"]);
+  // One rate per currency covers both sides of every conversion below. The seeded
+  // set covers every supported jurisdiction so an account with no activity still
+  // gets a real rate instead of silently contributing an identity conversion.
+  const currencies = new Set<string>(["NGN", "USD", "GBP", "CAD", "KES", "ZAR"]);
   for (const account of accounts) currencies.add(account.currency.toUpperCase());
   for (const row of grouped) currencies.add((row.currency ?? "USD").toUpperCase());
   const usdRates = await getConversionFactors(currencies, "USD");

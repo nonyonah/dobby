@@ -58,6 +58,23 @@ enum ReviewStatus {
 enum TaxCountry {
   NIGERIA
   US
+  UK
+  CANADA
+  KENYA
+  SOUTH_AFRICA
+}
+
+/// How a piece of income is taxed, which decides liabilities that differ by
+/// source rather than by amount: UK Class 1 vs Class 4 National Insurance,
+/// US self-employment tax, South African medical/retirement credits. Nullable so
+/// historical rows are honestly "unclassified" instead of silently defaulting
+/// into a rate table that would be wrong for them.
+enum IncomeSource {
+  EMPLOYMENT
+  SELF_EMPLOYMENT
+  INVESTMENT
+  RENTAL
+  OTHER
 }
 
 enum TaxChecklistStatus {
@@ -131,6 +148,14 @@ model TaxProfile {
   estimatedTaxOwed      Decimal  @default(0) @db.Decimal(19, 4)
   taxableIncome         Decimal  @default(0) @db.Decimal(19, 4)
   deductionsCaptured   Json?
+  /// Jurisdiction-specific switches the tax module needs but no other feature uses:
+  /// "resident"/"non-resident" (Kenya has a separate non-resident table), a region
+  /// flag (Scotland uses different UK income tax bands), and an age band. Stored as
+  /// a band rather than a date of birth because SARS rebates are all we need from it
+  /// and it avoids collecting a DOB the product has no other use for.
+  residencyStatus   String?
+  region            String?
+  ageBand           String?
   lastCalculatedAt     DateTime?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
@@ -336,6 +361,7 @@ model Transaction {
   fingerprint     String?
   isRecurring     Boolean         @default(false)
   isTaxable       Boolean         @default(false)
+  incomeSource    IncomeSource?
   needsReview     Boolean         @default(false)
   metadata        Json?
   createdAt       DateTime        @default(now())

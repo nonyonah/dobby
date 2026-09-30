@@ -1,9 +1,10 @@
-import { Prisma, TaxCountry } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { computeEffectivePlan, trialEndsAt } from "../middleware/plan.js";
+import { taxCountryForJurisdiction } from "../tax/registry.js";
 
 export const meRouter = Router();
 
@@ -89,7 +90,7 @@ meRouter.patch("/", async (req, res) => {
   // without this a user in Nigeria whose profile says "nigeria" would still be
   // estimated in USD on the dashboard.
   if (input.taxJurisdiction !== undefined) {
-    const taxCountry = input.taxJurisdiction === "united-states" ? TaxCountry.US : TaxCountry.NIGERIA;
+    const taxCountry = taxCountryForJurisdiction(input.taxJurisdiction);
     const currentYear = new Date().getUTCFullYear();
     await prisma.taxProfile.upsert({
       where: { ownerClerkId: clerkId },

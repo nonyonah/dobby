@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { MoneyStats } from "@/components/money-stats";
@@ -18,6 +19,8 @@ import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { type DayRange } from "@/lib/insights-data";
 import type { InsightsSummary } from "@/lib/cashflow";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
+import { TAX_JURISDICTIONS } from "@/lib/countries";
+import { TaxPlanningCard } from "@/components/tax-planning-card";
 import { Segmented } from "@/components/ui/segmented";
 
 type Section = "cashflow" | "spending" | "income" | "stablecoin" | "tax";
@@ -107,12 +110,17 @@ function CashflowSection({ year, summary }: { year: number; summary: InsightsSum
 /** Shape of `GET /v1/tax/estimate`, which is calculated in the tax jurisdiction's currency. */
 type TaxEstimate = {
   country?: string;
+  /** Currency the jurisdiction's rules are expressed in. Set by the module, never assumed. */
+  currency?: string;
   taxYear?: number;
+  taxYearLabel?: string;
   grossIncome?: number;
   taxableIncome?: number;
   estimatedTaxOwed: number;
   filingDeadline: string;
   deductions?: Record<string, number>;
+  credits?: Record<string, number>;
+  components?: Array<{ key: string; label: string; amount: number }>;
   quarterly?: { required?: boolean; nextPayment?: number; nextDueDate?: string | null };
   notes?: string[];
 };
@@ -122,11 +130,55 @@ const DEDUCTION_LABELS: Record<string, string> = {
   rentRelief: "Rent relief",
   pension: "Pension contributions",
   nhf: "National Housing Fund contributions",
+  nhis: "National Health Insurance Scheme contributions",
+  housingLoanInterest: "Owner-occupied home loan interest",
+  lifeAssurance: "Life assurance premiums",
   taxableExpenses: "Deductible business expenses",
   homeOffice: "Home office",
   retirement: "Retirement contributions",
+  retirementCap: "Retirement deduction cap",
+  donations: "Donations",
+  donationsCarriedForward: "Donations carried forward",
+  medicalExpenses: "Qualifying medical expenses",
+  travelAllowance: "Travel allowance",
+  personal: "Personal expenditure",
   halfSelfEmploymentTax: "Half of self-employment tax",
+  standardDeduction: "Standard deduction",
+  selfEmploymentHealthInsurance: "Self-employed health insurance",
+  qualifiedOvertime: "Qualified overtime compensation",
+  studentLoanInterest: "Student loan interest",
+  insuranceRelief: "Insurance relief",
+  housingRelief: "Housing relief",
+  postRetirementMedical: "Post-retirement medical fund relief",
+  personalRelief: "Personal relief",
+  donationsPbo: "Donations to approved organisations",
+  ppfContributions: "Provident and pension fund contributions",
+  pensionableAllowances: "Pensionable allowances",
+  secondarySelfEmployment: "Second self-employment income",
+  personalReliefApplied: "Personal relief applied",
+  rrsp: "RRSP contributions",
+  cppContributions: "CPP contributions",
+  professionalDues: "Professional and union dues",
+  movingCosts: "Eligible moving costs",
+  childCare: "Child care expenses",
+  taxableIncomeComponent: "Taxable income",
 };
+
+/** Anything a new jurisdiction introduces still reads as words, not a key. */
+function humanise(key: string): string {
+  const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+type ChecklistItem = { key: string; label: string; status: "READY" | "OUTSTANDING" };
+
+async function fetchTax(api: ReturnType<typeof useApi>) {
+  const [estimate, checklist] = await Promise.all([
+    api.get<{ data: TaxEstimate }>("/v1/tax/estimate"),
+    api.get<{ data: { items: ChecklistItem[] } }>("/v1/tax/checklist"),
+  ]);
+  return { estimate: estimate.data, items: checklist.data.items };
+}
 
 export default function InsightsPage() {
   const [section, setSection] = useState<Section>("cashflow");
@@ -144,21 +196,35 @@ export default function InsightsPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const selectedYear = range.from.getFullYear();
 
+  // Fetched from two places — first mount and after the planning card saves — so
+  // the request lives in a plain function and each caller owns its own state
+  // timing. Mount reads from the promise callback; the save path is an event
+  // handler, where setting state directly is fine.
+  const refreshTax = async () => {
+    try {
+      const { estimate, items } = await fetchTax(api);
+      setTaxEstimate(estimate);
+      setTaxChecklist(items);
+    } catch {
+      setTaxEstimate(null);
+      setTaxChecklist([]);
+    }
+  };
+
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
-    void Promise.all([
-      api.get<{ data: typeof taxEstimate }>("/v1/tax/estimate"),
-      api.get<{ data: { items: Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> } }>("/v1/tax/checklist"),
-    ]).then(([estimate, checklist]) => {
-      if (cancelled) return;
-      setTaxEstimate(estimate.data);
-      setTaxChecklist(checklist.data.items);
-    }).catch(() => {
-      if (cancelled) return;
-      setTaxEstimate(null);
-      setTaxChecklist([]);
-    });
+    void fetchTax(api)
+      .then(({ estimate, items }) => {
+        if (cancelled) return;
+        setTaxEstimate(estimate);
+        setTaxChecklist(items);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTaxEstimate(null);
+        setTaxChecklist([]);
+      });
     return () => { cancelled = true; };
   }, [api, isLoaded, isSignedIn]);
 
@@ -209,24 +275,31 @@ export default function InsightsPage() {
   }, [isLoaded, isSignedIn, selectedYear]);
 
 
-  // Estimate figures come back in the jurisdiction's currency (NGN for
-  // Nigeria, USD for the US), which is not necessarily the display currency.
-  const taxCountry = taxEstimate?.country === "US" ? "US" : "NIGERIA";
-  const taxCurrency = taxCountry === "US" ? "USD" : "NGN";
-  const taxCountryLabel = taxCountry === "US" ? "United States" : "Nigeria";
+  // The jurisdiction, its currency and its tax year all come from the rule module
+  // rather than being inferred here — South Africa's year runs March to February
+  // and Kenya's currency is KES, neither of which a NG/US check would catch.
+  const taxCountry = taxEstimate?.country ?? "NIGERIA";
+  const taxCurrency = taxEstimate?.currency ?? "NGN";
+  const taxJurisdiction = TAX_JURISDICTIONS.find((entry) => entry.value.toLowerCase().replace(/-/g, "") === String(taxCountry).toLowerCase())
+    ?? TAX_JURISDICTIONS.find((entry) => entry.currency === taxCurrency);
+  const taxCountryLabel = taxJurisdiction?.name ?? humanise(taxCountry);
   const taxYear = taxEstimate?.taxYear ?? selectedYear;
   const money = (value: number) => formatCurrency(value, taxCurrency);
   const taxNow = taxEstimate?.estimatedTaxOwed ?? 0;
   const taxableIncome = taxEstimate?.taxableIncome ?? 0;
   const deductionsTotal = taxEstimate?.deductions?.total ?? 0;
   const deductionRows = Object.entries(taxEstimate?.deductions ?? {})
-    .filter(([key, value]) => key !== "total" && Number.isFinite(value) && value > 0)
+    .filter(([key, value]) => key !== "total" && key !== "retirementCap" && key !== "donationsCarriedForward" && Number.isFinite(value) && value > 0)
     .map(([key, value]) => ({
       id: key,
-      name: DEDUCTION_LABELS[key] ?? key,
+      name: DEDUCTION_LABELS[key] ?? humanise(key),
       captured: value,
       share: deductionsTotal > 0 ? Math.min(100, (value / deductionsTotal) * 100) : 0,
     }));
+  const creditRows = Object.entries(taxEstimate?.credits ?? {})
+    .filter(([key, value]) => key !== "total" && Number.isFinite(value) && value > 0)
+    .map(([key, value]) => ({ id: key, name: DEDUCTION_LABELS[key] ?? humanise(key), captured: value }));
+  const componentRows = (taxEstimate?.components ?? []).filter((item) => item.amount > 0);
   const filingDeadline = taxEstimate?.filingDeadline
     ? new Date(taxEstimate.filingDeadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : null;
@@ -335,13 +408,38 @@ export default function InsightsPage() {
 
               <section aria-label="Tax position">
                 <h2 className="m-0 text-[13px] font-semibold">Tax position</h2>
-                <p className="m-0 mt-1 text-[12px] text-muted-foreground">Using {taxCountryLabel} deduction rules · {taxYear}</p>
+                <p className="m-0 mt-1 text-[12px] text-muted-foreground">
+                  Using {taxCountryLabel} rules · {taxEstimate?.taxYearLabel ?? taxYear}
+                </p>
                 <p className="mono m-0 mt-1 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
                   {money(taxNow)}
                 </p>
                 <p className="m-0 text-[12px] text-muted-foreground">
                   Estimated tax on {money(taxableIncome)} of taxable income
                 </p>
+                {componentRows.length > 1 ? (
+                  <ul className="m-0 mt-2 list-none p-0 border-b border-line pb-2">
+                    {componentRows.map((item) => (
+                      <li key={item.key} className="flex items-center justify-between gap-2 py-0.5 text-[13px]">
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">{item.label}</span>
+                        <span className="mono shrink-0 font-medium tabular-nums">{money(item.amount)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {creditRows.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="m-0 text-[12px] font-medium text-muted-foreground">Credits applied after tax</p>
+                    <ul className="m-0 mt-1 list-none p-0">
+                      {creditRows.map((row) => (
+                        <li key={row.id} className="flex items-center justify-between gap-2 py-0.5 text-[13px]">
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.name}</span>
+                          <span className="mono shrink-0 tabular-nums">-{money(row.captured)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <div className="mt-3 space-y-1.5 text-[13px] leading-relaxed">
                   {filingDeadline ? (
                     <p className="m-0">File or pay by <span className="mono font-medium tabular-nums">{filingDeadline}</span>.</p>
@@ -367,6 +465,9 @@ export default function InsightsPage() {
                 {taxEstimate?.notes?.[0] ? (
                   <p className="m-0 mt-2 text-[12px] text-muted-foreground">{taxEstimate.notes[0]}</p>
                 ) : null}
+                {taxEstimate?.notes?.slice(1).map((note) => (
+                  <p key={note} className="m-0 mt-1.5 text-[12px] leading-relaxed text-muted-foreground">{note}</p>
+                ))}
               </section>
             </div>
 
@@ -393,6 +494,10 @@ export default function InsightsPage() {
                   })}
                 </ul>
               </section>
+            </div>
+
+            <div className="mt-8">
+              <TaxPlanningCard onSaved={() => void refreshTax()} />
             </div>
 
             <div role="alert" className="m-0 mt-8 flex items-start gap-3 rounded-2xl border border-line bg-card px-4 py-3 text-[12px] leading-relaxed text-card-foreground">

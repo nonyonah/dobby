@@ -15,7 +15,7 @@ import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, THEME_STORAGE_KEY, a
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
-import { COUNTRY_OPTIONS, CURRENCY_OPTIONS, THEME_OPTIONS } from "@/lib/countries";
+import { COUNTRY_OPTIONS, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS, THEME_OPTIONS } from "@/lib/countries";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { usePlan } from "@/components/plan-provider";
 import { useUpgrade } from "@/components/upgrade";
@@ -310,7 +310,7 @@ export function SettingsPage() {
       window.localStorage.setItem("dobby-currency", "USD");
     }
     if (isThemePreference(profile.theme)) setTheme(profile.theme);
-    if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction === "united-states" ? "united-states" : "nigeria");
+    if (profile.taxJurisdiction && TAX_JURISDICTIONS.some((entry) => entry.value === profile.taxJurisdiction)) setJurisdiction(profile.taxJurisdiction);
     const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
     if (accent) setAccentColor(accent.id);
   }, [me, user]);
@@ -717,7 +717,7 @@ export function SettingsPage() {
             <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => { const next = isThemePreference(value) ? value : "system"; setTheme(next); /* Apply straight away — waiting for Save left the control looking broken. */ try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* private mode: the save below still persists it */ } applyTheme(next); }} options={THEME_OPTIONS} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
             <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={CURRENCY_OPTIONS} /></Row>
-            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={COUNTRY_OPTIONS} onValueChange={(value) => {
+            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={TAX_JURISDICTION_OPTIONS} onValueChange={(value) => {
               const next = value ?? "nigeria";
               setJurisdiction(next);
               window.localStorage.setItem("dobby-tax-jurisdiction", next);

@@ -1,4 +1,4 @@
-import { Prisma, TransactionType } from "@prisma/client";
+import { IncomeSource, Prisma, TransactionType } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -24,6 +24,9 @@ const transactionSchema = z.object({
   fingerprint: z.string().trim().max(255).nullable().optional(),
   isRecurring: z.boolean().optional(),
   isTaxable: z.boolean().optional(),
+  // Which liability an income row attracts: UK Class 1 vs Class 4 NI, US
+  // self-employment tax. Left off entirely for non-income rows.
+  incomeSource: z.nativeEnum(IncomeSource).nullable().optional(),
   needsReview: z.boolean().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });
@@ -147,6 +150,9 @@ transactionsRouter.post("/", async (req, res) => {
     currency: input.currency ?? profile?.currency ?? "USD",
     amount: input.amount,
     metadata: input.metadata === null ? Prisma.JsonNull : (input.metadata as Prisma.InputJsonValue | undefined),
+    // A source only means anything on income, so an expense carrying one is
+    // ignored rather than stored as a misleading label.
+    incomeSource: input.type === "INCOME" ? input.incomeSource : null,
   };
   const transaction = await prisma.transaction.create({
     data: createData,
@@ -184,6 +190,10 @@ transactionsRouter.patch("/:id", async (req, res) => {
   const updateData: Prisma.TransactionUncheckedUpdateInput = {
     ...input,
     metadata: input.metadata === null ? Prisma.JsonNull : (input.metadata as Prisma.InputJsonValue | undefined),
+    // Only income carries a source, so switching a row to an expense clears it.
+    ...(input.incomeSource !== undefined
+      ? { incomeSource: (input.type ?? existing.type) === "INCOME" ? input.incomeSource : null }
+      : {}),
   };
   const transaction = await prisma.transaction.update({
     where: { id: existing.id },

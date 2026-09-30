@@ -24,7 +24,7 @@ const DESC_CAPTURE = /(?:Desc|Description|Narration|Details|Remarks|Particulars)
 const CREDIT_HINT = /\b(CR|CREDIT|CREDITED|DEPOSIT|DEPOSITED|RECEIVED|REFUND|FUNDS RECEIVED)\b/i;
 const DEBIT_HINT = /\b(DR|DEBIT|DEBITED|WITHDRAWN|WITHDRAWAL|PAID|PAYMENT|PURCHASE|CHARGE|SENT|TRANSFERRED)\b/i;
 
-const SYMBOL_CURRENCY: Record<string, string> = { "₦": "NGN", $: "USD", "£": "GBP", "€": "EUR", "₵": "GHS" };
+const SYMBOL_CURRENCY: Record<string, string> = { "₦": "NGN", $: "USD", "£": "GBP", "€": "EUR", "₵": "GHS", R: "ZAR", "C$": "CAD", Ksh: "KES", "₦ ": "NGN" };
 
 function cleanAmount(raw: string): number | undefined {
   const value = Number(raw.replace(/,/g, ""));
