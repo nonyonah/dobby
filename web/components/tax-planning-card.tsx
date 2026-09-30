@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { Warning } from "@phosphor-icons/react/dist/ssr";
+import { Alert, AlertContent, AlertDescription, AlertIndicator } from "@/components/ui/alert";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
@@ -140,9 +142,14 @@ export function TaxPlanningCard({ onSaved }: { onSaved?: () => void }) {
           {jurisdiction?.label ?? rules.country} · {rules.taxYearLabel} · estimated in {rules.currency}
         </p>
         {jurisdiction?.scope ? (
-          <p className="m-0 mt-1.5 rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] leading-relaxed text-warning">
-            {jurisdiction.scope}
-          </p>
+          <Alert status="warning" className="mt-2">
+            <AlertIndicator>
+              <Warning weight="fill" />
+            </AlertIndicator>
+            <AlertContent>
+              <AlertDescription>{jurisdiction.scope}</AlertDescription>
+            </AlertContent>
+          </Alert>
         ) : null}
       </header>
 
@@ -181,9 +188,16 @@ export function TaxPlanningCard({ onSaved }: { onSaved?: () => void }) {
         <div className="mb-4">
           <p className="m-0 mb-2 text-[13px] font-semibold">Deductions</p>
           {hasEvidenceRequirements ? (
-            <p className="m-0 mb-2 rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] leading-relaxed text-warning">
-              A deduction that is not claimed in writing with supporting documents is not allowed, no matter what you enter here.
-            </p>
+            <Alert status="warning" className="mb-2">
+              <AlertIndicator>
+                <Warning weight="fill" />
+              </AlertIndicator>
+              <AlertContent>
+                <AlertDescription>
+                  A deduction that is not claimed in writing with supporting documents is not allowed, no matter what you enter here.
+                </AlertDescription>
+              </AlertContent>
+            </Alert>
           ) : null}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {rules.deductions.map((spec) => (

@@ -1,39 +1,28 @@
 "use client";
 
-import * as React from "react";
-import { cn } from "cn";
+import { Alert as HeroAlert } from "@heroui/react";
 
-type AlertStatus = "default" | "success" | "warning" | "danger";
-
-const STATUS_CLASSES: Record<AlertStatus, string> = {
-  default: "border-line bg-card text-foreground",
-  success: "border-success/40 bg-success-soft text-foreground",
-  warning: "border-warning/40 bg-warning-soft text-foreground",
-  danger: "border-destructive/40 bg-destructive/10 text-foreground",
-};
-
-type AlertProps = React.ComponentProps<"div"> & {
-  status?: AlertStatus;
-};
-
-function Alert({ className, status = "default", ...props }: AlertProps) {
-  return <div data-slot="alert" data-status={status} className={cn("rounded-[50px] border px-3 py-2.5 text-xs", STATUS_CLASSES[status], className)} {...props} />;
-}
-
-function AlertIndicator({ className, ...props }: React.ComponentProps<"span">) {
-  return <span data-slot="alert-indicator" className={cn("text-current", className)} {...props} />;
-}
-
-function AlertContent({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="alert-content" className={cn("min-w-0", className)} {...props} />;
-}
-
-function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="alert-title" className={cn("font-medium", className)} {...props} />;
-}
-
-function AlertDescription({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="alert-description" className={cn("text-muted-foreground", className)} {...props} />;
-}
-
-export { Alert, AlertIndicator, AlertContent, AlertTitle, AlertDescription };
+/**
+ * Alerts, on HeroUI v3's `Alert`.
+ *
+ * When to reach for an alert rather than a toast: a message that persists until
+ * the user acts on it or dismisses it. Toasts time out on their own and are for
+ * confirming something that already finished, so they cannot carry a state the
+ * user still has to deal with. Concretely, in this app:
+ *
+ *   Alert  — subscription ending or trial lapsed, failed imports and syncs,
+ *            review items needing a decision, tax filing deadlines, and any
+ *            scope caveat that changes how the number should be read.
+ *   Toast  — the save/archive/delete/import actually succeeded, and the brief
+ *            "couldn't do that" that follows a failed action.
+ *
+ * The compound import surface is unchanged from the hand-rolled version this
+ * replaced, so call sites did not have to move. `status` keeps the same
+ * `default | success | warning | danger` vocabulary HeroUI uses, so
+ * `data-status` styling and semantics still line up.
+ */
+export const Alert = HeroAlert.Root;
+export const AlertIndicator = HeroAlert.Indicator;
+export const AlertContent = HeroAlert.Content;
+export const AlertTitle = HeroAlert.Title;
+export const AlertDescription = HeroAlert.Description;

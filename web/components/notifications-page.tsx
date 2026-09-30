@@ -13,7 +13,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Segmented } from "@/components/ui/segmented";
 import { useAttention, type AttentionItem } from "@/hooks/use-attention";
-import { useState } from "react";
+import { usePlan } from "@/components/plan-provider";
+import { useUpgrade } from "@/components/upgrade";
+import { deriveBillingNotice } from "@/lib/billing-notice";
+import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "@/components/ui/alert";
+import { Info, Warning } from "@phosphor-icons/react/dist/ssr";
+import { useMemo, useState } from "react";
 
 type KindFilter = "all" | AttentionItem["kind"];
 
@@ -25,6 +30,28 @@ const KIND_LABEL: Record<AttentionItem["kind"], string> = {
 export default function NotificationsPage() {
   const { items, dismiss, dismissAll, markRead, markAllRead, isRead, unreadCount } = useAttention();
   const [kind, setKind] = useState<KindFilter>("all");
+  const { plan, trialEndsAt } = usePlan();
+  const { openCheckout, busy: checkoutBusy } = useUpgrade();
+  // Captured once per mount, matching Settings, so the notice cannot flip
+  // mid-session as the clock moves.
+  const [pageOpenedAt] = useState(() => Date.now());
+
+  /**
+   * A lapsing subscription leads this feed rather than living only in Settings:
+   * an alert nobody sees is not a reminder. Deliberately derived from plan and
+   * trial dates alone here, since this page does not fetch billing — the
+   * cancelled-subscription case needs `/v1/billing` and stays in Settings.
+   */
+  const billingNotice = useMemo(
+    () =>
+      deriveBillingNotice({
+        plan,
+        trialEndsAt,
+        now: pageOpenedAt,
+        formatDate: (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      }),
+    [plan, trialEndsAt, pageOpenedAt],
+  );
   const visible = kind === "all" ? items : items.filter((item) => item.kind === kind);
   const visibleUnread = visible.filter((item) => !isRead(item.id)).length;
 
@@ -48,6 +75,21 @@ export default function NotificationsPage() {
           </div>
         ) : null}
       </div>
+
+      {billingNotice ? (
+        <Alert status={billingNotice.status} className="mb-4">
+          <AlertIndicator>{billingNotice.status === "danger" ? <Warning weight="fill" /> : <Info weight="fill" />}</AlertIndicator>
+          <AlertContent>
+            <AlertTitle>{billingNotice.title}</AlertTitle>
+            <AlertDescription>{billingNotice.body}</AlertDescription>
+          </AlertContent>
+          <div className="flex shrink-0 self-center">
+            <Button variant="primary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>
+              {checkoutBusy ? "Opening checkout…" : "Upgrade to Pro"}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
 
       {visible.length === 0 ? (
         <div className="px-4 py-10 text-center" role="status">

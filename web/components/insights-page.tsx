@@ -21,6 +21,7 @@ import type { InsightsSummary } from "@/lib/cashflow";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 import { TAX_JURISDICTIONS } from "@/lib/countries";
 import { TaxPlanningCard } from "@/components/tax-planning-card";
+import { Alert, AlertContent, AlertDescription, AlertIndicator } from "@/components/ui/alert";
 import { Segmented } from "@/components/ui/segmented";
 
 type Section = "cashflow" | "spending" | "income" | "stablecoin" | "tax";
@@ -500,10 +501,16 @@ export default function InsightsPage() {
               <TaxPlanningCard onSaved={() => void refreshTax()} />
             </div>
 
-            <div role="alert" className="m-0 mt-8 flex items-start gap-3 rounded-2xl border border-line bg-card px-4 py-3 text-[12px] leading-relaxed text-card-foreground">
-              <AlertIcon className="mt-0.5 shrink-0 text-warning" />
-              <span>General guidance only — figures are estimates from your tracked data and nothing here is filed on your behalf.</span>
-            </div>
+            <Alert status="default" className="mt-8">
+              <AlertIndicator>
+                <AlertIcon />
+              </AlertIndicator>
+              <AlertContent>
+                <AlertDescription className="text-card-foreground">
+                  General guidance only — figures are estimates from your tracked data and nothing here is filed on your behalf.
+                </AlertDescription>
+              </AlertContent>
+            </Alert>
           </div>
         )}
       </div>

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { ArrowRight, Briefcase, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, Briefcase, CloudArrowDown, Info, LinkSimple, Wallet, Warning, X } from "@phosphor-icons/react/dist/ssr";
+import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ColorSelect } from "@/components/ui/color-select";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,7 @@ import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
 import { COUNTRY_OPTIONS, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS, THEME_OPTIONS } from "@/lib/countries";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
+import { deriveBillingNotice } from "@/lib/billing-notice";
 import { usePlan } from "@/components/plan-provider";
 import { useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
@@ -259,6 +261,19 @@ export function SettingsPage() {
     [plan, subscribed, billingTerm, pageOpenedAt],
   );
   const paidPro = subscribed || termActive;
+
+  const billingNotice = useMemo(
+    () =>
+      deriveBillingNotice({
+        plan,
+        trialEndsAt,
+        subscription,
+        billingTerm,
+        now: pageOpenedAt,
+        formatDate,
+      }),
+    [plan, trialEndsAt, subscription, billingTerm, pageOpenedAt],
+  );
 
   // Cancelling stops the next renewal only: Bachs keeps Pro running until the
   // period already paid for ends, then sends the webhook that downgrades us.
@@ -735,6 +750,25 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Plan">
+            {billingNotice ? (
+              <Alert status={billingNotice.status}>
+                <AlertIndicator>
+                  {billingNotice.status === "danger" ? <Warning weight="fill" /> : <Info weight="fill" />}
+                </AlertIndicator>
+                <AlertContent>
+                  <AlertTitle>{billingNotice.title}</AlertTitle>
+                  <AlertDescription>{billingNotice.body}</AlertDescription>
+                </AlertContent>
+                <div className="flex shrink-0 gap-2 self-center">
+                  {billingNotice.action === "renew" ? (
+                    <Button variant="primary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>
+                      {checkoutBusy ? "Opening checkout…" : "Renew Pro"}
+                    </Button>
+                  ) : null}
+                  <Link href="#plan" className="text-[13px] font-medium text-primary hover:text-accent-600">Plan details</Link>
+                </div>
+              </Alert>
+            ) : null}
             {paidPro ? (
               <Row
                 label="Dobby Pro"

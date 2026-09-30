@@ -11,23 +11,20 @@ export interface BrandLogoProps {
   src?: string;
 }
 
-const FALLBACK = "/dobby-logo.svg";
+/**
+ * The vector at `/dobby-logo.svg` is the artwork that actually ships, so it is
+ * the default rather than an on-error fallback. Pointing the `src` at a raster
+ * that may not exist makes the browser 404 first and swap afterwards, which
+ * reads as a broken image on every load.
+ */
+const DEFAULT_SRC = "/dobby-logo.svg";
 
 /**
  * The Dobby mascot, centred in a square box with `object-contain` so it never
- * crops or drifts off-centre at any size — sidebar header, onboarding, favicon
- * artwork, anywhere the brand shows.
- *
- * Defaults to the PNG at `/dobby-logo.png` and falls back to the vector
- * `/dobby-logo.svg` if it is absent, so dropping in the raster asset needs no
- * code change.
+ * crops or drifts off-centre at any size — sidebar header, onboarding,
+ * anywhere the brand shows.
  */
-export function BrandLogo({ size = 32, className, src = "/dobby-logo.png" }: BrandLogoProps) {
-  const [source, setSource] = React.useState(src);
-  React.useEffect(() => {
-    setSource(src);
-  }, [src]);
-
+export function BrandLogo({ size = 32, className, src = DEFAULT_SRC }: BrandLogoProps) {
   return (
     <span
       className={cn("inline-flex shrink-0 items-center justify-center overflow-hidden", className)}
@@ -35,14 +32,12 @@ export function BrandLogo({ size = 32, className, src = "/dobby-logo.png" }: Bra
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={source}
+        src={src}
         alt=""
         aria-hidden="true"
         width={size}
         height={size}
-        onError={() => {
-          if (source !== FALLBACK) setSource(FALLBACK);
-        }}
+        decoding="async"
         className="block size-full object-contain"
         style={{ objectPosition: "center" }}
       />
