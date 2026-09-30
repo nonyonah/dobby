@@ -44,7 +44,7 @@ export function ChainLogo({ chain, className }: { chain: string; className?: str
  */
 export function ChainSelect({ chain, onChainChange, chains }: { chain: string; onChainChange: (chain: string) => void; chains: Array<{ value: string }> }) {
   return (
-    <div className="relative">
+    <div className="relative w-full min-w-0">
       <span className="pointer-events-none absolute top-1/2 left-2.5 z-10 -translate-y-1/2">
         <ChainLogo chain={chain} className="block size-4 shrink-0 rounded-[5px] ring-1 ring-inset ring-foreground/10" />
       </span>

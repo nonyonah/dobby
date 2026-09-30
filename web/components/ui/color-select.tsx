@@ -21,13 +21,18 @@ export interface ColorSelectProps {
   onChange: (hex: string) => void;
   label: string;
   className?: string;
+  /**
+   * Set when the surrounding form already shows a visible label — `label` still
+   * drives `aria-label`, so hiding the text never costs the control its name.
+   */
+  hideLabel?: boolean;
   /** Override the option list; defaults to the shared named palette. */
   options?: Array<{ value: string; label: string }>;
   /** Hide the leading "Automatic" option (for pickers that always have a value). */
   hideAuto?: boolean;
 }
 
-export function ColorSelect({ value, onChange, label, className, options: optionsProp, hideAuto }: ColorSelectProps) {
+export function ColorSelect({ value, onChange, label, className, options: optionsProp, hideAuto, hideLabel }: ColorSelectProps) {
   const selected = (value ?? "").toLowerCase();
   // The chosen colour may be one of ours or a custom value from the old model;
   // always keep the current colour as an option so the select never goes blank.
@@ -37,8 +42,8 @@ export function ColorSelect({ value, onChange, label, className, options: option
   }
 
   return (
-    <div className={cn("min-w-0", className)}>
-      <span className="mb-1 block text-[12px] font-medium text-muted-foreground">{label}</span>
+    <div className={cn("w-full min-w-0", className)}>
+      {hideLabel ? null : <span className="mb-1 block text-[12px] font-medium text-muted-foreground">{label}</span>}
       <div className="relative">
         <span
           aria-hidden="true"

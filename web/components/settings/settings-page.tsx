@@ -25,7 +25,10 @@ import { WalletConnectModal } from "./wallet-connect-modal";
 // border colour. Dark mode swaps to a single white ring, because layered black
 // depth shadows disappear against a dark surface and the inputs lose their edge.
 const controlClass = "h-8 w-full rounded-[50px] border-[#e9e7e2] bg-white px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] transition-shadow duration-150 ease-out focus-visible:border-[#e0ddd7] focus-visible:ring-0 dark:border-[#2d2d31] dark:bg-[#232327] dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
-const selectClass = `${controlClass.replace("w-full", "w-fit min-w-0")} pr-8 text-[#2C2D2F] dark:text-[#eceef0]`;
+// Fills its container rather than shrinking to the widest option. A `w-fit`
+// select left a visible gap against the edge of the 220px column every Row
+// reserves, which read as a half-empty button.
+const selectClass = `${controlClass} pr-8 text-[#2C2D2F] dark:text-[#eceef0]`;
 const rowClass = "flex min-h-15 flex-col items-start justify-between gap-3 px-0 py-3.5 sm:flex-row sm:items-center sm:gap-6";
 
 /** Subscription summary returned by `GET /v1/billing`. */
@@ -174,7 +177,7 @@ function Toggle({ label, description, initial = true }: { label: string; descrip
 
 function SelectField({ id, label, value, options, onValueChange }: { id: string; label: string; value: string; options: Array<{ value: string; label: string }>; onValueChange?: (value: string | null) => void }) {
   return (
-    <div className="flex justify-end">
+    <div className="flex w-full min-w-0 justify-end">
       {/* Native select: the OS picker gives correct flag rendering and
           capitalisation for free, and never traps focus inside a dialog. */}
       <select
@@ -207,7 +210,10 @@ function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: 
       }}
       options={ACCENT_COLORS.map((color) => ({ value: color.value, label: color.label }))}
       hideAuto
-      className="min-w-[180px]"
+      // The Row already says "Accent color", so a second label directly above the
+      // control just pushed the dropdown out of line with the rows around it.
+      hideLabel
+      className="w-full"
     />
   );
 }

@@ -2,49 +2,48 @@
 
 import * as React from "react";
 import { ToastProvider, addToast } from "@heroui/toast";
-import { CheckCircle, Info, Warning, XCircle } from "@phosphor-icons/react/dist/ssr";
 
 /**
- * The app's toast surface. Backed by HeroUI's toast so the look and feel match
- * the rest of the HeroUI-backed surfaces; the imperative `toast.success(...)`
- * API is kept so the ~20 call sites stay unchanged.
+ * The app's toast surface, backed by HeroUI's toast so it inherits the HeroUI
+ * variants rather than a hand-rolled look.
  *
- * The provider is mounted once in the root layout, which is what `addToast`
- * needs in order to render.
+ * The imperative `toast.success(...)` API is kept so the existing call sites stay
+ * unchanged. The provider is mounted once in the root layout, which is what
+ * `addToast` needs in order to render.
+ *
+ * Status needs two props, because HeroUI splits the job. `severity` selects the
+ * status icon (`severity ? iconMap[severity] : iconMap[color]`), while `color`
+ * paints the surface from the toast's `flat`/`solid`/`bordered` variants. Passing
+ * only `color` left `toast.info` with HeroUI's default information icon rather
+ * than its `primary` one, and overriding `icon` suppressed the lookup entirely.
+ * Neither is overridden here — HeroUI's own icons and variants do the work.
  */
 
 export interface ToastOptions {
   description?: React.ReactNode;
   /** Renders a call-to-action button, e.g. a retry affordance. */
   action?: { label: string; onPress: () => void };
-  /** Milliseconds before auto-dismiss. Omit for the default, 0 to keep it open. */
+  /** Milliseconds before auto-dismiss. Omit for the 6s default, 0 to keep it open. */
   timeout?: number;
 }
 
-type Variant = "success" | "danger" | "accent" | "warning";
-
-// Bold weights so the status icon reads clearly at the toast's small size.
-const VARIANT: Record<Variant, { color: "success" | "danger" | "primary" | "warning"; icon: React.ReactNode }> = {
-  success: { color: "success", icon: <CheckCircle size={22} weight="fill" className="text-success" /> },
-  danger: { color: "danger", icon: <XCircle size={22} weight="fill" className="text-destructive" /> },
-  accent: { color: "primary", icon: <Info size={22} weight="fill" className="text-primary" /> },
-  warning: { color: "warning", icon: <Warning size={22} weight="fill" className="text-warning" /> },
-};
+/** One name per status: it is both a HeroUI `severity` and a HeroUI `color`. */
+type Variant = "success" | "danger" | "primary" | "warning";
 
 function show(message: string, variant: Variant, options?: ToastOptions) {
   return addToast({
     title: message,
     description: options?.description,
-    color: VARIANT[variant].color,
-    icon: VARIANT[variant].icon,
-    ...(options?.timeout !== undefined ? { duration: options.timeout } : {}),
+    severity: variant,
+    color: variant,
+    ...(options?.timeout !== undefined ? { timeout: options.timeout } : {}),
     ...(options?.action
       ? {
           endContent: (
             <button
               type="button"
               onClick={options.action.onPress}
-              className="shrink-0 cursor-pointer rounded-full bg-secondary px-2.5 py-1 text-[12px] font-medium text-foreground outline-none hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+              className="shrink-0 cursor-pointer rounded-full bg-secondary px-2.5 py-1 text-[12px] font-medium text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/30"
             >
               {options.action.label}
             </button>
@@ -57,7 +56,7 @@ function show(message: string, variant: Variant, options?: ToastOptions) {
 export const toast = {
   success: (message: string, options?: ToastOptions) => show(message, "success", options),
   error: (message: string, options?: ToastOptions) => show(message, "danger", options),
-  info: (message: string, options?: ToastOptions) => show(message, "accent", options),
+  info: (message: string, options?: ToastOptions) => show(message, "primary", options),
   warning: (message: string, options?: ToastOptions) => show(message, "warning", options),
 };
 
