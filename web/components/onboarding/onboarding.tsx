@@ -15,6 +15,7 @@ import { QuickCreateModals } from "@/components/quick-create-modals";
 import { WalletConnectModal } from "@/components/settings/wallet-connect-modal";
 import { cn } from "cn";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 const STEP_KEY = "dobby-onboarding-step";
 
@@ -31,15 +32,7 @@ type Step = 1 | 2;
 type Statuses = { statement: boolean; email: boolean; wallet: boolean };
 
 function BrandMark() {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-6 shrink-0 items-center justify-center rounded-[7px] text-[11px] font-bold text-white"
-      style={{ background: "var(--accent)" }}
-    >
-      RL
-    </span>
-  );
+  return <BrandLogo size={34} />;
 }
 
 function Progress({ step }: { step: Step }) {

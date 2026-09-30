@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dobby">
+  <defs>
+    <linearGradient id="body" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#eaf8fd"/>
+      <stop offset="0.55" stop-color="#cfeaf6"/>
+      <stop offset="1" stop-color="#a9d4e8"/>
+    </linearGradient>
+    <radialGradient id="belly" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f7fdff"/>
+      <stop offset="1" stop-color="#d8f0fa"/>
+    </radialGradient>
+  </defs>
+
+  <!-- soft outer glow -->
+  <circle cx="256" cy="256" r="246" fill="#bfe6f5" opacity="0.35"/>
+
+  <!-- furry body -->
+  <path fill="url(#body)" stroke="#6fb2d0" stroke-width="9" stroke-linejoin="round" d="
+    M256 44
+    C286 44 300 58 318 70
+    C338 60 358 66 372 84
+    C394 82 412 96 420 118
+    C438 128 448 148 444 170
+    C456 186 458 210 446 228
+    C456 250 452 276 438 292
+    C440 316 430 338 412 350
+    C404 374 384 390 360 396
+    C348 416 326 428 300 430
+    C282 446 258 452 232 448
+    C208 452 184 444 168 428
+    C142 426 122 412 112 388
+    C94 374 84 352 86 328
+    C72 310 70 284 82 264
+    C70 242 76 218 92 202
+    C86 176 96 152 116 140
+    C122 116 142 102 166 102
+    C180 82 202 72 224 82
+    C238 60 250 44 256 44 Z"/>
+
+  <!-- fur tuft -->
+  <path fill="none" stroke="#6fb2d0" stroke-width="9" stroke-linecap="round" d="
+    M238 70 C246 54 262 50 272 62
+    M262 58 C276 50 288 58 292 72
+    M288 66 C300 62 310 70 312 84"/>
+
+  <!-- belly -->
+  <ellipse cx="256" cy="330" rx="112" ry="86" fill="url(#belly)" opacity="0.95"/>
+
+  <!-- eyebrows -->
+  <path fill="none" stroke="#1d5b7a" stroke-width="13" stroke-linecap="round" d="
+    M158 208 C176 196 198 196 212 206
+    M300 206 C316 194 340 194 356 206"/>
+
+  <!-- eyes -->
+  <ellipse cx="196" cy="266" rx="46" ry="50" fill="#ffffff"/>
+  <ellipse cx="318" cy="266" rx="46" ry="50" fill="#ffffff"/>
+  <circle cx="204" cy="272" r="25" fill="#12293d"/>
+  <circle cx="310" cy="272" r="25" fill="#12293d"/>
+  <circle cx="212" cy="262" r="9" fill="#ffffff"/>
+  <circle cx="318" cy="262" r="9" fill="#ffffff"/>
+
+  <!-- receipt -->
+  <g transform="rotate(-8 200 340)">
+    <path fill="#ffffff" stroke="#9fc6da" stroke-width="6" stroke-linejoin="round" d="
+      M132 250 H268 V432 H150 L132 414 Z"/>
+    <path fill="none" stroke="#b9d6e4" stroke-width="9" stroke-linecap="round" d="
+      M156 284 H244
+      M156 312 H226
+      M156 340 H244
+      M156 368 H210"/>
+    <text x="222" y="410" font-family="Georgia, serif" font-size="40" font-weight="700" fill="#3f8fb4" text-anchor="middle">$</text>
+  </g>
+
+  <!-- paws over the receipt -->
+  <ellipse cx="146" cy="352" rx="44" ry="38" fill="#cfeaf6" stroke="#6fb2d0" stroke-width="8"/>
+  <ellipse cx="292" cy="368" rx="48" ry="42" fill="#cfeaf6" stroke="#6fb2d0" stroke-width="8"/>
+</svg>

@@ -21,6 +21,7 @@ import {
   useSidebar,
 } from "./ui/sidebar";
 import { Button } from "./ui/button";
+import { BrandLogo } from "./ui/brand-logo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -203,12 +204,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
             className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-1"
             aria-label="Brand logo"
           >
-            <span
-              aria-hidden="true"
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] bg-[#83c5be] text-[10px] font-bold text-white"
-            >
-              RL
-            </span>
+            <BrandLogo size={28} />
 
           </div>
           <QuickCreate onCreate={onCreate} />
