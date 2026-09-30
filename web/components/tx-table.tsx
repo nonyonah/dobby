@@ -3,13 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Input } from "./ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 import {
   Popover,
   PopoverContent,
@@ -48,6 +42,7 @@ import {
 import type { TxSource } from "@/lib/finance";
 import { detectRecurringTransactions, MOCK_RECURRING_HISTORY } from "@/lib/recurring";
 import { CardIcon, EmailIcon, FileIcon, ManualIcon, WalletIcon } from "./icons";
+import { CategoryChip } from "@/components/ui/category-chip";
 
 const PAGE_SIZE = 12;
 
@@ -115,7 +110,7 @@ function MenuRow({
       <span className="shrink-0 text-[#55565c] dark:text-[#a2a3a8]">
         <Icon />
       </span>
-      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#1c1d20] dark:text-[#eceef0]">
+      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#1c1d20] dark:text-[#eceef0]">
         {label}
       </span>
       {value ? (
@@ -143,7 +138,7 @@ function MenuOption({
       role="menuitemradio"
       aria-checked={selected}
       onClick={onClick}
-    className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-[7px] text-left text-[13px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-[#4a55c9] ${
+    className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-[7px] text-left text-[12px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-[#4a55c9] ${
       selected
         ? "bg-black/[0.06] dark:bg-[#18181A]"
         : "hover:bg-[#f1efeb] dark:hover:bg-white/[0.06]"
@@ -326,18 +321,13 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     <div>
       {/* Search with filters inside */}
       <div className="flex items-center justify-end gap-2">
-        <Select value={month} onValueChange={(v) => onMonthChange(v ?? "all")}>
-          <SelectTrigger aria-label="Filter by month" className="h-8 w-36 bg-white dark:bg-[#232327] text-[13px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {monthOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <NativeSelect
+          aria-label="Filter by month"
+          className="w-36 shrink-0"
+          value={month}
+          onValueChange={(v) => onMonthChange(v ?? "all")}
+          options={monthOptions.map((option) => ({ value: option.value, label: option.label }))}
+        />
         <div className="relative w-44">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[#8a8b91] dark:text-[#a2a3a8]" />
           <Input
@@ -345,7 +335,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search…"
             aria-label="Search transactions"
-            className="h-8 border-[#e9e7e2] dark:border-[#2d2d31] bg-white dark:bg-[#232327] pr-10 pl-8 text-[13px] focus-visible:border-[#e0ddd7] focus-visible:ring-0"
+            className="h-8 border-[#e9e7e2] dark:border-[#2d2d31] bg-white dark:bg-[#232327] pr-10 pl-8 text-[12px] focus-visible:border-[#e0ddd7] focus-visible:ring-0"
           />
           <Popover open={filterOpen} onOpenChange={(open) => { setFilterOpen(open); if (!open) setMenu(null); }}>
             <PopoverTrigger
@@ -386,7 +376,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                     type="button"
                     onClick={resetAll}
                     disabled={pills.length === 0}
-                    className="w-full cursor-pointer rounded-md px-2 py-[7px] text-left text-[13px] text-[#8a8b91] dark:text-[#a2a3a8] outline-none transition-colors hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8a8b91]"
+                    className="w-full cursor-pointer rounded-md px-2 py-[7px] text-left text-[12px] text-[#8a8b91] dark:text-[#a2a3a8] outline-none transition-colors hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8a8b91]"
                   >
                     Reset all
                   </button>
@@ -489,7 +479,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
 
       {/* Table */}
       <div className="mt-3">
-        <HeroTable variant="primary" className="text-[13px]">
+        <HeroTable variant="primary" className="text-[11px]">
           <HeroTable.ScrollContainer>
             <HeroTable.Content aria-label="Ledger transactions">
           <HeroTable.Header>
@@ -526,16 +516,16 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   <HeroTable.Row id={t.id} onAction={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-[#f1efeb] dark:border-[#26262a] hover:bg-secondary ${selected ? "bg-[#eceefb]/60 dark:bg-[#23264a]/60 hover:bg-[#eceefb] dark:hover:bg-[#23264a]" : ""}`}>
                     <HeroTable.Cell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-[#4a55c9]" /></HeroTable.Cell>
                     <HeroTable.Cell className="max-w-56 px-3 py-2.5"><span className="block truncate font-medium text-[#1c1d20] dark:text-[#eceef0]">{t.name}</span><span className="block truncate text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-[#4a55c9] dark:text-[#9aa1f0]">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap ${meta.pill}`}><span aria-hidden="true" className="text-[11px]">{meta.emoji}</span>{meta.label}</span></HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-[#a2d2ff] text-white" : "border-transparent bg-[#cdb4db] text-white"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} /></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-[#a2d2ff] text-white" : "border-transparent bg-[#cdb4db] text-white"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
                     <HeroTable.Cell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]"><SIcon /></span></HeroTable.Cell>
 
-                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-[#00afb9]" : "text-[#ef476f]"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
+                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
                   </HeroTable.Row>
                 </Fragment>
               );
             })}
-            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">No transactions match</p><p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Try widening the search or clearing a filter</p></HeroTable.Cell></HeroTable.Row> : null}
+            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[12px] font-medium text-[#1c1d20] dark:text-[#eceef0]">No transactions match</p><p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Your search and filters are excluding everything. Widen the date range, clear a filter, or import a statement to add more.</p><button type="button" onClick={resetAll} className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Clear search and filters</button></HeroTable.Cell></HeroTable.Row> : null}
           </HeroTable.Body>
             </HeroTable.Content>
           </HeroTable.ScrollContainer>
@@ -581,7 +571,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             aria-label={`${checked.size} transactions selected`}
           >
             <div className="flex items-center gap-2 rounded-full bg-[#17181c] py-2 pr-2 pl-4 text-white shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
-              <p className="m-0 text-[13px] font-medium whitespace-nowrap" aria-live="polite">
+              <p className="m-0 text-[12px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>
               <Button

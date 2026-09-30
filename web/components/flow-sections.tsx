@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 import { formatUSD } from "@/lib/format";
-import { SOURCE_COLOR_MAP, type InsightsSummary } from "@/lib/cashflow";
+import { SOURCE_COLOR_MAP, insightCategoryColor, type InsightsSummary } from "@/lib/cashflow";
 import type { TxSource } from "@/lib/finance";
 import type { TxFull } from "@/lib/transactions";
 import { BreakdownPie } from "./breakdown-pie";
 import { FlowNarrative } from "./flow-narrative";
 import { FlowTable } from "./flow-table";
 import { toast } from "./ui/toast";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 
 const MONTHS = [
   { value: 0, label: "January" },
@@ -79,8 +80,9 @@ function useLiveMonth(month: number, year: number, income: boolean) {
     }).catch((reason: unknown) => {
       if (cancelled) return;
       setRows([]);
-      const message = reason instanceof Error ? reason.message : "Could not load this month's transactions.";
-      toast.error(`Couldn’t load ${income ? "income" : "spending"} transactions: ${message}`, {
+      const guidance = guidanceFor(reason, "load");
+      toast.error(guidance.title, {
+        description: guidanceText(guidance),
         action: { label: "Try again", onPress: () => setRetryCount((count) => count + 1) },
       });
     }).finally(() => { if (!cancelled) setLoading(false); });
@@ -101,7 +103,7 @@ export function SpendingSection({ month, year, yearSummary, onMonthChange }: { m
   const selectedMonth = monthKey(year, month);
   const items = (yearSummary?.monthlySpendingByCategory ?? [])
     .filter((item) => item.month === selectedMonth && item.amount > 0)
-    .map((item) => ({ id: item.categoryId ?? "uncategorized", name: item.name, amount: item.amount, color: item.color ?? "#8a8b91" }));
+    .map((item) => ({ id: item.categoryId ?? "uncategorized", name: item.name, amount: item.amount, color: insightCategoryColor(item) }));
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   const top = [...items].sort((left, right) => right.amount - left.amount)[0];
 

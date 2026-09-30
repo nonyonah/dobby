@@ -1,6 +1,16 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
+/*
+ * Dark mode is driven by a `.dark` class on <html>, not by the OS media
+ * query, so the Theme setting in Settings can force Light or Dark. An inline
+ * script in the root layout sets the class before first paint, and
+ * ThemeSync keeps it in step with the stored preference and the OS.
+ * The media query below only covers the "no class set yet" case, so a
+ * first-time visitor still gets the system theme without a flash.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* Rift Labs palette (source of visual truth) */
   --ink-900: #17181c;
@@ -12,15 +22,15 @@
   --line: #e3e5e8;
   --text: #1c1d20;
   --text-muted: #6b6d72;
-  --accent: #83c5be;
-  --accent-600: #5f9f98;
-  --accent-100: #e2f3f1;
-  --green: #35754e;
-  --green-100: #e4efe7;
-  --green-vivid: #00afb9;
-  --red: #b0402f;
+  --accent: #003f88;
+  --accent-600: #003a7d;
+  --accent-100: #e2e8f0;
+  --green: #1b4332;
+  --green-100: #e7ecea;
+  --green-vivid: #1b4332;
+  --red: #ef233c;
   --red-100: #f7e6e2;
-  --red-vivid: #ef476f;
+  --red-vivid: #ef233c;
   --warning: #ad7f22;
   --warning-100: #f6ecd6;
   --faint: #8a8b91;
@@ -42,7 +52,10 @@
   --muted-foreground: var(--text-muted);
   --accent-token: var(--accent-100);
   --accent-token-foreground: var(--accent-600);
-  --destructive: var(--red);
+  /* Bright red for irreversible actions (log out, cancel subscription): the
+     muted --red is too quiet to read as a destructive confirm. */
+  --destructive: var(--red-vivid);
+  --destructive-foreground: #ffffff;
   --border: var(--line);
   --border-strong: var(--input-border);
   --input: var(--input-border);
@@ -156,6 +169,9 @@
   --color-accent: var(--accent-token);
   --color-accent-foreground: var(--accent-token-foreground);
   --color-destructive: var(--destructive);
+  /* Was referenced by the destructive button but never defined, so its label
+     inherited instead of rendering white. */
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-input: var(--input);
@@ -171,85 +187,84 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper-000: #121213;
-    --paper-100: #1c1c1f;
-    --paper-200: #252529;
-    --text: #eceef0;
-    --text-muted: #a2a3a8;
-    --background: #121213;
-    --foreground: #eceef0;
-    --card: #1A1A1B;
-    --card-foreground: #eceef0;
-    --popover: #1a1a1d;
-    --popover-foreground: #eceef0;
-    --primary: #83c5be;
-    --primary-foreground: #ffffff;
-    --secondary: #26262a;
-    --secondary-foreground: #eceef0;
-    --muted: #1f1f22;
-    --muted-foreground: #a2a3a8;
-    --accent-token: #214341;
-    --accent-token-foreground: #b9e3df;
-    --destructive: #d06853;
-    --line: #252529;
-    --border: #252529;
-    --border-strong: #303036;
-    --input: #252529;
-    --ring: #83c5be;
-    /* HeroUI dark surfaces. Cards intentionally stay #1A1A1B. */
-    --surface: #1A1A1B;
-    --surface-foreground: #eceef0;
-    --surface-hover: #1A1A1B;
-    --surface-secondary: #1c1c1f;
-    --surface-secondary-foreground: #eceef0;
-    --surface-tertiary: #252529;
-    --surface-tertiary-foreground: #eceef0;
-    --dropdown-background: #2c2d2f;
-    --overlay: #1A1A1B;
-    --overlay-foreground: #eceef0;
-    --default: #1c1c1f;
-    --default-foreground: #eceef0;
-    --default-hover: #252529;
-    --field-background: #1A1A1B;
-    --field-foreground: #eceef0;
-    --field-placeholder: #a2a3a8;
-    --field-border: #252529;
-    --field-border-hover: #303036;
-    --field-border-focus: #83c5be;
-    --separator: #252529;
-    --separator-secondary: #252529;
-    --separator-tertiary: #252529;
-    --focus: #83c5be;
-    --accent-foreground: #ffffff;
-    --accent-hover: #9bd4ce;
-    --accent-soft: #214341;
-    --accent-soft-foreground: #b9e3df;
-    --success-foreground: #07130b;
-    --success-hover: #4cc38a;
-    --success-soft: #153526;
-    --success-soft-foreground: #6ee7b7;
-    --warning-foreground: #17130a;
-    --warning-hover: #d9a441;
-    --warning-soft: #3b2c12;
-    --warning-soft-foreground: #fcd34d;
-    --danger: #d06853;
-    --danger-foreground: #ffffff;
-    --danger-hover: #e07861;
-    --danger-soft: #3a1f18;
-    --danger-soft-foreground: #f1997f;
-    --backdrop: rgb(0 0 0 / 0.65);
-    --sidebar-background: transparent;
-    --sidebar-foreground: #8a8b91;
-    --sidebar-accent: #18181a;
-    --sidebar-accent-foreground: #ffffff;
-    --sidebar-border: #252529;
-    --sidebar-ring: #83c5be;
-    --chart-grid: #26262a;
-    --chart-cursor: #26262a;
-    --chart-tick: #8a8b91;
-  }
+.dark {
+  --paper-000: #121213;
+  --paper-100: #1c1c1f;
+  --paper-200: #252529;
+  --text: #eceef0;
+  --text-muted: #a2a3a8;
+  --background: #121213;
+  --foreground: #eceef0;
+  --card: #1A1A1B;
+  --card-foreground: #eceef0;
+  --popover: #1a1a1d;
+  --popover-foreground: #eceef0;
+  --primary: #16558f;
+  --primary-foreground: #ffffff;
+  --secondary: #26262a;
+  --secondary-foreground: #eceef0;
+  --muted: #1f1f22;
+  --muted-foreground: #a2a3a8;
+  --accent-token: #214341;
+  --accent-token-foreground: #b9e3df;
+  --destructive: #ef233c;
+  --destructive-foreground: #ffffff;
+  --line: #252529;
+  --border: #252529;
+  --border-strong: #303036;
+  --input: #252529;
+  --ring: #83c5be;
+  /* HeroUI dark surfaces. Cards intentionally stay #1A1A1B. */
+  --surface: #1A1A1B;
+  --surface-foreground: #eceef0;
+  --surface-hover: #1A1A1B;
+  --surface-secondary: #1c1c1f;
+  --surface-secondary-foreground: #eceef0;
+  --surface-tertiary: #252529;
+  --surface-tertiary-foreground: #eceef0;
+  --dropdown-background: #2c2d2f;
+  --overlay: #1A1A1B;
+  --overlay-foreground: #eceef0;
+  --default: #1c1c1f;
+  --default-foreground: #eceef0;
+  --default-hover: #252529;
+  --field-background: #1A1A1B;
+  --field-foreground: #eceef0;
+  --field-placeholder: #a2a3a8;
+  --field-border: #252529;
+  --field-border-hover: #303036;
+  --field-border-focus: #83c5be;
+  --separator: #252529;
+  --separator-secondary: #252529;
+  --separator-tertiary: #252529;
+  --focus: #83c5be;
+  --accent-foreground: #ffffff;
+  --accent-hover: #9bd4ce;
+  --accent-soft: #214341;
+  --accent-soft-foreground: #b9e3df;
+  --success-foreground: #07130b;
+  --success-hover: #4cc38a;
+  --success-soft: #153526;
+  --success-soft-foreground: #6ee7b7;
+  --warning-foreground: #17130a;
+  --warning-hover: #d9a441;
+  --warning-soft: #3b2c12;
+  --warning-soft-foreground: #fcd34d;
+  --danger: #d06853;
+  --danger-foreground: #ffffff;
+  --danger-hover: #e07861;
+  --danger-soft: #3a1f18;
+  --danger-soft-foreground: #f1997f;
+  --backdrop: rgb(0 0 0 / 0.65);
+  --sidebar-background: transparent;
+  --sidebar-foreground: #8a8b91;
+  --sidebar-accent: #18181a;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #252529;
+  --sidebar-ring: #83c5be;
+  --chart-grid: #26262a;
+  --chart-cursor: #26262a;
+  --chart-tick: #8a8b91;
 }
 
 body {

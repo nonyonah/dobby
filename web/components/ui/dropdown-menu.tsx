@@ -4,6 +4,7 @@ import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "cn"
 import { ArrowRight, Check } from "@phosphor-icons/react/dist/ssr"
+import { useDialogSurface } from "./dialog-surface"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot="dropdown-menu" {...props} />
@@ -29,10 +30,14 @@ function DropdownMenuContent({
     MenuPrimitive.Positioner.Props,
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
+  // Portal into the dialog's own content when inside one, so a menu in a
+  // modal isn't read as an outside interaction. See dialog-surface.tsx.
+  const dialogSurface = useDialogSurface();
   return (
-    <MenuPrimitive.Portal>
+    <MenuPrimitive.Portal container={dialogSurface ?? undefined}>
       <MenuPrimitive.Positioner
-        className="isolate z-50 outline-none"
+        data-radix-dialog-safe="true"
+        className="isolate z-50 pointer-events-auto outline-none"
         align={align}
         alignOffset={alignOffset}
         side={side}
@@ -60,15 +65,17 @@ function DropdownMenuLabel({
   inset?: boolean
 }) {
   return (
-    <MenuPrimitive.GroupLabel
-      data-slot="dropdown-menu-label"
-      data-inset={inset}
-      className={cn(
-        "px-2 py-1.5 text-xs text-muted-foreground data-inset:pl-7.5",
-        className
-      )}
-      {...props}
-    />
+    <MenuPrimitive.Group data-slot="dropdown-menu-label-group">
+      <MenuPrimitive.GroupLabel
+        data-slot="dropdown-menu-label"
+        data-inset={inset}
+        className={cn(
+          "px-2 py-1.5 text-xs text-muted-foreground data-inset:pl-7.5",
+          className
+        )}
+        {...props}
+      />
+    </MenuPrimitive.Group>
   )
 }
 
@@ -76,16 +83,22 @@ function DropdownMenuItem({
   className,
   inset,
   variant = "default",
+  onSelect,
   ...props
 }: MenuPrimitive.Item.Props & {
   inset?: boolean
   variant?: "default" | "destructive"
+  /** shadcn/Radix compatible: Base UI's Item only wires `onClick`, so an
+   * `onSelect` passed straight through was silently ignored and the item did
+   * nothing when clicked. */
+  onSelect?: (event: React.MouseEvent<HTMLDivElement>) => void
 }) {
   return (
     <MenuPrimitive.Item
       data-slot="dropdown-menu-item"
       data-inset={inset}
       data-variant={variant}
+      onClick={onSelect}
       className={cn(
         "group/dropdown-menu-item relative flex min-h-7 cursor-default items-center gap-2 rounded-md px-2 py-1 text-xs/relaxed font-medium outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7.5 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-[variant=destructive]:*:[svg]:text-destructive",
         className

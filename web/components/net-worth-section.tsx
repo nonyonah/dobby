@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { useApi } from "@/hooks/use-api";
+import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { toast } from "@/components/ui/toast";
 import { formatCurrency } from "@/lib/format";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 
 type Holding = { walletId: string; symbol: string; amount: number; usdValue: number | null };
 type WalletStatus = { id: string; displayName: string; chain: string; address: string; status: "ok" | "provider_unconfigured" | "error"; detail?: string };
@@ -30,15 +33,16 @@ export function NetWorthSection({ className = "" }: { className?: string }) {
   useEffect(() => {
     let cancelled = false;
     void api
-      .get<{ data: NetWorthSnapshot }>("/v1/insights/net-worth")
+      .get<{ data: NetWorthSnapshot }>("/v1/insights/net-worth", { timeoutMs: AGGREGATE_TIMEOUT_MS })
       .then((response) => {
         if (!cancelled) setSnapshot(response.data);
       })
       .catch((error: unknown) => {
         if (cancelled) return;
         setSnapshot(null);
-        const message = error instanceof Error ? error.message : "unknown error";
-        toast.error(`Couldn’t load net worth: ${message}`, {
+        const guidance = guidanceFor(error, "wallet");
+        toast.error(guidance.title, {
+          description: guidanceText(guidance),
           action: { label: "Try again", onPress: () => setAttempt((current) => current + 1) },
         });
       });
@@ -66,7 +70,8 @@ export function NetWorthSection({ className = "" }: { className?: string }) {
         ) : snapshot.wallets.length === 0 ? (
           <div className="rounded-lg bg-muted px-3 py-4 text-center" role="status">
             <p className="m-0 text-[13px] font-medium">No wallets connected yet</p>
-            <p className="m-0 mt-1 text-[12px] text-muted-foreground">Connect a Base or Solana wallet in Settings to see balances here.</p>
+            <p className="m-0 mt-1 text-[12px] text-muted-foreground">Your net worth already counts bank and card balances — connecting a Base or Solana wallet adds your stablecoin holdings on top.</p>
+            <Link href="/settings" className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Connect a wallet</Link>
           </div>
         ) : (
           <>

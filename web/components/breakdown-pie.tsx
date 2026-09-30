@@ -2,13 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, Tooltip } from "recharts";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 import { CalendarIcon, FilterIcon } from "./icons";
 import { formatUSD } from "@/lib/format";
 import { MONTH_LABELS } from "@/lib/insights-data";
@@ -56,25 +50,15 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
           <p className="m-0 mt-1 text-sm font-bold text-foreground">{dateLabel}</p>
         </div>
         <div className="flex flex-nowrap items-center justify-end gap-2">
-          <Select className="w-auto shrink-0" value={catFilter} onValueChange={(value) => setCatFilter(value ?? "all")}>
-            <SelectTrigger aria-label={`Filter by ${filterLabel.replace("All ", "").toLowerCase()}`} className="h-8 w-36 text-[12px]">
-              <FilterIcon />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{filterLabel}</SelectItem>
-              {items.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select className="w-auto shrink-0" value={String(month)} onValueChange={(value) => onMonthChange(Number(value))}>
-            <SelectTrigger aria-label="Filter by month" className="h-8 w-28 text-[12px]">
-              <CalendarIcon />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map((item) => <SelectItem key={item.value} value={String(item.value)}>{item.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {/* A native <select> cannot render an icon inside the trigger, so the mark sits beside it. */}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <FilterIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            <NativeSelect aria-label={`Filter by ${filterLabel.replace("All ", "").toLowerCase()}`} className="w-auto" value={catFilter} onValueChange={(value) => setCatFilter(value ?? "all")} options={[{ value: "all", label: filterLabel }, ...items.map((item) => ({ value: item.id, label: item.name }))]} />
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <CalendarIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            <NativeSelect aria-label="Filter by month" className="w-auto" value={String(month)} onValueChange={(value) => onMonthChange(Number(value))} options={months.map((item) => ({ value: String(item.value), label: item.label }))} />
+          </div>
 
         </div>
       </div>

@@ -5,9 +5,11 @@ import Link from "next/link";
 import { AlertIcon, CheckIcon, CloseSmallIcon } from "./icons";
 import { ModuleCard } from "./module-card";
 import { useApi } from "@/hooks/use-api";
+import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { usePlan } from "@/components/plan-provider";
 import { UpgradeCard } from "@/components/upgrade";
 import { toast } from "@/components/ui/toast";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 
 type Flag = { id: string; kind: string; title: string; detail: string; href: string };
 type FlagsResult = { flags: Flag[]; currency: string; periodLabel: string | null; asOf: string };
@@ -28,7 +30,7 @@ export function ProactiveFlags() {
     if (!isPro) return;
     let cancelled = false;
     void api
-      .get<{ data: FlagsResult }>("/v1/insights/flags")
+      .get<{ data: FlagsResult }>("/v1/insights/flags", { timeoutMs: AGGREGATE_TIMEOUT_MS })
       .then((response) => {
         if (cancelled) return;
         setFlags(response.data.flags);
@@ -37,8 +39,9 @@ export function ProactiveFlags() {
       .catch((error: unknown) => {
         if (cancelled) return;
         setFlags([]);
-        const message = error instanceof Error ? error.message : "unknown error";
-        toast.error(`Couldn’t load proactive flags: ${message}`, {
+        const guidance = guidanceFor(error, "load");
+        toast.error(guidance.title, {
+          description: guidanceText(guidance),
           action: { label: "Try again", onPress: () => setAttempt((current) => current + 1) },
         });
       });
@@ -67,13 +70,13 @@ export function ProactiveFlags() {
       ) : visible.length === 0 ? (
         <div className="rounded-md bg-muted px-3 py-4 text-center" role="status">
           <p className="m-0 text-[13px] font-medium">You’re all caught up</p>
-          <p className="m-0 mt-1 text-[12px] text-muted-foreground">New flags appear as your tracked data changes.</p>
+          <p className="m-0 mt-1 text-[12px] text-muted-foreground">Flags need a few weeks of transactions before they mean anything — keep importing and we’ll surface unusual spending and missed deductions here.</p>
         </div>
       ) : (
         <ul className="m-0 list-none p-0">
           {visible.map((flag) => (
             <li key={flag.id} className="flex items-start gap-2.5 border-b border-soft-line py-2 last:border-b-0">
-              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-warning-soft text-warning" aria-hidden="true">
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground" aria-hidden="true">
                 <AlertIcon />
               </span>
               <span className="min-w-0 flex-1">

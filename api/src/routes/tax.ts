@@ -14,13 +14,33 @@ const currentYear = () => new Date().getUTCFullYear();
 const countrySchema = z.nativeEnum(TaxCountry);
 const deductionsSchema = z.record(z.string(), z.unknown());
 
+/**
+ * The tax jurisdiction the user chose in Settings is the source of truth for
+ * which country's rules (and tax currency) apply. The tax module keeps its own
+ * TaxProfile, so mirror the jurisdiction onto it on every read — otherwise a
+ * profile whose jurisdiction is "nigeria" is still estimated in USD from a
+ * stale TaxProfile.country.
+ */
+async function taxCountryFor(ownerClerkId: string): Promise<TaxCountry> {
+  const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { taxJurisdiction: true } });
+  return profile?.taxJurisdiction === "united-states" ? TaxCountry.US : TaxCountry.NIGERIA;
+}
+
 async function ensureTaxProfile(ownerClerkId: string) {
+  const country = await taxCountryFor(ownerClerkId);
+  const existing = await prisma.taxProfile.findUnique({ where: { ownerClerkId } });
+  const countryChanged = existing !== null && existing.country !== country;
   const profile = await prisma.taxProfile.upsert({
     where: { ownerClerkId },
-    create: { ownerClerkId, country: TaxCountry.NIGERIA, taxYear: currentYear() },
-    update: {},
+    create: { ownerClerkId, country, taxYear: currentYear() },
+    update: { country },
     include: { checklistItems: true },
   });
+  // Switching jurisdiction must swap the whole filing checklist, not merge the
+  // two: the old country's rows would otherwise linger alongside the new ones.
+  if (countryChanged) {
+    await prisma.taxChecklistItem.deleteMany({ where: { taxProfileId: profile.id } });
+  }
   const rules = getTaxRules(profile.country);
   await prisma.taxChecklistItem.createMany({
     data: rules.checklist.map((item) => ({ taxProfileId: profile.id, key: item.key, label: item.label })),

@@ -11,17 +11,12 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 import { Button } from "./ui/button";
 import { FileIcon, ManualIcon, ReceiptIcon } from "./icons";
 import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 import type { DialogCategoryOption } from "./tx-edit-dialog";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 
 interface TxImportDialogProps {
   open: boolean;
@@ -155,9 +150,10 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
     try {
       const text = await file.text();
       setParsed(parseStatement(text, file.name));
-    } catch {
+    } catch (error) {
       setParsed([]);
-      toast.error("Could not read the statement. PDF statements are sent for secure OCR review; CSV files need date, description and amount columns.");
+      const guidance = guidanceFor(error, "import");
+      toast.error(guidance.title, { description: guidanceText(guidance) });
     }
   };
 
@@ -240,13 +236,15 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
         {mode === "document" ? (
           <div className="grid gap-3">
             <Field label="Document type">
-              <Select value={documentType} onValueChange={(value) => setDocumentType((value ?? "statement") as "statement" | "receipt")}>
-                <SelectTrigger aria-label="Document type" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="statement">Bank statement</SelectItem>
-                  <SelectItem value="receipt">Receipt</SelectItem>
-                </SelectContent>
-              </Select>
+              <NativeSelect
+                aria-label="Document type"
+                value={documentType}
+                onValueChange={(value) => setDocumentType((value ?? "statement") as "statement" | "receipt")}
+                options={[
+                  { value: "statement", label: "Bank statement" },
+                  { value: "receipt", label: "Receipt" },
+                ]}
+              />
             </Field>
             <input
               ref={fileRef}
@@ -271,21 +269,21 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Whole Foods" className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
             </Field>
             <Field label="Transaction type">
-              <Select value={transactionType} onValueChange={(value) => setTransactionType((value ?? "EXPENSE") as "EXPENSE" | "INCOME")}>
-                <SelectTrigger aria-label="Transaction type" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="EXPENSE">Expense</SelectItem>
-                  <SelectItem value="INCOME">Income</SelectItem>
-                </SelectContent>
-              </Select>
+              <NativeSelect
+                aria-label="Transaction type"
+                value={transactionType}
+                onValueChange={(value) => setTransactionType((value ?? "EXPENSE") as "EXPENSE" | "INCOME")}
+                options={[
+                  { value: "EXPENSE", label: "Expense" },
+                  { value: "INCOME", label: "Income" },
+                ]}
+              />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Amount">
                 <div className="relative">
-                  <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">$</span>
-                  <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount in dollars" className="mono h-8 bg-white dark:bg-[#232327] pr-2 pl-7 text-[13px]" />
+                  <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">$</span>
+                  <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount in dollars" className="mono h-8 bg-white dark:bg-[#232327] pr-3 pl-10 text-[13px]" />
                 </div>
               </Field>
               <Field label="Date">
@@ -293,21 +291,15 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
               </Field>
             </div>
             <Field label="Category">
-              <Select value={category} onValueChange={(v) => setCategory(v ?? "other")}>
-                <SelectTrigger aria-label="Category" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(categories.length > 0
-                    ? categories
-                    : TX_CATEGORIES.map((c) => ({ id: c.id, name: c.label, emoji: c.emoji }))
-                  ).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.emoji} {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <NativeSelect
+                aria-label="Category"
+                value={category}
+                onValueChange={(v) => setCategory(v || "other")}
+                options={(categories.length > 0
+                  ? categories
+                  : TX_CATEGORIES.map((c) => ({ id: c.id, name: c.label, emoji: c.emoji }))
+                ).map((c) => ({ value: c.id, label: `${c.emoji} ${c.name}` }))}
+              />
             </Field>
           </div>
         ) : null}

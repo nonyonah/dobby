@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 import { Skeleton } from "./ui/skeleton";
+import { EmptyState } from "./ui/empty-state";
 import { formatUSD } from "@/lib/format";
 import type { TxSource, Tx } from "@/lib/finance";
 import { ModuleCard } from "./module-card";
@@ -50,7 +51,15 @@ export function TransactionsCard() {
           ))}
         </div>
       ) : null}
-      {loaded && rows.length === 0 ? <p className="m-0 text-[13px] text-muted-foreground">No transactions yet.</p> : null}
+      {loaded && rows.length === 0 ? (
+        <EmptyState
+          compact
+          icon={<ReceiptIcon />}
+          title="No transactions yet"
+          suggestion="Connect an email or upload a statement to fill this in — or add one by hand while you wait."
+          action={{ label: "Import transactions", href: "/transactions" }}
+        />
+      ) : null}
       <ul className="m-0 list-none p-0">
         {rows.map((t) => {
           const Icon = SOURCE_ICON[t.source];

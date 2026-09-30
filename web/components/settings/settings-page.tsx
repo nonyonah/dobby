@@ -5,28 +5,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { ArrowRight, Briefcase, CloudArrowDown, LinkSimple, Wallet, X } from "@phosphor-icons/react/dist/ssr";
 import { Button } from "@/components/ui/button";
+import { ColorSelect } from "@/components/ui/color-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, type AccentColor } from "@/lib/theme";
+import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, THEME_STORAGE_KEY, announceThemeChange, applyAccentColor, applyTheme, isThemePreference, withoutTransitions, type AccentColor, type ThemePreference } from "@/lib/theme";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
+import { COUNTRY_OPTIONS, CURRENCY_OPTIONS, THEME_OPTIONS } from "@/lib/countries";
+import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { usePlan } from "@/components/plan-provider";
 import { useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
-const controlClass = "h-8 w-full rounded-lg border-[#e9e7e2] bg-white px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] focus-visible:border-[#e0ddd7] focus-visible:ring-0 dark:border-[#2d2d31] dark:bg-[#232327]";
+// Shadow-as-border: a transparent ring reads as a 1px edge without a hard
+// border colour. Dark mode swaps to a single white ring, because layered black
+// depth shadows disappear against a dark surface and the inputs lose their edge.
+const controlClass = "h-8 w-full rounded-[50px] border-[#e9e7e2] bg-white px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] transition-shadow duration-150 ease-out focus-visible:border-[#e0ddd7] focus-visible:ring-0 dark:border-[#2d2d31] dark:bg-[#232327] dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
 const selectClass = `${controlClass.replace("w-full", "w-fit min-w-0")} pr-8 text-[#2C2D2F] dark:text-[#eceef0]`;
 const rowClass = "flex min-h-15 flex-col items-start justify-between gap-3 px-0 py-3.5 sm:flex-row sm:items-center sm:gap-6";
 
@@ -55,7 +53,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
       <h2 id={`${label.toLowerCase().replaceAll(" ", "-")}-heading`} className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </h2>
-      <Card className="rounded-2xl border-0 bg-card py-0 shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)]">
+      <Card className="rounded-2xl border-0 bg-card py-0 shadow-none">
         <CardContent className="divide-y divide-line p-4">{children}</CardContent>
       </Card>
     </section>
@@ -155,9 +153,9 @@ function BrandLogo({ domain }: { domain: string }) {
   return (
     <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-line bg-secondary p-1.5">
       {sheetsLogo ? (
-        <img src="/Google_Sheets_Logo_05.2026.png" alt="" aria-hidden="true" className="size-5 rounded-md object-contain" />
+        <img src="/Google_Sheets_Logo_05.2026.png" alt="" aria-hidden="true" className="size-5 rounded-md object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
       ) : (
-        <img src={BRANDFETCH_LOGO(domain)} alt="" aria-hidden="true" className="size-5 rounded-md object-contain" />
+        <img src={BRANDFETCH_LOGO(domain)} alt="" aria-hidden="true" className="size-5 rounded-md object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
       )}
     </span>
   );
@@ -177,57 +175,40 @@ function Toggle({ label, description, initial = true }: { label: string; descrip
 function SelectField({ id, label, value, options, onValueChange }: { id: string; label: string; value: string; options: Array<{ value: string; label: string }>; onValueChange?: (value: string | null) => void }) {
   return (
     <div className="flex justify-end">
-      <Select className="w-fit" value={value} onValueChange={onValueChange}>
-        <SelectTrigger id={id} aria-label={label} className={selectClass}><SelectValue /></SelectTrigger>
-        <SelectContent>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-      </Select>
+      {/* Native select: the OS picker gives correct flag rendering and
+          capitalisation for free, and never traps focus inside a dialog. */}
+      <select
+        id={id}
+        aria-label={label}
+        value={value}
+        onChange={(event) => onValueChange?.(event.target.value)}
+        className={`${selectClass} cursor-pointer appearance-none bg-[length:16px] bg-[right_0.5rem_center] bg-no-repeat pr-8`}
+        style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")" }}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
 
 
 function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: (value: AccentColor) => void }) {
-  const [open, setOpen] = useState(false);
   const selected = ACCENT_COLORS.find((color) => color.id === value) ?? ACCENT_COLORS[0];
 
   return (
-    <>
-      <button
-        type="button"
-        aria-label={`Accent color: ${selected.label}`}
-        title={selected.label}
-        onClick={() => setOpen(true)}
-        className="size-7 cursor-pointer rounded-full border border-black/10 shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_1px_2px_rgb(0_0_0/0.12)] outline-none transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-        style={{ backgroundColor: selected.value }}
-      />
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xs">
-          <DialogHeader>
-            <DialogTitle>Accent color</DialogTitle>
-            <DialogDescription>Choose an accent for interactive elements across Dobby.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-4 gap-3" role="radiogroup" aria-label="Accent colors">
-            {ACCENT_COLORS.map((color) => (
-              <button
-                key={color.id}
-                type="button"
-                role="radio"
-                aria-checked={value === color.id}
-                aria-label={color.label}
-                title={color.label}
-                onClick={() => {
-                  onChange(color.id);
-                  setOpen(false);
-                }}
-                className={`flex size-12 cursor-pointer items-center justify-center rounded-full border outline-none transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 ${value === color.id ? "border-foreground" : "border-transparent"}`}
-              >
-                <span className="size-8 rounded-full shadow-[0_0_0_0.5px_rgb(0_0_0/0.1),0_1px_2px_rgb(0_0_0/0.12)]" style={{ backgroundColor: color.value }} />
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
+    <ColorSelect
+      label="Accent"
+      value={selected.value}
+      onChange={(hex) => {
+        const match = ACCENT_COLORS.find((color) => color.value.toLowerCase() === hex.toLowerCase());
+        if (match) onChange(match.id);
+      }}
+      options={ACCENT_COLORS.map((color) => ({ value: color.value, label: color.label }))}
+      hideAuto
+      className="min-w-[180px]"
+    />
   );
 }
 
@@ -243,7 +224,7 @@ export function SettingsPage() {
   const [accentColor, setAccentColor] = useState<AccentColor>(DEFAULT_ACCENT);
   const [country, setCountry] = useState("nigeria");
   const [currency, setCurrency] = useState("ngn");
-  const [theme, setTheme] = useState("system");
+  const [theme, setTheme] = useState<ThemePreference>("system");
   const [jurisdiction, setJurisdiction] = useState("nigeria");
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
@@ -328,7 +309,7 @@ export function SettingsPage() {
       setCurrency("usd");
       window.localStorage.setItem("dobby-currency", "USD");
     }
-    if (profile.theme) setTheme(profile.theme);
+    if (isThemePreference(profile.theme)) setTheme(profile.theme);
     if (profile.taxJurisdiction) setJurisdiction(profile.taxJurisdiction === "united-states" ? "united-states" : "nigeria");
     const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
     if (accent) setAccentColor(accent.id);
@@ -585,12 +566,19 @@ export function SettingsPage() {
     }
   };
 
-  const handleAccentChange = (next: AccentColor) => {    setAccentColor(next);
-    applyAccentColor(next);
+  const handleAccentChange = (next: AccentColor) => {
+    setAccentColor(next);
+    // An accent swap rewrites a dozen colour variables at once, so it smears
+    // for the same reason a theme flip does.
+    withoutTransitions(() => applyAccentColor(next));
     window.localStorage.setItem(ACCENT_STORAGE_KEY, next);
   };
 
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
   const saveChanges = async () => {
+    setSaving(true);
     try {
       const nameParts = fullName.trim().split(/\s+/);
       await api.patch("/v1/me", {
@@ -601,12 +589,18 @@ export function SettingsPage() {
         taxJurisdiction: jurisdiction,
         accentColor: ACCENT_COLORS.find((item) => item.id === accentColor)?.value,
       });
+      try { window.localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* private mode */ }
       window.localStorage.setItem("dobby-currency", currency.toUpperCase());
+      announceThemeChange();
       window.dispatchEvent(new CustomEvent("dobby-currency-change", { detail: currency.toUpperCase() }));
       refreshOptions();
       toast.success("Settings saved");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     } catch {
       toast.error("Could not save your settings. Try again.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -618,8 +612,8 @@ export function SettingsPage() {
             <h1 className="text-[18px] font-semibold tracking-[-0.01em] text-foreground">Settings</h1>
             <p className="mt-1 text-[13px] text-ink-500">Manage your account, connections, and finance preferences.</p>
           </div>
-          <Button variant="primary" size="small" onClick={saveChanges}>
-            Save changes
+          <Button variant="primary" size="small" onClick={saveChanges} disabled={saving}>
+            {saving ? "Saving…" : saved ? "Saved" : "Save changes"}
           </Button>
         </header>
 
@@ -627,7 +621,7 @@ export function SettingsPage() {
           <Section label="Profile">
             <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" value={fullName} onChange={setFullName} /></Row>
             <Row label="Email address" description="Used for account messages and notifications. Managed by your sign-in provider."><TextField id="profile-email" label="Email address" value={user?.primaryEmailAddress?.emailAddress ?? me?.email ?? ""} readOnly type="email" /></Row>
-            <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); if (next === "nigeria") setCurrency("ngn"); if (next === "united-states") setCurrency("usd"); }} options={[{ value: "nigeria", label: "🇳🇬 Nigeria" }, { value: "united-states", label: "🇺🇸 United States" }]} /></Row>
+            <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); if (next === "nigeria") setCurrency("ngn"); if (next === "united-states") setCurrency("usd"); }} options={COUNTRY_OPTIONS} /></Row>
           </Section>
 
           <Section label="Connections">
@@ -641,7 +635,7 @@ export function SettingsPage() {
               wallets.map((wallet) => (
                 <Row
                   key={wallet.id}
-                  label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-[13px]" style={{ backgroundColor: `${wallet.color}1A` }} aria-hidden="true"><span className="size-2.5 rounded-full" style={{ backgroundColor: wallet.color }} /></span><span><span className="block">{wallet.displayName} <span className="font-normal text-muted-foreground">· {wallet.chain === "BASE" ? "Base" : "Solana"}</span></span><span className="mt-0.5 block font-mono text-[12px] font-medium leading-4 text-muted-foreground">{shortAddress(wallet.address)} · {walletSummaries[wallet.id] ?? "Loading activity…"}</span></span></span>}
+                  label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-[13px]" style={{ backgroundColor: `${wallet.color}1A` }} aria-hidden="true"><span className="size-2.5 rounded-full" style={{ backgroundColor: wallet.color }} /></span><span><span className="block">{wallet.displayName} <span className="flex items-center gap-1.5 font-normal text-muted-foreground"><span aria-hidden="true">·</span><ChainLogo chain={wallet.chain} className="block size-3.5 shrink-0 rounded-full ring-1 ring-inset ring-foreground/10" />{chainLabel(wallet.chain)}</span></span><span className="mt-0.5 block font-mono text-[12px] font-medium leading-4 text-muted-foreground">{shortAddress(wallet.address)} · {walletSummaries[wallet.id] ?? "Loading activity…"}</span></span></span>}
                 >
                   <Button variant="secondary" size="small" onClick={() => void disconnectWallet(wallet.id)}><X /> Disconnect</Button>
                 </Row>
@@ -720,10 +714,10 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Preferences">
-            <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => setTheme(value ?? "system")} options={[{ value: "system", label: "System" }, { value: "light", label: "Light" }, { value: "dark", label: "Dark" }]} /></Row>
+            <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => { const next = isThemePreference(value) ? value : "system"; setTheme(next); /* Apply straight away — waiting for Save left the control looking broken. */ try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* private mode: the save below still persists it */ } applyTheme(next); }} options={THEME_OPTIONS} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
-            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={[{ value: "ngn", label: "NGN 🇳🇬" }, { value: "usd", label: "USD 🇺🇸" }]} /></Row>
-            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={[{ value: "nigeria", label: "Nigeria" }, { value: "united-states", label: "United States" }]} onValueChange={(value) => {
+            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={CURRENCY_OPTIONS} /></Row>
+            <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={COUNTRY_OPTIONS} onValueChange={(value) => {
               const next = value ?? "nigeria";
               setJurisdiction(next);
               window.localStorage.setItem("dobby-tax-jurisdiction", next);
@@ -752,7 +746,7 @@ export function SettingsPage() {
                   <Button variant="secondary" size="small" disabled>
                     Subscribed
                   </Button>
-                  <Button variant="secondary" size="small" disabled={canceling} onClick={() => setCancelConfirmOpen(true)}>
+                  <Button variant="destructive" size="small" disabled={canceling} onClick={() => setCancelConfirmOpen(true)}>
                     {canceling ? "Canceling…" : "Cancel"}
                   </Button>
                 </div>
@@ -851,7 +845,7 @@ export function SettingsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={canceling}>{subscribed ? "Keep subscription" : "Keep Pro"}</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
               disabled={canceling}
               onClick={() => void (subscribed ? cancelSubscription() : cancelTerm())}
             >
@@ -863,6 +857,7 @@ export function SettingsPage() {
       <WalletConnectModal
         open={walletModalOpen}
         onOpenChange={setWalletModalOpen}
+        connectedColors={wallets.map((wallet) => wallet.color)}
         onConnected={(wallet, summary) => {
           setWallets((prev) => [...prev, wallet]);
           setWalletSummaries((prev) => ({

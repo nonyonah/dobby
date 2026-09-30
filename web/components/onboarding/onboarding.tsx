@@ -8,12 +8,13 @@ import { PlanProvider, usePlan } from "@/components/plan-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 import { QuickCreateModals } from "@/components/quick-create-modals";
 import { WalletConnectModal } from "@/components/settings/wallet-connect-modal";
 import { cn } from "cn";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 
 const STEP_KEY = "dobby-onboarding-step";
 
@@ -142,18 +143,13 @@ function ProfileStep({ onContinue }: { onContinue: () => void }) {
           <label htmlFor="onboarding-country" className="block text-[12px] font-medium text-muted-foreground">
             Country <span className="font-normal text-muted-foreground/80">(for tax jurisdiction)</span>
           </label>
-          <Select value={country} onValueChange={(value) => setCountry(value ?? "nigeria")}>
-            <SelectTrigger id="onboarding-country" aria-label="Country" className={controlClass}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {COUNTRIES.map((entry) => (
-                <SelectItem key={entry.value} value={entry.value}>
-                  {entry.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <NativeSelect
+            id="onboarding-country"
+            aria-label="Country"
+            value={country}
+            onValueChange={(value) => setCountry(value ?? "nigeria")}
+            options={COUNTRIES.map((entry) => ({ value: entry.value, label: entry.label }))}
+          />
         </div>
 
         {user?.primaryEmailAddress?.emailAddress || me?.email ? (
@@ -237,7 +233,8 @@ function ConnectStep() {
         toast.success("Email connected — open Settings and sync to import transactions.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not connect your email.");
+      const guidance = guidanceFor(error, "email");
+      toast.error(guidance.title, { description: guidanceText(guidance) });
     } finally {
       setConnectingEmail(false);
     }

@@ -11,13 +11,7 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
@@ -55,7 +49,9 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
-  const [category, setCategory] = useState("other");
+  // Seeded as null and resolved from the loaded options on open, so the trigger
+  // never shows the literal "other" before the effect has run.
+  const [category, setCategory] = useState("");
   const [taxable, setTaxable] = useState("non-taxable");
   const [source, setSource] = useState<TxSource>("manual");
   const [note, setNote] = useState("");
@@ -72,7 +68,8 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       setAmount(String(Math.abs(tx.amount)));
       setDate(tx.date);
       const liveIds = new Set(options.map((o) => o.id));
-      setCategory(tx.categoryId && liveIds.has(tx.categoryId) ? tx.categoryId : tx.category);
+      const preferred = tx.categoryId && liveIds.has(tx.categoryId) ? tx.categoryId : options.find((option) => option.id === tx.category)?.id;
+      setCategory(preferred ?? options[0]?.id ?? "");
       setTaxable(tx.taxable ? "taxable" : "non-taxable");
       setSource(tx.source);
       setNote(tx.note);
@@ -131,7 +128,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
           </Field>
           <Field label="Amount">
             <div className="relative">
-              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">
+              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">
                 {amountSymbol}
               </span>
               <Input
@@ -139,7 +136,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
                 onChange={(e) => setAmount(e.target.value)}
                 inputMode="decimal"
                 aria-label={`Amount in ${amountCurrency}`}
-                className="mono h-8 bg-white dark:bg-[#232327] pr-2 pl-7 text-[13px]"
+                className="mono h-8 bg-white dark:bg-[#232327] pr-3 pl-10 text-[13px]"
               />
             </div>
           </Field>
@@ -147,42 +144,36 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
           </Field>
           <Field label="Category">
-            <Select value={category} onValueChange={(v) => setCategory(v ?? "other")}>
-              <SelectTrigger aria-label="Category" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {options.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.emoji} {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <NativeSelect
+              aria-label="Category"
+              value={category}
+              onValueChange={setCategory}
+              options={options.map((c) => ({ value: c.id, label: `${c.emoji} ${c.name}` }))}
+            />
           </Field>
           <Field label="Tax status">
-            <Select value={taxable} onValueChange={(v) => setTaxable(v ?? "non-taxable")}>
-              <SelectTrigger aria-label="Tax status" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="taxable">Taxable</SelectItem>
-                <SelectItem value="non-taxable">Non-taxable</SelectItem>
-              </SelectContent>
-            </Select>
+            <NativeSelect
+              aria-label="Tax status"
+              value={taxable}
+              onValueChange={(v) => setTaxable(v === "taxable" ? "taxable" : "non-taxable")}
+              options={[
+                { value: "taxable", label: "Taxable" },
+                { value: "non-taxable", label: "Non-taxable" },
+              ]}
+            />
           </Field>
           <Field label="Source">
-            <Select value={source} onValueChange={(v) => setSource(v as TxSource)}>
-              <SelectTrigger aria-label="Source" className="h-8 w-full bg-white dark:bg-[#232327] text-[13px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manual">Manual entry</SelectItem>
-                <SelectItem value="email">Email receipt</SelectItem>
-                <SelectItem value="card">Card sync</SelectItem>
-                <SelectItem value="wallet">Wallet sync</SelectItem>
-              </SelectContent>
-            </Select>
+            <NativeSelect
+              aria-label="Source"
+              value={source}
+              onValueChange={(v) => setSource(v as TxSource)}
+              options={[
+                { value: "manual", label: "Manual entry" },
+                { value: "email", label: "Email receipt" },
+                { value: "card", label: "Card sync" },
+                { value: "wallet", label: "Wallet sync" },
+              ]}
+            />
           </Field>
           <div className="col-span-2">
             <Field label="Note">

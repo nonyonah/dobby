@@ -25,39 +25,49 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { AISidebar, type SidebarResource } from "./agents/ai-sidebar";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@clerk/nextjs";
 import { FEATURES } from "@/lib/features";
-import { SignOut } from "@phosphor-icons/react/dist/ssr";
+import { SignOut, Sparkle } from "@phosphor-icons/react/dist/ssr";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import {
   AccountsIcon,
+  BellIcon,
   BookmarkIcon,
   DashboardIconFull,
+  EmailIcon,
   GoalsIcon,
   PlusIcon,
+  QuestionIcon,
   ReportsIcon,
   SettingsIcon,
   TransactionsIcon,
   UploadIcon,
   WalletIcon,
 } from "./icons";
+import { useAttention } from "@/hooks/use-attention";
 
 interface NavItem {
   id: string;
   label: string;
   href: string;
   icon: (props: { className?: string }) => React.ReactNode;
-
+  /** Unread count shown on the right of the row; 0 renders no badge. */
+  count?: number;
 }
+
+/** Nav renders `<item.icon />` with no props, so the filled bell is bound here. */
+const NotificationsNavIcon = (props: { className?: string }) => <BellIcon filled {...props} />;
 
 const MAIN_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", href: "/", icon: DashboardIconFull },
   { id: "transactions", label: "Transactions", href: "/transactions", icon: TransactionsIcon },
   { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon },
+  { id: "notifications", label: "Notifications", href: "/notifications", icon: NotificationsNavIcon },
   { id: "settings", label: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 
@@ -78,10 +88,10 @@ function useWorkspaceResources(): SidebarResource[] {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
     void api
-      .get<{ data: Array<{ id: string; address: string }> }>("/v1/wallets")
+      .get<{ data: Array<{ id: string; address: string; color: string }> }>("/v1/wallets")
       .then((response) => {
         if (cancelled) return;
-        setWallets(response.data.map((wallet) => ({ id: `wallet-${wallet.id}`, label: shortAddress(wallet.address), kind: "bookmark" as const })));
+        setWallets(response.data.map((wallet) => ({ id: `wallet-${wallet.id}`, label: shortAddress(wallet.address), kind: "bookmark" as const, color: wallet.color })));
       })
       .catch(() => {
         if (!cancelled) setWallets([]);
@@ -106,7 +116,7 @@ function useWorkspaceResources(): SidebarResource[] {
   ];
 }
 
-function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: string; onNavigate?: () => void }) {
+function NavMenu({ items, activeId, counts, onNavigate }: { items: NavItem[]; activeId: string; counts?: Record<string, number>; onNavigate?: () => void }) {
   return (
     <SidebarMenu>
       {items.map((item) => {
@@ -123,6 +133,15 @@ function NavMenu({ items, activeId, onNavigate }: { items: NavItem[]; activeId: 
           >
             <item.icon />
             <span className="flex-1">{item.label}</span>
+            {counts?.[item.id] ? (
+              <span
+                suppressHydrationWarning
+                className="ml-auto shrink-0 rounded-full bg-primary px-1.5 py-px text-[11px] font-semibold leading-4 tabular-nums text-primary-foreground"
+                aria-label={`${counts[item.id]} unread`}
+              >
+                {counts[item.id]}
+              </span>
+            ) : null}
           </SidebarMenuButton>
 
         </SidebarMenuItem>
@@ -166,6 +185,11 @@ function QuickCreate({ onCreate }: { onCreate: (kind: "import" | "budget" | "goa
 }
 
 function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNavigate?: () => void; onCreate: (kind: "import" | "budget" | "goal") => void }) {
+  // Both badges are live: the transactions row counts pending review rows, the
+  // notifications row counts unread attention items. Both fall to zero once
+  // everything is dealt with.
+  const { unreadCount, reviewCount } = useAttention();
+  const counts: Record<string, number> = { transactions: reviewCount, notifications: unreadCount };
   const [logoutOpen, setLogoutOpen] = useState(false);
   const { signOut } = useClerk();
   const router = useRouter();
@@ -194,7 +218,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
       <SidebarContent className="px-3">
         <SidebarGroup className="px-0 py-1">
           <SidebarGroupContent>
-            <NavMenu items={MAIN_NAV} activeId={active} onNavigate={onNavigate} />
+            <NavMenu items={MAIN_NAV} activeId={active} counts={counts} onNavigate={onNavigate} />
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup className="px-0 py-1">
@@ -209,8 +233,9 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
               renderIcon={(item) => {
                 if (item.id === "connected-accounts") return <AccountsIcon />;
                 if (item.id.startsWith("wallet-")) {
-                  // Status dot in the accent the user picked in Settings.
-                  return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />;
+                  // Each wallet carries the colour chosen for it in Settings;
+                  // fall back to the global accent only if it has none.
+                  return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ background: item.color ?? "var(--accent)" }} />;
                 }
                 if (item.id === "connect-wallet") return <WalletIcon />;
                 return <BookmarkIcon />;
@@ -232,18 +257,42 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
       </SidebarContent>
 
       <SidebarFooter className="px-3 pb-3">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <button
-              type="button"
-              onClick={() => setLogoutOpen(true)}
-              className="flex h-7 w-full items-center gap-2 overflow-hidden rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-            >
+        {/* Help lives in the footer where log out used to be; log out moved to
+            the top bar. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                className="flex h-7 w-full items-center gap-2 overflow-hidden rounded-md px-2 text-left text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              >
+                <QuestionIcon className="size-4 shrink-0" />
+                <span className="flex-1 truncate">Help</span>
+              </button>
+            }
+          />
+          <DropdownMenuContent align="start" side="top" className="w-56">
+            <DropdownMenuItem onClick={() => window.open("mailto:support@riftlabs.xyz?subject=Dobby%20support", "_self")} className="items-start gap-2">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"><EmailIcon className="size-3.5" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">Contact support</span>
+                <span className="block text-[11px] text-muted-foreground">Email us and we&apos;ll reply</span>
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => window.open("mailto:support@riftlabs.xyz?subject=Dobby%20feedback", "_self")} className="items-start gap-2">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"><Sparkle size={14} aria-hidden="true" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">Send feedback</span>
+                <span className="block text-[11px] text-muted-foreground">Tell us what to build next</span>
+              </span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setLogoutOpen(true)} className="text-destructive focus:text-destructive data-[variant=destructive]:*:[svg]:text-destructive">
               <SignOut className="size-4 shrink-0" />
-              <span className="flex-1 truncate">Log out</span>
-            </button>
-          </SidebarMenuItem>
-        </SidebarMenu>
+              <span className="flex-1">Log out</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
           <AlertDialogContent className="z-[100]">
             <AlertDialogHeader>
@@ -254,7 +303,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => { setLogoutOpen(false); void signOut(); }}>Log out</AlertDialogAction>
+              <AlertDialogAction variant="destructive" onClick={() => { setLogoutOpen(false); void signOut(); }}>Log out</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

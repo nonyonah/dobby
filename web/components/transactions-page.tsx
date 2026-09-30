@@ -20,9 +20,13 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { TxFull } from "@/lib/transactions";
 import { useApi } from "@/hooks/use-api";
+import { ApiError } from "@/lib/api-client";
 import { useCategories } from "@/hooks/use-categories";
 import { TX_CATEGORIES } from "@/lib/transactions";
 import { toast } from "@/components/ui/toast";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
+import { requestAttentionSync } from "@/hooks/use-attention";
+import { Segmented } from "@/components/ui/segmented";
 
 /** Approvals go out in small sequential chunks: one bulk request beats N
  * concurrent single approves (which starved the connection pool), and a
@@ -42,7 +46,7 @@ type ApiTransaction = {
   isTaxable: boolean;
   needsReview: boolean;
   account?: { name: string } | null;
-  category?: { id: string; name: string } | null;
+  category?: { id: string; name: string; color?: string | null } | null;
 };
 
 type ApiReview = {
@@ -78,6 +82,7 @@ function mapTransaction(item: ApiTransaction): TxFull {
     category: item.category?.id ?? categoryId(item.category?.name),
     categoryId: item.category?.id,
     categoryName: item.category?.name ?? undefined,
+    categoryColor: item.category?.color ?? null,
     kind: item.type,
     taxable: item.isTaxable,
     source: sourceId(item.source),
@@ -118,6 +123,10 @@ function TransactionsInner() {
   const [approving, setApproving] = useState(false);
   const [approveProgress, setApproveProgress] = useState<string | null>(null);
   const [view, setView] = useState<"ledger" | "review">("review");
+  // A "to review" deep link (from Needs attention / flags) opens the Review tab
+  // on the target row without an effect-driven state sync.
+  const deepLinkReview = useSearchParams().get("view") === "review";
+  const effectiveView = deepLinkReview ? "review" : view;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -204,6 +213,7 @@ function TransactionsInner() {
   const params = useSearchParams();
   const router = useRouter();
   const importModal = params.get("modal");
+  const focusId = params.get("focus");
 
   useEffect(() => {
     if (importModal === "import") {
@@ -242,8 +252,14 @@ function TransactionsInner() {
       mapped = mapTransaction(response.data);
       setRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
       setReviewRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
-    } catch {
-      toast.error("Could not save this transaction. Try again.");
+    } catch (error) {
+      // A lapsed trial locks edits server-side — say so instead of a generic failure.
+      if (error instanceof ApiError && error.code === "UPGRADE_REQUIRED") {
+        const guidance = guidanceFor(error, "trial");
+        toast.error(guidance.title, { description: guidanceText(guidance) });
+      } else {
+        toast.error("Could not save this transaction. Try again.");
+      }
       return;
     }
     // Offer kept: persist a rule so the same merchant/description self-categorizes next time.
@@ -266,6 +282,7 @@ function TransactionsInner() {
     try {
       await Promise.all(ids.map((id) => api.post(`/v1/reviews/${id}/reject`, {})));
       setReviewRows((prev) => prev.filter((item) => !ids.includes(item.id)));
+      if (ids.length > 0) requestAttentionSync();
       toast.success(ids.length === 1 ? "Transaction declined" : `${ids.length} transactions declined`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not decline these transactions.");
@@ -298,6 +315,7 @@ function TransactionsInner() {
     }
     const resolved = new Set([...approved, ...duplicates]);
     setReviewRows((prev) => prev.filter((transaction) => !resolved.has(transaction.id)));
+    if (resolved.size > 0) requestAttentionSync();
     try {
       setRows((await fetchAllTransactions(month)).map(mapTransaction));
     } catch {
@@ -313,8 +331,11 @@ function TransactionsInner() {
       toast.error(`${failed.length} of ${ids.length} could not be approved — the rest are done. Review the leftovers and retry.`);
       return;
     }
-    toast.success(ids.length === 1 ? "Transaction approved" : "Everything approved");
-    setView("ledger");
+    toast.success(ids.length === 1 ? "Transaction approved" : `${resolved.size} transactions approved`);
+    // Only leave the review tab once there is genuinely nothing left to decide.
+    // Switching after a single approval dumped the user on the ledger, which
+    // read as though the one click had approved the whole queue.
+    if (Math.max(0, reviewRows.length - resolved.size) === 0) setView("ledger");
   };
 
   const remove = async (ids: string[]) => {
@@ -372,13 +393,18 @@ function TransactionsInner() {
     <>
       <div className="w-full px-6 pt-6 pb-10">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="inline-flex w-56 items-center rounded-full bg-paper-100 p-1 dark:bg-paper-200" role="tablist" aria-label="Transaction views">
-            <button type="button" role="tab" aria-selected={view === "review"} onClick={() => setView("review")} className={`h-8 w-1/2 rounded-full px-3 text-[12px] font-medium outline-none focus-visible:outline-2 focus-visible:outline-ring ${view === "review" ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground"}`}>To review <span className="ml-1 text-[11px]">{reviewRows.length}</span></button>
-            <button type="button" role="tab" aria-selected={view === "ledger"} onClick={() => setView("ledger")} className={`h-8 w-1/2 rounded-full px-3 text-[12px] font-medium outline-none focus-visible:outline-2 focus-visible:outline-ring ${view === "ledger" ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Ledger</button>
-          </div>
-          {view === "review" ? <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Approve items to add them to Ledger</p> : null}
+          <Segmented
+            label="Transaction views"
+            value={effectiveView}
+            onValueChange={setView}
+            options={[
+              { value: "review", label: "To review", count: reviewRows.length },
+              { value: "ledger", label: "Ledger" },
+            ]}
+          />
+          {effectiveView === "review" ? <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Approve items to add them to Ledger</p> : null}
         </div>
-        {view === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving ? (approveProgress ?? true) : false} /> : <>
+        {effectiveView === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving ? (approveProgress ?? true) : false} focusId={focusId ?? undefined} /> : <>
           <TxTable
             rows={rows}
             selectedId={selectedId}

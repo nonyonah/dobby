@@ -157,7 +157,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
             <li key={k} className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0">
               <span className="flex size-7 items-center justify-center overflow-hidden rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]">
                 {k === "gmail" ? (
-                  <img src={GMAIL_LOGO} alt="" width={16} height={16} className="size-4" />
+                  <img src={GMAIL_LOGO} alt="" width={16} height={16} className="size-4 rounded-[4px] outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
                 ) : (
                   (() => {
                     const Icon = FEED_ICON[k];

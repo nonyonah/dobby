@@ -71,7 +71,7 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
             aria-hidden="true"
             className="flex size-12 items-center justify-center rounded-full border border-success/40 bg-success-soft"
           >
-            <CheckCircleIcon className="text-success-vivid" />
+            <CheckCircleIcon weight="fill" className="text-white" />
           </span>
           <p className="mt-3 mb-0 text-[13px] font-semibold text-foreground">Nil return</p>
           <p className="mt-1 mb-0 text-[12px] text-muted-foreground">
@@ -139,7 +139,7 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
             className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0"
           >
             {d.status === "READY" ? (
-              <CheckIcon className="shrink-0 text-success" />
+              <CheckIcon weight="fill" className="shrink-0 text-success" />
             ) : (
               <span
                 aria-hidden="true"

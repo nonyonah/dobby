@@ -45,6 +45,8 @@ export interface SidebarResource {
   kind: SidebarResourceKind;
   children?: SidebarResource[];
   disabled?: boolean;
+  /** Optional per-row colour (e.g. a connected wallet's chosen accent), used by `renderIcon`. */
+  color?: string;
 }
 
 export type SidebarResourceDropPosition = "before" | "inside" | "after";

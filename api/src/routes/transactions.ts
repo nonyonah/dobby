@@ -92,7 +92,7 @@ transactionsRouter.get("/", async (req, res) => {
     isTaxable: true,
     needsReview: true,
     account: { select: { name: true } },
-    category: { select: { id: true, name: true } },
+    category: { select: { id: true, name: true, color: true } },
   } as const;
   const [rows, count, profile] = await Promise.all([
     prisma.transaction.findMany({

@@ -10,15 +10,10 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 import { Button } from "../ui/button";
 import { toast } from "../ui/toast";
+import { ColorSelect } from "../ui/color-select";
+import { ChainSelect } from "../ui/chain-logo";
 import { useApi } from "@/hooks/use-api";
 
 export interface ConnectedWallet {
@@ -57,10 +52,13 @@ export function WalletConnectModal({
   open,
   onOpenChange,
   onConnected,
+  connectedColors = [],
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnected: (wallet: ConnectedWallet, summary: WalletSummary | null) => void;
+  /** Colours already used by existing wallets, shown as "in use". */
+  connectedColors?: string[];
 }) {
   const api = useApi();
   const [chain, setChain] = useState<"BASE" | "SOLANA">("BASE");
@@ -131,18 +129,11 @@ export function WalletConnectModal({
         <div className="grid gap-3">
           <label className="block">
             <span className="mb-1 block text-[12px] font-medium text-muted-foreground">Chain</span>
-            <Select value={chain} onValueChange={(value) => setChain(value === "SOLANA" ? "SOLANA" : "BASE")}>
-              <SelectTrigger aria-label="Chain" className="h-8 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CHAINS.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ChainSelect
+              chain={chain}
+              onChainChange={(value) => setChain(value === "SOLANA" ? "SOLANA" : "BASE")}
+              chains={CHAINS.map((item) => ({ value: item.value }))}
+            />
           </label>
           <label className="block">
             <span className="mb-1 block text-[12px] font-medium text-muted-foreground">Wallet address</span>
@@ -165,28 +156,11 @@ export function WalletConnectModal({
               className="h-8"
             />
           </label>
-          <div>
-            <span id="wallet-color-label" className="mb-1 block text-[12px] font-medium text-muted-foreground">
-              Color dot
-            </span>
-            <div role="radiogroup" aria-labelledby="wallet-color-label" className="flex flex-wrap gap-2">
-              {COLORS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="radio"
-                  aria-checked={color === option}
-                  aria-label={`Color ${option}`}
-                  title={option}
-                  onClick={() => setColor(option)}
-                  style={{ backgroundColor: option }}
-                  className={`size-6 cursor-pointer rounded-full outline-none transition-transform focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 ${
-                    color === option ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : "hover:scale-110"
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
+          <ColorSelect
+            label="Colour"
+            value={color}
+            onChange={(next) => setColor(next || COLORS[0])}
+          />
         </div>
         <DialogFooter className="sm:justify-between">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

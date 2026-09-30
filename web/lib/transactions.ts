@@ -10,31 +10,70 @@ export interface CategoryMeta {
   id: string;
   label: string;
   emoji: string;
+  /**
+   * Chip background. Chips render this inline rather than as a Tailwind class
+   * so a colour the user picked in Settings can be shown without generating
+   * classes at runtime. Every value keeps white label text above 4.5:1.
+   */
+  hex: string;
   pill: string;
   dot: string;
 }
 
+/** Offered in the category colour picker; matches the API's palette. */
+export const CATEGORY_PALETTE = [
+  "#0f766e", "#b45309", "#1d4ed8", "#be123c", "#7c3aed", "#0e7490",
+  "#a16207", "#15803d", "#c2410c", "#4338ca", "#9d174d", "#065f46",
+  "#92400e", "#1e3a8a", "#86198f", "#155e75", "#3f6212", "#831843",
+] as const;
+
+const chip = (hex: string) => `border-transparent text-white`;
+
+/**
+ * Each built-in category gets its own colour — the previous palette reused
+ * three pastels across ten categories, so chips were hard to tell apart. The
+ * same ten also seed a user's first custom categories.
+ */
 export const TX_CATEGORIES: CategoryMeta[] = [
-  { id: "groceries", label: "Groceries", emoji: "🛒", pill: "border-transparent bg-[#ffafcc] text-white", dot: "#ad7f22" },
-  { id: "housing", label: "Housing", emoji: "🏠", pill: "border-transparent bg-[#a2d2ff] text-white", dot: "#7c3aed" },
-  { id: "utilities", label: "Utilities", emoji: "💡", pill: "border-transparent bg-[#cdb4db] text-white", dot: "#0d9488" },
-  { id: "transport", label: "Transport", emoji: "🚕", pill: "border-transparent bg-[#ffc8dd] text-white", dot: "#4a55c9" },
-  { id: "dining", label: "Dining", emoji: "🍽", pill: "border-transparent bg-[#a2d2ff] text-white", dot: "#b0402f" },
-  { id: "shopping", label: "Shopping", emoji: "🛍", pill: "border-transparent bg-[#ffafcc] text-white", dot: "#ad7f22" },
-  { id: "education", label: "Education", emoji: "📚", pill: "border-transparent bg-[#ffc8dd] text-white", dot: "#3a44a8" },
-  { id: "income", label: "Income", emoji: "💵", pill: "border-transparent bg-[#cdb4db] text-white", dot: "#35754e" },
-  { id: "investments", label: "Investments", emoji: "📈", pill: "border-transparent bg-[#a2d2ff] text-white", dot: "#7c3aed" },
-  { id: "other", label: "Other", emoji: "📦", pill: "border-transparent bg-[#cdb4db] text-white", dot: "#8a8b91" },
+  { id: "groceries", label: "Groceries", emoji: "🛒", hex: "#0f766e", pill: chip("#0f766e"), dot: "#0f766e" },
+  { id: "housing", label: "Housing", emoji: "🏠", hex: "#b45309", pill: chip("#b45309"), dot: "#b45309" },
+  { id: "utilities", label: "Utilities", emoji: "💡", hex: "#1d4ed8", pill: chip("#1d4ed8"), dot: "#1d4ed8" },
+  { id: "transport", label: "Transport", emoji: "🚕", hex: "#be123c", pill: chip("#be123c"), dot: "#be123c" },
+  { id: "dining", label: "Dining", emoji: "🍽", hex: "#7c3aed", pill: chip("#7c3aed"), dot: "#7c3aed" },
+  { id: "shopping", label: "Shopping", emoji: "🛍", hex: "#0e7490", pill: chip("#0e7490"), dot: "#0e7490" },
+  { id: "education", label: "Education", emoji: "📚", hex: "#a16207", pill: chip("#a16207"), dot: "#a16207" },
+  { id: "income", label: "Income", emoji: "💵", hex: "#15803d", pill: chip("#15803d"), dot: "#15803d" },
+  { id: "investments", label: "Investments", emoji: "📈", hex: "#c2410c", pill: chip("#c2410c"), dot: "#c2410c" },
+  { id: "other", label: "Other", emoji: "📦", hex: "#4338ca", pill: chip("#4338ca"), dot: "#4338ca" },
 ];
 
-export const categoryMeta = (id: string, fallbackName?: string): CategoryMeta =>
-  TX_CATEGORIES.find((c) => c.id === id) ?? {
+/**
+ * Resolves a chip colour. A colour the user chose for their own category wins;
+ * built-ins keep their assigned colour; anything else gets a stable colour
+ * derived from its id so two different custom categories never collide.
+ */
+export function categoryHex(id: string, storedColor?: string | null): string {
+  if (storedColor && /^#[0-9a-fA-F]{6}$/.test(storedColor)) return storedColor.toLowerCase();
+  const builtIn = TX_CATEGORIES.find((entry) => entry.id === id);
+  if (builtIn) return builtIn.hex;
+  let hash = 0;
+  for (let index = 0; index < id.length; index += 1) hash = (hash * 31 + id.charCodeAt(index)) >>> 0;
+  return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length];
+}
+
+export const categoryMeta = (id: string, fallbackName?: string, storedColor?: string | null): CategoryMeta => {
+  const builtIn = TX_CATEGORIES.find((entry) => entry.id === id);
+  if (builtIn && !storedColor) return builtIn;
+  const hex = categoryHex(id, storedColor);
+  return {
     id,
-    label: fallbackName ?? id,
-    emoji: "📦",
-    pill: "border-transparent bg-[#cdb4db] text-white",
-    dot: "#8a8b91",
+    label: builtIn?.label ?? fallbackName ?? id,
+    emoji: builtIn?.emoji ?? "📦",
+    hex,
+    pill: chip(hex),
+    dot: hex,
   };
+};
 
 export type ParseState = "parsed" | "review" | "manual";
 
@@ -50,6 +89,8 @@ export interface TxFull {
   category: string;
   categoryId?: string;
   categoryName?: string;
+  /** Colour the user assigned to this category, when set. */
+  categoryColor?: string | null;
   kind?: "INCOME" | "EXPENSE" | "TRANSFER";
   /** Settlement asset for wallet/chain transactions, e.g. `USDC`, `USDT`, `CNGN`. */
   asset?: string;

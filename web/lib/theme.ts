@@ -1,7 +1,7 @@
 export type AccentColor = "brand" | "graphite" | "green" | "blue" | "violet" | "orange" | "rose" | "amber";
 
 export const ACCENT_COLORS: Array<{ id: AccentColor; label: string; value: string }> = [
-  { id: "brand", label: "Brand teal", value: "#83c5be" },
+  { id: "brand", label: "Brand", value: "#003f88" },
   { id: "graphite", label: "Graphite", value: "#52525b" },
   { id: "green", label: "Green", value: "#00afb9" },
   { id: "blue", label: "Blue", value: "#2563eb" },
@@ -73,4 +73,93 @@ export function applyAccentColor(accent: AccentColor) {
   set("--accent-soft-foreground", tintForeground);
   set("--accent-token", tint);
   set("--accent-token-foreground", tintForeground);
+}
+
+/* ---------------------------------------------------------------- theme */
+
+export type ThemePreference = "system" | "light" | "dark";
+export const THEME_STORAGE_KEY = "dobby-theme";
+
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "system" || value === "light" || value === "dark";
+}
+
+export function readStoredTheme(): ThemePreference | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return isThemePreference(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function systemPrefersDark(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+export function resolveTheme(preference: ThemePreference, prefersDark: boolean): "light" | "dark" {
+  if (preference === "light") return "light";
+  if (preference === "dark") return "dark";
+  return prefersDark ? "dark" : "light";
+}
+
+/**
+ * A theme flip restyles nearly every element at once, so without this every
+ * `transition-colors` in the app fires simultaneously and the switch smears
+ * across the page instead of snapping. Transitions are disabled for the
+ * duration of the swap, a reflow is forced so the new values commit, and they
+ * are restored on the next frame.
+ */
+export function withoutTransitions(mutate: () => void) {
+  const root = document.documentElement;
+  const style = document.createElement("style");
+  style.dataset.themeSwap = "";
+  style.textContent = "*,*::before,*::after{transition:none !important}";
+  root.appendChild(style);
+  try {
+    mutate();
+    // Force a style/layout flush so the new values commit while transitions
+    // are still suppressed; the next frame then restores them.
+    void root.offsetHeight;
+  } finally {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        style.remove();
+      });
+    });
+  }
+}
+
+/**
+ * Applies the resolved theme plus the accent. The accent is recomputed every
+ * time because its derived shades are light- or dark-aware, so they have to be
+ * recalculated when the scheme changes.
+ */
+export function applyTheme(preference: ThemePreference, options: { animate?: boolean } = {}) {
+  if (typeof document === "undefined") return;
+  const resolved = resolveTheme(preference, systemPrefersDark());
+  const dark = resolved === "dark";
+  const apply = () => {
+    const root = document.documentElement;
+    root.classList.toggle("dark", dark);
+    // HeroUI's stylesheet keys off [data-theme], not a class, so it needs its
+    // own attribute or the tables and sidebars would stay on the OS scheme
+    // while the rest of the app followed the setting.
+    root.setAttribute("data-theme", resolved);
+    const stored = window.localStorage.getItem(ACCENT_STORAGE_KEY);
+    const accent = ACCENT_COLORS.some((entry) => entry.id === stored) ? (stored as AccentColor) : DEFAULT_ACCENT;
+    applyAccentColor(accent);
+  };
+  if (options.animate === false) {
+    apply();
+    return;
+  }
+  withoutTransitions(apply);
+}
+
+/** Notifies the app that the preference changed, so ThemeSync can react. */
+export function announceThemeChange() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("dobby-theme-change"));
 }

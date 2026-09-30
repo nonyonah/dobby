@@ -4,6 +4,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "@phosphor-icons/react/dist/ssr";
 import { cn } from "cn";
+import { DialogSurfaceContext } from "./dialog-surface";
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -34,24 +35,63 @@ function DialogOverlay({ className, ...props }: React.ComponentProps<typeof Dial
   );
 }
 
+/**
+ * Popovers from other libraries (HeroUI selects) portal outside the dialog's
+ * React tree: Radix would read their clicks as outside interaction and
+ * dismiss the dialog underneath the user's cursor. Elements carrying
+ * `data-radix-dialog-safe` opt out of that dismissal (see ui/select).
+ */
+function keepOpenForSafeTargets(event: {
+  target?: unknown;
+  detail?: { originalEvent?: { target?: unknown } } | null;
+  preventDefault: () => void;
+}) {
+  const original = event.detail && typeof event.detail === "object" ? event.detail.originalEvent : undefined;
+  const targets = [event.target, original?.target];
+  if (targets.some((target) => target instanceof Element && target.closest("[data-radix-dialog-safe]") !== null)) {
+    event.preventDefault();
+  }
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & { showCloseButton?: boolean }) {
+  // Published so overlays inside the dialog can portal here rather than to
+  // <body> — see dialog-surface.tsx for why that matters.
+  const surfaceRef = React.useRef<HTMLDivElement | null>(null);
+  // `undefined` while unresolved — see dialog-surface.tsx for why null breaks it.
+  const [surface, setSurface] = React.useState<HTMLElement | undefined>(undefined);
+  React.useEffect(() => {
+    setSurface(surfaceRef.current ?? undefined);
+  }, []);
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
+        ref={(node: HTMLDivElement | null) => {
+          surfaceRef.current = node;
+        }}
         data-slot="dialog-content"
+        onPointerDownOutside={keepOpenForSafeTargets}
+        onFocusOutside={keepOpenForSafeTargets}
         className={cn(
-          "fixed top-[50%] left-[50%] z-50 grid max-h-[calc(100dvh-3rem)] w-full max-w-[min(28rem,calc(100%-2rem))] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-xl border border-line bg-card p-4 text-xs/relaxed text-foreground shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [&>*]:min-w-0",
+          // Centred with `inset-0 m-auto` rather than `top-1/2 + translate(-50%,-50%)`.
+// A transform on this element makes every `position: fixed` descendant — which
+// is what a portalled select/popover/menu popup is — resolve against the dialog
+// instead of the viewport, so the popup lands offset and breaks as soon as it
+// opens. No transform means the popup positions correctly.
+          "fixed inset-0 m-auto z-50 grid h-fit max-h-[calc(100dvh-3rem)] w-full max-w-[min(28rem,calc(100%-2rem))] gap-4 overflow-y-auto rounded-xl border border-line bg-card p-4 text-xs/relaxed text-foreground shadow-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 [&>*]:min-w-0",
           className,
         )}
         {...props}
       >
-        {children}
+        <DialogSurfaceContext.Provider value={surface}>
+          {children}
+        </DialogSurfaceContext.Provider>
         {showCloseButton ? (
           <DialogPrimitive.Close
             aria-label="Close dialog"

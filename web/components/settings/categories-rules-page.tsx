@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { Archive, ArrowLeft, PencilSimple, Plus, Trash } from "@phosphor-icons/react/dist/ssr";
+import { Archive, ArrowLeft, Palette as PaletteIcon, PencilSimple, Plus, Trash } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/native-select";
 import { EmojiPickerField } from "@/components/ui/emoji-picker";
+import { ColorSelect } from "@/components/ui/color-select";
+import { categoryHex } from "@/lib/transactions";
 import { toast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
 
@@ -21,6 +23,11 @@ export function CategoriesRulesPage() {
   const [categoryIds, setCategoryIds] = useState<Record<string, string>>({});
   const [newCategory, setNewCategory] = useState("");
   const [newCategoryEmoji, setNewCategoryEmoji] = useState("✨");
+  /** null = let the API pick the next unused palette colour. */
+  const [newCategoryColor, setNewCategoryColor] = useState<string | null>(null);
+  const [categoryColors, setCategoryColors] = useState<Record<string, string | null>>({});
+  const [recoloring, setRecoloring] = useState<string | null>(null);
+  const [recolorDraft, setRecolorDraft] = useState<string | null>(null);
 
   const [rules, setRules] = useState<Rule[]>([
     { id: 1, matcher: "uber", category: "Transport", taxable: false },
@@ -36,12 +43,13 @@ export function CategoriesRulesPage() {
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
     void Promise.all([
-      api.get<{ data: Array<{ id: string; name: string; isArchived: boolean }> }>("/v1/categories"),
+      api.get<{ data: Array<{ id: string; name: string; color?: string | null; isArchived: boolean }> }>("/v1/categories"),
       api.get<{ data: Array<{ id: string; matcher: string; categoryId?: string | null; category?: { name: string } | null; isTaxable: boolean }> }>("/v1/rules"),
     ]).then(([categoryResponse, ruleResponse]) => {
       const activeCategories = categoryResponse.data.filter((category) => !category.isArchived);
       setCategories(activeCategories.map((category) => category.name));
       setCategoryIds(Object.fromEntries(activeCategories.map((category) => [category.name, category.id])));
+      setCategoryColors(Object.fromEntries(activeCategories.map((category) => [category.name, category.color ?? null])));
       setRules(ruleResponse.data.map((rule) => ({ id: rule.id, matcher: rule.matcher, category: rule.category?.name ?? "Uncategorized", categoryId: rule.categoryId, taxable: rule.isTaxable })));
       if (activeCategories[0]) setRuleCategory(activeCategories[0].name);
     }).catch(() => {
@@ -54,15 +62,22 @@ export function CategoriesRulesPage() {
     const value = newCategory.trim();
     if (!value || categories.includes(value)) return;
     try {
-      const response = await api.post<{ data: { id: string; name: string } }>("/v1/categories", { name: value, isTaxable: false });
+      const response = await api.post<{ data: { id: string; name: string; color?: string | null } }>(
+        "/v1/categories",
+        { name: value, isTaxable: false, ...(newCategoryColor ? { color: newCategoryColor } : {}) },
+      );
       setCategories((current) => [...current, response.data.name]);
       setCategoryIds((current) => ({ ...current, [response.data.name]: response.data.id }));
+      // The API assigns an unused colour when none was sent, so store what it
+      // actually saved rather than what we asked for.
+      setCategoryColors((current) => ({ ...current, [response.data.name]: response.data.color ?? null }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not create this category.");
       return;
     }
     setNewCategory("");
     setNewCategoryEmoji("✨");
+    setNewCategoryColor(null);
     toast.success("Category created");
   };
 
@@ -97,8 +112,26 @@ export function CategoriesRulesPage() {
     toast.success("Category renamed");
   };
 
+  const saveColor = async (category: string) => {
+    const id = categoryIds[category];
+    if (!id) return;
+    const previous = categoryColors[category] ?? null;
+    // Optimistic: the swatch should follow the click, and roll back on failure.
+    setCategoryColors((current) => ({ ...current, [category]: recolorDraft }));
+    try {
+      await api.patch(`/v1/categories/${id}`, { color: recolorDraft });
+    } catch (error) {
+      setCategoryColors((current) => ({ ...current, [category]: previous }));
+      toast.error(error instanceof Error ? error.message : "Could not change this category's colour.");
+      return;
+    }
+    setRecoloring(null);
+    toast.success("Colour updated");
+  };
+
   return (
     <div className="w-full px-6 pt-6 pb-12">
+      <div className="mx-auto max-w-[680px]">
       <div className="mb-6">
         <Link href="/settings" className="mb-3 inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] hover:text-[#1c1d20] dark:text-[#a2a3a8] dark:hover:text-white"><ArrowLeft size={14} /> Settings</Link>
         <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-[18px] font-semibold tracking-[-0.01em] text-[#1c1d20] dark:text-[#eceef0]">Categories &amp; rules</h1><p className="mt-1 text-[13px] text-[#6b6d72] dark:text-[#a2a3a8]">Control how imported transactions are organized and classified.</p></div></div>
@@ -109,12 +142,15 @@ export function CategoriesRulesPage() {
           <CardHeader><CardTitle>Custom categories</CardTitle><CardDescription className="font-medium">Create categories for your own reporting language. Archived categories stay on historical transactions.</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); addCategory(); }}><label htmlFor="new-category" className="sr-only">New category name</label><EmojiPickerField value={newCategoryEmoji} onChange={setNewCategoryEmoji} label="Choose a category emoji" /><Input id="new-category" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="e.g. Professional development" className="h-8 min-w-0 max-w-sm flex-1" /><Button type="submit" variant="primary" size="small"><Plus /> Create category</Button></form>
+            <ColorSelect value={newCategoryColor} onChange={(hex) => setNewCategoryColor(hex || null)} label="Colour" className="min-w-0 flex-1" />
             <div className="divide-y divide-[#e9e7e2] dark:divide-[#2d2d31]">
               {categories.map((category) => {
                 const customEmoji = category.startsWith("✨ ") ? category.match(/^(\S+)\s(.+)$/) : null;
                 const emoji = customEmoji?.[1] ?? categoryEmojis[category] ?? "✨";
                 const displayName = customEmoji?.[2] ?? category;
-                return <div key={category} className="flex items-center justify-between gap-3 py-2.5 first:pt-1"><span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary" aria-hidden="true">{emoji}</span><span className="truncate">{displayName}</span></span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Rename ${displayName}`} title={`Rename ${displayName}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${displayName}`} title={`Archive ${displayName}`} onClick={async () => { const id = categoryIds[category]; try { if (id) await api.delete(`/v1/categories/${id}`); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not archive this category."); return; } setCategories((current) => current.filter((item) => item !== category)); toast.success("Category archived"); }}><Archive /></Button></div></div>;
+                const isRecoloring = recoloring === category;
+                const swatch = categoryHex(categoryIds[category] ?? category, categoryColors[category]);
+                return <div key={category} className="py-2.5 first:pt-1"><div className="flex items-center justify-between gap-3"><span className="flex min-w-0 items-center gap-2 text-[13px] font-medium"><span className="flex size-7 shrink-0 items-center justify-center rounded-full text-[13px]" style={{ backgroundColor: swatch }} aria-hidden="true">{emoji}</span><span className="truncate">{displayName}</span></span><div className="flex items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label={`Change colour of ${displayName}`} aria-expanded={isRecoloring} title={`Change colour of ${displayName}`} onClick={() => { if (isRecoloring) { setRecoloring(null); return; } setRecoloring(category); setRecolorDraft(categoryColors[category] ?? swatch); }}><PaletteIcon /></Button><Button variant="ghost" size="icon-sm" aria-label={`Rename ${displayName}`} title={`Rename ${displayName}`} onClick={() => renameCategory(category)}><PencilSimple /></Button><Button variant="ghost" size="icon-sm" aria-label={`Archive ${displayName}`} title={`Archive ${displayName}`} onClick={async () => { const id = categoryIds[category]; try { if (id) await api.delete(`/v1/categories/${id}`); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not archive this category."); return; } setCategories((current) => current.filter((item) => item !== category)); toast.success("Category archived"); }}><Archive /></Button></div></div>{isRecoloring ? <div className="mt-2.5 flex flex-wrap items-end justify-between gap-3 rounded-lg bg-muted px-3 py-2.5"><ColorSelect value={recolorDraft} onChange={setRecolorDraft} label={`${displayName} colour`} className="min-w-0 flex-1" /><div className="flex items-center gap-1.5"><Button variant="ghost" size="small" onClick={() => setRecoloring(null)}>Cancel</Button><Button variant="primary" size="small" onClick={() => void saveColor(category)}>Save colour</Button></div></div> : null}</div>;
               })}
             </div>
           </CardContent>
@@ -125,7 +161,7 @@ export function CategoriesRulesPage() {
           <CardContent className="space-y-5">
             <form className="grid gap-3 rounded-lg bg-[#f9fafb] p-3 dark:bg-[#1f1f22] sm:grid-cols-[1fr_1fr_auto] sm:items-end" onSubmit={(event) => { event.preventDefault(); addRule(); }}>
               <div className="space-y-1.5"><label htmlFor="matcher" className="text-[12px] font-medium text-[#6b6d72] dark:text-[#a2a3a8]">Contains</label><Input id="matcher" value={matcher} onChange={(event) => setMatcher(event.target.value)} placeholder="merchant or description" className="h-8 bg-white dark:bg-[#232327]" /></div>
-              <div className="space-y-1.5"><label htmlFor="rule-category" className="text-[12px] font-medium text-[#6b6d72] dark:text-[#a2a3a8]">Category</label><Select value={ruleCategory} onValueChange={(value) => setRuleCategory(value ?? "Home")}><SelectTrigger id="rule-category" className="w-full bg-white dark:bg-[#232327]"><SelectValue /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-1.5"><label htmlFor="rule-category" className="text-[12px] font-medium text-[#6b6d72] dark:text-[#a2a3a8]">Category</label><NativeSelect id="rule-category" value={ruleCategory} onValueChange={(value) => setRuleCategory(value ?? "Home")} options={categories.map((category) => ({ value: category, label: category }))} /></div>
               <Button type="submit" variant="primary" size="small"><Plus /> Add rule</Button>
               <label className="flex items-center gap-2 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8] sm:col-span-2"><input type="checkbox" checked={taxable} onChange={(event) => setTaxable(event.target.checked)} className="size-3.5 accent-[#4a55c9]" /> Mark matching transactions as taxable</label>
             </form>
@@ -134,6 +170,7 @@ export function CategoriesRulesPage() {
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e9e7e2] pt-4 dark:border-[#2d2d31]"><p className="text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]">Re-apply rules to your existing transaction history after making changes.</p><Button variant="secondary" onClick={async () => { try { const response = await api.post<{ data: { updatedCount: number } }>("/v1/rules/reapply", {}); toast.success(`${response.data.updatedCount} transactions updated`); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not re-apply rules."); } }}>Re-apply past transactions</Button></div>
           </CardContent>
         </Card>
+        </div>
       </div>
     </div>
   );

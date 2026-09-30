@@ -52,14 +52,23 @@ function AlertDialogFooter(props: React.ComponentProps<typeof DialogFooter>) {
   return <DialogFooter {...props} />;
 }
 
-type AlertActionProps = React.ButtonHTMLAttributes<HTMLButtonElement>;
+type AlertActionProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  /** `destructive` for irreversible confirmations such as logging out. */
+  variant?: "primary" | "destructive";
+};
 
-function AlertDialogAction({ className, onClick, children, ...props }: AlertActionProps) {
+function AlertDialogAction({ className, onClick, children, variant = "primary", ...props }: AlertActionProps) {
   const close = React.useContext(AlertDialogCloseContext);
   return (
     <button
       type="button"
-      className={cn("inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground outline-none hover:opacity-90 focus-visible:outline-2 focus-visible:outline-ring", className)}
+      className={cn(
+        "inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium outline-none focus-visible:outline-2 focus-visible:outline-ring",
+        variant === "destructive"
+          ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          : "bg-primary text-primary-foreground hover:opacity-90",
+        className,
+      )}
       {...props}
       onClick={(event) => {
         onClick?.(event);

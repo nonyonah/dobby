@@ -18,8 +18,8 @@ function Delta({ value, invert = false }: { value: number | null; invert?: boole
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium tabular-nums ${
         good
-          ? "border-transparent bg-[#00afb9] text-white"
-          : "border-transparent bg-[#ef476f] text-white"
+          ? "border-transparent bg-[#1b4332] text-white"
+          : "border-transparent bg-[#ef233c] text-white"
       }`}
     >
       {up ? "+" : "−"}{Math.abs(value).toFixed(1)}%

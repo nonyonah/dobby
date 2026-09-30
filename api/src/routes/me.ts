@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, TaxCountry } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -83,6 +83,20 @@ meRouter.patch("/", async (req, res) => {
     },
     include: { profile: true },
   });
+
+  // Keep the tax engine in step with the jurisdiction chosen in Settings. The
+  // tax module reads its own TaxProfile.country to pick the tax currency, so
+  // without this a user in Nigeria whose profile says "nigeria" would still be
+  // estimated in USD on the dashboard.
+  if (input.taxJurisdiction !== undefined) {
+    const taxCountry = input.taxJurisdiction === "united-states" ? TaxCountry.US : TaxCountry.NIGERIA;
+    const currentYear = new Date().getUTCFullYear();
+    await prisma.taxProfile.upsert({
+      where: { ownerClerkId: clerkId },
+      create: { ownerClerkId: clerkId, country: taxCountry, taxYear: currentYear },
+      update: { country: taxCountry },
+    });
+  }
 
   res.json({ data: user });
 });

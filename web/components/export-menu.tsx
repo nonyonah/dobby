@@ -5,7 +5,7 @@ import * as XLSX from "xlsx";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import { toast } from "@/components/ui/toast";
 
-import { Dropdown } from "@heroui/react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface ExportMenuProps {
   rows: TxFull[];
@@ -51,24 +51,25 @@ function exportRows(rows: TxFull[], filename: string, kind: ExportKind) {
 
 export function ExportMenu({ rows, filename }: ExportMenuProps) {
   return (
-    <Dropdown>
-      <Dropdown.Trigger aria-label="Export data" className="inline-flex h-7 items-center gap-1.5 rounded-[10px] bg-primary px-[10px] text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Export data"
+        className="inline-flex h-7 items-center gap-1.5 rounded-[50px] bg-primary px-[10px] text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+      >
         <DownloadSimple size={14} weight="bold" aria-hidden="true" />
         Export
-      </Dropdown.Trigger>
-      <Dropdown.Popover placement="bottom end" className="w-52">
-        <Dropdown.Menu aria-label="Export options" onAction={(key) => exportRows(rows, filename, String(key) as ExportKind)}>
-          {OPTIONS.map((option) => (
-            <Dropdown.Item key={option.id} id={option.id} textValue={option.label} className="gap-2.5 py-2">
-              <span className="flex size-6 shrink-0 items-center justify-center"><OptionIcon kind={option.id} /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[12px] font-semibold">{option.label}</span>
-                <span className="block text-[11px] font-medium text-muted-foreground">{option.detail}</span>
-              </span>
-            </Dropdown.Item>
-          ))}
-        </Dropdown.Menu>
-      </Dropdown.Popover>
-    </Dropdown>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {OPTIONS.map((option) => (
+          <DropdownMenuItem key={option.id} onClick={() => exportRows(rows, filename, option.id)} className="gap-2.5 py-2">
+            <span className="flex size-6 shrink-0 items-center justify-center"><OptionIcon kind={option.id} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[12px] font-semibold">{option.label}</span>
+              <span className="block text-[11px] font-medium text-muted-foreground">{option.detail}</span>
+            </span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

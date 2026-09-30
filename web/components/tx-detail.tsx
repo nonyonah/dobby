@@ -5,6 +5,7 @@ import { formatUSD } from "@/lib/format";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
 import { CardIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
+import { CategoryChip } from "@/components/ui/category-chip";
 
 const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.ReactNode> = {
   manual: ManualIcon,
@@ -70,7 +71,7 @@ export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
         <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{date}</p>
         <div className="mt-1 flex items-start justify-between gap-3">
           <h2 className="m-0 text-[16px] font-semibold tracking-[-0.01em]">{tx.name}</h2>
-          <p className={`mono m-0 shrink-0 text-[16px] font-semibold tabular-nums ${income ? "text-[#00afb9]" : "text-[#ef476f]"}`}>
+          <p className={`mono m-0 shrink-0 text-[16px] font-semibold tabular-nums ${income ? "text-[#1b4332]" : "text-[#ef233c]"}`}>
             {income ? "+" : "−"}{formatUSD(Math.abs(tx.amount))}
           </p>
         </div>
@@ -79,10 +80,7 @@ export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
 
       <div className="px-4 py-2">
         <Row label="Category">
-          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${meta.pill}`}>
-            <span aria-hidden="true" className="text-[11px]">{meta.emoji}</span>
-            {meta.label}
-          </span>
+          <CategoryChip id={meta.id} name={meta.label} color={meta.hex} />
         </Row>
         <Row label="Taxable">
           <span
@@ -130,9 +128,9 @@ export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
         ) : null}
         <Row label="Parsing">
           {tx.parse.state === "parsed" ? (
-            <span className="text-[13px] text-[#00afb9]">Parsed · {tx.parse.confidence}% confidence</span>
+            <span className="text-[13px] text-[#1b4332]">Parsed · {tx.parse.confidence}% confidence</span>
           ) : tx.parse.state === "review" ? (
-            <span className="text-[13px] text-[#ad7f22] dark:text-[#d9a441]">Needs review · {tx.parse.confidence}% confidence</span>
+            <span className="text-[13px] text-warning">Needs review · {tx.parse.confidence}% confidence</span>
           ) : (
             <span className="text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">Entered manually</span>
           )}

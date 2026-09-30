@@ -10,7 +10,7 @@ import { Alert, AlertContent, AlertDescription, AlertTitle } from "./ui/alert";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 import { Switch } from "./ui/switch";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "./ui/drawer";
 import { Meter } from "./module-card";
@@ -38,7 +38,7 @@ function statusLabel(status: GoalStatus) {
 }
 
 function StatusPill({ status }: { status: GoalStatus }) {
-  const tone = status === "active" ? "bg-accent-100 text-accent-600" : status === "ready" ? "bg-[#00afb9] text-white" : "bg-secondary text-muted-foreground";
+  const tone = status === "active" ? "bg-accent-100 text-accent-600" : status === "ready" ? "bg-[#1b4332] text-white" : "bg-secondary text-muted-foreground";
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{statusLabel(status)}</span>;
 }
 
@@ -289,7 +289,7 @@ export function GoalsSection() {
           <DialogHeader><DialogTitle>{editingId ? "Edit goal" : "Create a goal manually"}</DialogTitle><DialogDescription>Use a dedicated balance for passive tracking, then choose a monthly cadence or target date.</DialogDescription></DialogHeader>
           <div className="space-y-3"><div className="space-y-1.5"><label htmlFor="goal-name" className="text-[12px] font-medium text-muted-foreground">Goal name</label><div className="flex items-center gap-2"><EmojiPickerField value={emoji} onChange={setEmoji} label="Choose a goal emoji" /><Input id="goal-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Tax Reserve" /></div></div>
             <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1.5"><label htmlFor="goal-target" className="text-[12px] font-medium text-muted-foreground">Target amount</label><Input id="goal-target" value={target} onChange={(event) => setTarget(event.target.value)} inputMode="decimal" className="mono" placeholder="10,000" /></div><div className="space-y-1.5"><label htmlFor="goal-monthly" className="text-[12px] font-medium text-muted-foreground">Monthly saving</label><Input id="goal-monthly" value={monthly} onChange={(event) => setMonthly(event.target.value)} inputMode="decimal" className="mono" placeholder="800" /></div></div>
-            <div className="space-y-1.5"><label htmlFor="goal-source" className="text-[12px] font-medium text-muted-foreground">Funding source</label><Select value={source} onValueChange={(value) => setSource((value ?? "wallet") as GoalFundingSource)}><SelectTrigger id="goal-source" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{sourceOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1.5"><label htmlFor="goal-source" className="text-[12px] font-medium text-muted-foreground">Funding source</label><NativeSelect id="goal-source" value={source} onValueChange={(value) => setSource((value ?? "wallet") as GoalFundingSource)} options={sourceOptions.map((option) => ({ value: option.value, label: option.label }))} /></div>
             <div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => setTiming("monthly")} aria-pressed={timing === "monthly"} className={`rounded-lg border p-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${timing === "monthly" ? "border-primary bg-primary/5" : "border-border hover:bg-secondary"}`}><span className="block text-[12px] font-medium">Monthly savings</span><span className="mt-0.5 block text-[11px] text-muted-foreground">Track a steady contribution.</span></button><button type="button" onClick={() => setTiming("date")} aria-pressed={timing === "date"} className={`rounded-lg border p-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${timing === "date" ? "border-primary bg-primary/5" : "border-border hover:bg-secondary"}`}><span className="block text-[12px] font-medium">Target date</span><span className="mt-0.5 block text-[11px] text-muted-foreground">Save toward a deadline.</span></button></div>
             {timing === "date" ? <div className="space-y-1.5"><label htmlFor="goal-date" className="text-[12px] font-medium text-muted-foreground">Target date</label><Input id="goal-date" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></div> : null}
           </div>

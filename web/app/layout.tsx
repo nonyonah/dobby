@@ -25,7 +25,19 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en" className={`${inter.variable} h-full antialiased`}>
+      <head>
+        {/*
+          Sets the theme class before first paint. React hydration happens well
+          after first paint, so without this a visitor whose stored preference
+          differs from the OS scheme would see a full-page light flash.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=localStorage.getItem("dobby-theme");if(p!=="light"&&p!=="dark"){p="system"}var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;r.classList.toggle("dark",d);r.setAttribute("data-theme",d?"dark":"light")}catch(e){}})();`,
+          }}
+        />
+      </head>
+      <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
         <body className="min-h-full flex flex-col"><ThemeSync /><Toaster />{children}</body>
       </html>
     </ClerkProvider>

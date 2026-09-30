@@ -5,7 +5,7 @@ import { AppError } from "../middleware/errors.js";
 import { logger } from "./logger.js";
 import { getBaseWalletBalances } from "../providers/alchemy.js";
 import { getBlockscoutBalances } from "./blockscout.js";
-import { convertCurrencyAmount } from "../providers/frankfurter.js";
+import { getConversionFactors } from "../providers/frankfurter.js";
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
@@ -116,12 +116,7 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
   const currencies = new Set<string>(["NGN", "USD"]);
   for (const account of accounts) currencies.add(account.currency.toUpperCase());
   for (const row of grouped) currencies.add((row.currency ?? "USD").toUpperCase());
-  const usdRates = new Map<string, number | null>();
-  await Promise.all([...currencies].map(async (code) => {
-    if (code === "USD") { usdRates.set(code, 1); return; }
-    try { usdRates.set(code, await convertCurrencyAmount(1, code, "USD")); }
-    catch { usdRates.set(code, null); }
-  }));
+  const usdRates = await getConversionFactors(currencies, "USD");
   const rateToUsd = (code: string) => usdRates.get(code.toUpperCase()) ?? null;
 
   let totalUsd = 0;

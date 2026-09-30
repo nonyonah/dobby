@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { convertCurrencyAmount } from "../providers/frankfurter.js";
+import { convertCurrencyAmount, getConversionFactors } from "../providers/frankfurter.js";
 import { assertPro } from "../middleware/plan.js";
 
 export const reviewsRouter = Router();
@@ -29,14 +29,22 @@ reviewsRouter.get("/", async (req, res) => {
   });
   const profile = await prisma.profile.findUnique({ where: { clerkId: req.auth!.userId }, select: { currency: true } });
   const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
-  const data = await Promise.all(items.map(async (item) => {
-    const proposed = item.proposedData && typeof item.proposedData === "object" && !Array.isArray(item.proposedData) ? item.proposedData as { amount?: number; currency?: string } : undefined;
-    const sourceCurrency = proposed?.currency ?? (item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? (item.rawData as { currency?: string }).currency : undefined) ?? "USD";
+  // One batched rate lookup for the whole page. Converting per item meant up to
+  // 200 parallel upstream calls, which rate-limited the free provider and made
+  // the review queue slow to open.
+  const sourceCurrencyOf = (item: (typeof items)[number]) => {
+    const proposed = item.proposedData && typeof item.proposedData === "object" && !Array.isArray(item.proposedData) ? item.proposedData as { currency?: string } : undefined;
+    const raw = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData) ? item.rawData as { currency?: string } : undefined;
+    return (proposed?.currency ?? raw?.currency ?? "USD").toUpperCase();
+  };
+  const factors = await getConversionFactors(items.map(sourceCurrencyOf), activeCurrency);
+  const data = items.map((item) => {
+    const proposed = item.proposedData && typeof item.proposedData === "object" && !Array.isArray(item.proposedData) ? item.proposedData as { amount?: number } : undefined;
+    const sourceCurrency = sourceCurrencyOf(item);
     const sourceAmount = Number(proposed?.amount ?? 0);
-    let displayAmount = sourceAmount;
-    try { displayAmount = await convertCurrencyAmount(sourceAmount, sourceCurrency, activeCurrency); } catch { /* Keep the source amount if the rate provider does not support the pair. */ }
+    const displayAmount = sourceAmount * (factors.get(sourceCurrency) ?? 1);
     return { ...item, displayAmount, displayCurrency: activeCurrency, sourceCurrency };
-  }));
+  });
   res.json({ data });
 });
 
@@ -96,6 +104,14 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
       if (item.fingerprint) {
         const duplicate = await prisma.transaction.findFirst({ where: { ownerClerkId, fingerprint: item.fingerprint }, select: { id: true } });
         if (duplicate) {
+          // The transaction already exists, so there is nothing to create — but
+          // the item must still be resolved. Leaving it PENDING made an approved
+          // row reappear in the queue on the next fetch, which looked like the
+          // approval had applied to other rows too.
+          await prisma.transactionReviewItem.updateMany({
+            where: { id: input.id, ownerClerkId, status: ReviewStatus.PENDING },
+            data: { status: ReviewStatus.APPROVED },
+          });
           results.push({ id: input.id, ok: true, duplicate: true });
           continue;
         }

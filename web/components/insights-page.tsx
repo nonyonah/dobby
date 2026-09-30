@@ -14,8 +14,11 @@ import { toast } from "@/components/ui/toast";
 import { formatCurrency } from "@/lib/format";
 import type { TxFull } from "@/lib/transactions";
 import { useApi } from "@/hooks/use-api";
+import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { type DayRange } from "@/lib/insights-data";
 import type { InsightsSummary } from "@/lib/cashflow";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
+import { Segmented } from "@/components/ui/segmented";
 
 type Section = "cashflow" | "spending" | "income" | "stablecoin" | "tax";
 
@@ -165,13 +168,14 @@ export default function InsightsPage() {
     setSummaryLoading(true);
     const from = new Date(selectedYear, 0, 1).toISOString();
     const to = new Date(selectedYear, 11, 31, 23, 59, 59, 999).toISOString();
-    void api.get<{ data: InsightsSummary }>(`/v1/insights/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`).then((response) => {
+    void api.get<{ data: InsightsSummary }>(`/v1/insights/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { timeoutMs: AGGREGATE_TIMEOUT_MS }).then((response) => {
       if (!cancelled) setYearSummary(response.data);
     }).catch((error: unknown) => {
       if (cancelled) return;
       setYearSummary(null);
-      const message = error instanceof Error ? error.message : "Could not load annual Insights data.";
-      toast.error(`Couldn’t load Insights data: ${message}`, {
+      const guidance = guidanceFor(error, "load");
+      toast.error(guidance.title, {
+        description: guidanceText(guidance),
         action: { label: "Try again", onPress: () => setSummaryRetry((current) => current + 1) },
       });
     }).finally(() => { if (!cancelled) setSummaryLoading(false); });
@@ -266,21 +270,12 @@ export default function InsightsPage() {
     <>
       <div className="w-full px-6 pt-6 pb-10">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center rounded-full border border-line/60 bg-secondary p-1" role="group" aria-label="Insights section">
-          {(["cashflow", "spending", "income", "stablecoin", "tax"] as Section[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setSection(s)}
-              aria-pressed={section === s}
-              className={`h-8 cursor-pointer rounded-full px-4 text-[12px] font-medium capitalize transition-colors outline-none focus-visible:outline-2 focus-visible:outline-ring ${
-                section === s ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-          </div>
+          <Segmented
+            label="Insights section"
+            value={section}
+            onValueChange={setSection}
+            options={(["cashflow", "spending", "income", "stablecoin", "tax"] as Section[]).map((s) => ({ value: s, label: <span className="capitalize">{s}</span> }))}
+          />
           {section !== "tax" ? <ExportMenu rows={exportRows} filename={exportFilename} /> : null}
         </div>
 
@@ -384,7 +379,7 @@ export default function InsightsPage() {
                     const ready = item.status === "READY";
                     return (
                       <li key={item.key} className="flex items-center gap-2 border-b border-line py-1.5 text-[13px] last:border-b-0">
-                        <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+                        <span className={`min-w-0 flex-1 truncate font-medium ${ready ? "text-success" : "text-warning"}`}>{label}</span>
                         <button type="button" onClick={() => toggleChecklist(item.key, item.status)} className={`inline-flex shrink-0 cursor-pointer items-center rounded-full border px-2 py-0.5 text-[12px] font-medium ${
                             ready
                               ? "border-success/40 bg-success-soft text-success"

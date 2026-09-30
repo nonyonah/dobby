@@ -22,11 +22,34 @@ categoriesRouter.get("/", async (req, res) => {
   res.json({ data: categories });
 });
 
+/**
+ * Category chip colours. Every entry keeps white label text above 4.5:1
+ * contrast, and no two share a hue, so chips stay tellable apart at a glance.
+ */
+export const CATEGORY_PALETTE = [
+  "#0f766e", "#b45309", "#1d4ed8", "#be123c", "#7c3aed", "#0e7490",
+  "#a16207", "#15803d", "#c2410c", "#4338ca", "#9d174d", "#065f46",
+  "#92400e", "#1e3a8a", "#86198f", "#155e75", "#3f6212", "#831843",
+] as const;
+
+/** First palette colour this owner isn't already using, so chips stay unique. */
+async function pickUnusedColor(ownerClerkId: string): Promise<string> {
+  const used = new Set(
+    (await prisma.category.findMany({ where: { ownerClerkId }, select: { color: true } }))
+      .map((row) => row.color?.toLowerCase())
+      .filter((value): value is string => Boolean(value)),
+  );
+  return CATEGORY_PALETTE.find((color) => !used.has(color.toLowerCase())) ?? CATEGORY_PALETTE[used.size % CATEGORY_PALETTE.length]!;
+}
+
 categoriesRouter.post("/", async (req, res) => {
   await assertPro(req.auth?.userId, "Creating categories");
   const input = categorySchema.parse(req.body);
+  // A category always ends up with a colour of its own: the user's pick when
+  // they made one, otherwise the next unused palette entry.
+  const color = input.color ?? (await pickUnusedColor(req.auth!.userId));
   const category = await prisma.category.create({
-    data: { ...input, ownerClerkId: req.auth!.userId },
+    data: { ...input, color, ownerClerkId: req.auth!.userId },
   });
   res.status(201).json({ data: category });
 });

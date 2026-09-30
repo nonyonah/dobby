@@ -118,12 +118,14 @@ export function CaretUpDownIcon({ className }: IconProps) {
   return <P icon={CaretUpDown} size={14} className={className} />
 }
 
-export function CheckIcon({ className }: IconProps) {
-  return <P icon={Check} size={12} className={className} />
+/** `weight="fill"` gives the solid mark; the default stays the outline glyph. */
+export function CheckIcon({ className, weight }: IconProps & { weight?: "regular" | "bold" | "fill" }) {
+  return <P icon={Check} size={12} weight={weight} className={className} />
 }
 
-export function CheckCircleIcon({ className }: IconProps) {
-  return <P icon={CheckCircle} size={20} className={className} />
+/** `weight="fill"` gives the solid disc; the default stays the outline glyph. */
+export function CheckCircleIcon({ className, weight }: IconProps & { weight?: "regular" | "bold" | "fill" }) {
+  return <P icon={CheckCircle} size={20} weight={weight} className={className} />
 }
 
 export function CloseIcon({ className }: IconProps) {

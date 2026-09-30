@@ -27,8 +27,8 @@ export function IncomeExpensesCard() {
   const net = income - expenses;
   const data = useMemo(
     () => [
-      { k: "Income", v: income, fill: "#00afb9" },
-      { k: "Expenses", v: expenses, fill: "#ef476f" }
+      { k: "Income", v: income, fill: "#1b4332" },
+      { k: "Expenses", v: expenses, fill: "#ef233c" }
     ],
     [income, expenses]
   );
@@ -67,7 +67,7 @@ export function IncomeExpensesCard() {
         </div>
       </div>
       <div className="mt-2">
-        <span className="inline-flex items-center rounded-full border-transparent bg-[#00afb9] px-2 py-0.5 text-[12px] font-semibold text-white">
+        <span className="inline-flex items-center rounded-full border-transparent bg-[#1b4332] px-2 py-0.5 text-[12px] font-semibold text-white">
           +{formatUSD(net)} saved
         </span>
       </div>

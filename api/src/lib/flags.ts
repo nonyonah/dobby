@@ -1,6 +1,6 @@
 import { TransactionType } from "@prisma/client";
 import { prisma } from "./prisma.js";
-import { convertCurrencyAmount } from "../providers/frankfurter.js";
+import { getConversionFactors } from "../providers/frankfurter.js";
 
 export type ProactiveFlagKind = "unusual_spend" | "missed_deduction";
 
@@ -62,19 +62,7 @@ const monthLabel = (date: Date) =>
   date.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
 async function conversionFactors(currencies: string[], target: string) {
-  const factors = new Map<string, number>();
-  for (const currency of new Set(currencies.map((value) => value.toUpperCase()))) {
-    if (currency === target) {
-      factors.set(currency, 1);
-      continue;
-    }
-    try {
-      factors.set(currency, await convertCurrencyAmount(1, currency, target));
-    } catch {
-      factors.set(currency, 1);
-    }
-  }
-  return factors;
+  return getConversionFactors(currencies, target);
 }
 
 /**

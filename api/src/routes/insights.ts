@@ -7,7 +7,7 @@ import { assertPro } from "../middleware/plan.js";
 import { buildNetWorthSnapshot } from "../lib/net-worth.js";
 import { computeProactiveFlags } from "../lib/flags.js";
 import { generateGatewaySummary } from "../providers/ai-gateway.js";
-import { convertCurrencyAmount } from "../providers/frankfurter.js";
+import { getConversionFactors } from "../providers/frankfurter.js";
 
 export const insightsRouter = Router();
 insightsRouter.use(requireAuth);
@@ -25,10 +25,7 @@ insightsRouter.get("/monthly-summary", async (req, res) => {
   const transactions = await prisma.transaction.findMany({ where: { ownerClerkId: req.auth!.userId, occurredAt: { gte: start, lt: end } }, select: { type: true, amount: true, currency: true, description: true, category: { select: { name: true } } }, orderBy: { occurredAt: "asc" }, take: 10_000 });
   const profile = await prisma.profile.findUnique({ where: { clerkId: req.auth!.userId }, select: { currency: true } });
   const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
-  const factors = new Map<string, number>();
-  for (const currency of new Set(transactions.map((transaction) => transaction.currency.toUpperCase()))) {
-    try { factors.set(currency, await convertCurrencyAmount(1, currency, activeCurrency)); } catch { factors.set(currency, 1); }
-  }
+  const factors = await getConversionFactors(transactions.map((transaction) => transaction.currency), activeCurrency);
   let income = 0;
   let expenses = 0;
   const categories = new Map<string, number>();
@@ -60,10 +57,7 @@ insightsRouter.get("/summary", async (req, res) => {
 
   const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
   const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
-  const conversionFactors = new Map<string, number>();
-  for (const currency of new Set(transactions.map((transaction) => transaction.currency.toUpperCase()))) {
-    try { conversionFactors.set(currency, await convertCurrencyAmount(1, currency, activeCurrency)); } catch { conversionFactors.set(currency, 1); }
-  }
+  const conversionFactors = await getConversionFactors(transactions.map((transaction) => transaction.currency), activeCurrency);
   // Uncategorized (explicit bucket or legacy null) is broken out separately
   // and excluded from every income/expense total, consistently.
   const uncategorizedIds = new Set(

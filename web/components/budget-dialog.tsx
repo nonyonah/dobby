@@ -10,13 +10,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 import { Button } from "./ui/button";
 import { toast } from "./ui/toast";
 import { CheckIcon } from "./icons";
@@ -107,15 +101,15 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
           </p>
         </Field>
         <Field label="Budget type">
-          <Select value={type} onValueChange={(nextType) => setType((nextType as "fixed" | "percent") ?? "fixed")}>
-            <SelectTrigger aria-label="Budget type" className="h-8 w-full bg-card text-[13px] text-foreground">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="fixed">Fixed amount</SelectItem>
-              <SelectItem value="percent">% of income</SelectItem>
-            </SelectContent>
-          </Select>
+          <NativeSelect
+            aria-label="Budget type"
+            value={type}
+            onValueChange={(nextType) => setType((nextType as "fixed" | "percent") ?? "fixed")}
+            options={[
+              { value: "fixed", label: "Fixed amount" },
+              { value: "percent", label: "% of income" },
+            ]}
+          />
         </Field>
         <div className="col-span-2">
           <Field label={type === "fixed" ? "Monthly amount" : "Percent of income"}>
@@ -151,7 +145,9 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
     >
       <div className="space-y-1.5">
         <label htmlFor="budget-category" className="text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">Choose a category</label>
-          <Select
+          <NativeSelect
+            id="budget-category"
+            aria-label="Choose a category"
             value={picked}
             onValueChange={(nextCategory) => {
               const next = options.find((category) => category.id === nextCategory);
@@ -160,14 +156,8 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
                 setBudgetEmoji(next.emoji);
               }
             }}
-          >
-            <SelectTrigger id="budget-category" aria-label="Choose a category" className="h-8 w-full bg-card text-[13px] text-foreground">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((category) => <SelectItem key={category.id} value={category.id}>{category.emoji} {category.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+            options={options.map((category) => ({ value: category.id, label: `${category.emoji} ${category.name}` }))}
+          />
         <div className="flex items-center gap-2 pt-1">
           <EmojiPickerField value={budgetEmoji} onChange={setBudgetEmoji} label="Choose a budget emoji" />
           <span className="text-[12px] font-medium text-muted-foreground">Customize the category emoji</span>
@@ -175,15 +165,15 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Budget type">
-          <Select value={type} onValueChange={(nextType) => setType((nextType as "fixed" | "percent") ?? "fixed")}>
-            <SelectTrigger aria-label="Budget type" className="h-8 w-full bg-card text-[13px] text-foreground">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="fixed">Fixed amount</SelectItem>
-              <SelectItem value="percent">% of income</SelectItem>
-            </SelectContent>
-          </Select>
+          <NativeSelect
+            aria-label="Budget type"
+            value={type}
+            onValueChange={(nextType) => setType((nextType as "fixed" | "percent") ?? "fixed")}
+            options={[
+              { value: "fixed", label: "Fixed amount" },
+              { value: "percent", label: "% of income" },
+            ]}
+          />
         </Field>
         <Field label={type === "fixed" ? "Monthly amount" : "Percent of income"}>
           <div className="relative">

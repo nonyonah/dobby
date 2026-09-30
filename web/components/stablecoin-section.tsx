@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
+import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, formatUSD, getAppCurrency } from "@/lib/format";
 import { MONTH_LABELS } from "@/lib/insights-data";
 import type { TxFull } from "@/lib/transactions";
@@ -62,7 +63,7 @@ export function StablecoinSection({
     // Holdings price in USD; convert to the display currency so the Balance
     // stat never wears the wrong symbol the way raw amounts used to.
     void api
-      .get<{ data: NetWorthPayload }>("/v1/insights/net-worth")
+      .get<{ data: NetWorthPayload }>("/v1/insights/net-worth", { timeoutMs: AGGREGATE_TIMEOUT_MS })
       .then((response) => {
         if (cancelled) return;
         const priced = response.data.holdings.filter((holding) => holding.usdValue !== null);

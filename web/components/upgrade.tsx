@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { usePlan } from "@/components/plan-provider";
+import { guidanceFor, guidanceText } from "@/lib/error-guidance";
+import { Banner } from "./ui/banner";
 
 /** The two cadences Dobby Pro is sold on. */
 export type BillingInterval = "month" | "year";
@@ -173,7 +175,8 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
         }
         if (status.data.paymentStatus && ["failed", "canceled", "expired"].includes(status.data.paymentStatus)) {
           setBusy(false);
-          toast.error("The crypto payment didn't complete — your plan is unchanged.");
+          const guidance = guidanceFor(null, "payment");
+          toast.error("That crypto payment didn't complete", { description: guidanceText(guidance) });
           return;
         }
       } catch {
@@ -195,7 +198,10 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
           break;
         case "checkout.failed":
           setBusy(false);
-          toast.error("Payment didn't go through — your plan is unchanged.");
+          {
+            const guidance = guidanceFor(null, "payment");
+            toast.error(guidance.title, { description: guidanceText(guidance) });
+          }
           break;
         case "checkout.expired":
           setBusy(false);
@@ -384,20 +390,22 @@ export function TrialExpiredBanner() {
   if (!expired) return null;
 
   return (
-    <div className="border-b border-warning/40 bg-warning-soft px-4 py-3 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="m-0 max-w-[760px] text-[13px] leading-5 text-foreground">
-          Your free trial has ended — everything you already imported is still here, untouched and fully visible. Upgrade to start adding new data again.
-        </p>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button variant="secondary" size="small" disabled={busy} onClick={() => openCheckout("year")}>
-            See annual plans
-          </Button>
-          <Button variant="primary" size="small" disabled={busy} onClick={() => openCheckout("month")}>
-            {busy ? "Opening checkout…" : "Upgrade to Pro"}
-          </Button>
-        </div>
-      </div>
+    <div className="px-4 py-3 sm:px-6">
+      <Banner
+        tone="upgrade"
+        title="Your free trial has ended"
+        description="Everything you already imported is still here, untouched and fully visible. Upgrade to start adding new data again."
+        actions={
+          <>
+            <Button variant="secondary" size="small" disabled={busy} onClick={() => openCheckout("year")}>
+              See annual plans
+            </Button>
+            <Button variant="primary" size="small" disabled={busy} onClick={() => openCheckout("month")}>
+              {busy ? "Opening checkout…" : "Upgrade to Pro"}
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

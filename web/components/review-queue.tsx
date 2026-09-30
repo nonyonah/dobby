@@ -1,22 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Table as HeroTable } from "@heroui/react";
 import { Button } from "./ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
 import { Alert, AlertContent, AlertDescription, AlertTitle } from "./ui/alert";
+import { Banner } from "./ui/banner";
 import { formatCurrency, getAppCurrency } from "@/lib/format";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import { PencilSimple, Sparkle } from "@phosphor-icons/react/dist/ssr";
 import { CardIcon, CheckIcon, CloseSmallIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
 import type { TxSource } from "@/lib/finance";
+import { CategoryChip } from "@/components/ui/category-chip";
 
 const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.ReactNode> = {
   manual: ManualIcon,
@@ -50,9 +45,11 @@ interface ReviewQueueProps {
   onEdit: (id: string) => void;
   /** An approval is in flight — approve controls lock with progress copy. A string overrides the label. */
   busy?: boolean | string;
+  /** Deep-linked row id (from Needs attention / flags) to highlight + scroll to. */
+  focusId?: string;
 }
 
-export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, busy = false }: ReviewQueueProps) {
+export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, busy = false, focusId }: ReviewQueueProps) {
   const busyLabel = typeof busy === "string" ? busy : "Approving…";
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -85,6 +82,13 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
     });
   };
 
+  // Bring a deep-linked row into view so the user lands on it directly.
+  React.useEffect(() => {
+    if (!focusId) return;
+    const node = document.getElementById(focusId);
+    node?.scrollIntoView({ block: "center" });
+  }, [focusId, rows.length]);
+
   const setOverride = (id: string, categoryId: string | null) => {
     setOverrides((current) => {
       const next = { ...current };
@@ -96,24 +100,30 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
 
   return (
     <>
-      <Alert status="default" className="mb-3 flex items-center justify-between gap-4 rounded-2xl border-0 bg-card px-4 py-3 text-foreground shadow-none">
-        <AlertContent className="flex min-w-0 items-start gap-3">
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#eceefb] text-[#4a55c9] dark:bg-[#23264a] dark:text-[#c7cbf5]" aria-hidden="true"><Sparkle size={14} /></span>
-          <div className="min-w-0">
-            <AlertTitle className="flex items-center gap-2 text-[13px] text-foreground">
-              To review
-              <span className="rounded-full bg-[#f6ecd6] px-2 py-0.5 text-[11px] font-medium text-[#ad7f22]">{rows.length}</span>
-            </AlertTitle>
-            <AlertDescription className="mt-1 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]">AI-suggested categories and tax treatment are ready for a quick decision.</AlertDescription>
-          </div>
-        </AlertContent>
-        {rows.length > 0 ? <div className="flex shrink-0 gap-2"><Button variant="ghost" size="small" onClick={() => onDecline(rows.map((row) => row.id))}>Decline all</Button>{approvableRows.length > 0 ? <Button variant="primary" size="small" disabled={busy !== false} onClick={() => approve(approvableRows.map((row) => row.id))}>{busy ? busyLabel : "Approve all"}</Button> : null}</div> : null}
-      </Alert>
+      <Banner
+        className="mb-3"
+        tone="review"
+        title="To review"
+        count={rows.length}
+        description="AI-suggested categories and tax treatment are ready for a quick decision."
+        actions={
+          rows.length > 0 ? (
+            <>
+              <Button variant="ghost" size="small" onClick={() => onDecline(rows.map((row) => row.id))}>Decline all</Button>
+              {approvableRows.length > 0 ? (
+                <Button variant="primary" size="small" disabled={busy !== false} onClick={() => approve(approvableRows.map((row) => row.id))}>
+                  {busy ? busyLabel : "Approve all"}
+                </Button>
+              ) : null}
+            </>
+          ) : null
+        }
+      />
       <div className="mb-4">
         {rows.length === 0 ? (
           <div className="rounded-lg bg-[#f9fafb] px-4 py-5 text-center dark:bg-[#1f1f22]" role="status">
             <p className="m-0 text-[13px] font-medium">You’re all caught up</p>
-            <p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">New manual, email, card, and wallet transactions will appear here.</p>
+            <p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Nothing is waiting on you. Import a statement or add a transaction by hand — anything Dobby isn’t sure about lands here for a quick yes or no.</p>
           </div>
         ) : (
           <HeroTable variant="primary" className="text-[13px]">
@@ -132,33 +142,31 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                     const meta = categoryMeta(row.category, row.categoryName);
                     const SourceIcon = SOURCE_ICON[row.source];
                     const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
-                    return <HeroTable.Row key={row.id} id={row.id} className="border-b border-[#f1efeb] last:border-0 dark:border-[#26262a]">
+                    return <HeroTable.Row key={row.id} id={row.id} data-focused={focusId === row.id ? "true" : undefined} className={`border-b border-[#f1efeb] last:border-0 dark:border-[#26262a] ${focusId === row.id ? "bg-accent-100/40 ring-1 ring-inset ring-accent-600/30" : ""}`}>
                       <HeroTable.Cell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-[#4a55c9]" /></HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.account} · {row.date.slice(5).replace("-", "/")}</span></HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3">
                         {categories.length > 0 ? (
-                          <Select
-                            value={overrides[row.id] ?? suggestedId}
-                            onValueChange={(value) => setOverride(row.id, value ?? suggestedId ?? null)}
+                          <select
+                            aria-label={`Category for ${row.name}`}
+                            value={overrides[row.id] ?? suggestedId ?? ""}
+                            onChange={(event) => setOverride(row.id, event.target.value || suggestedId || null)}
+                            className="h-7 min-w-36 cursor-pointer appearance-none rounded-lg border border-line bg-white bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat px-2 pr-6 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-[#232327]"
+                            style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")" }}
                           >
-                            <SelectTrigger aria-label={`Category for ${row.name}`} className="h-7 min-w-36 bg-white dark:bg-[#232327] text-[12px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {categories.map((option) => (
-                                <SelectItem key={option.id} value={option.id}>
-                                  {option.emoji} {option.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            {categories.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.emoji} {option.name}
+                              </option>
+                            ))}
+                          </select>
                         ) : (
-                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.pill}`}><span aria-hidden="true">{meta.emoji}</span>{meta.label}</span>
+                          <CategoryChip id={row.categoryId ?? row.category} name={row.categoryName} color={row.categoryColor} />
                         )}
                         <span className="ml-2 text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
                       </HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
-                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#00afb9]" : "text-[#ef476f]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.currency ?? getAppCurrency())}</>}</HeroTable.Cell>
+                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.currency ?? getAppCurrency())}</>}</HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
                     </HeroTable.Row>;
                   })}

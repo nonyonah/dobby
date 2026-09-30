@@ -17,6 +17,18 @@ export interface SankeyGraph {
   links: SankeyLink[];
 }
 
+import { categoryHex } from "./transactions";
+
+/**
+ * Resolve a category's chart colour. Uses the colour assigned to the category
+ * (set in Categories) and otherwise falls back to the same stable colour the
+ * category chips use, so charts, legends and the sankey never disagree and
+ * never render as an undifferentiated grey.
+ */
+export function insightCategoryColor(category: { categoryId: string | null; name: string; color: string | null }): string {
+  return categoryHex(category.categoryId ?? category.name, category.color);
+}
+
 export type InsightCategory = {
   categoryId: string | null;
   name: string;
@@ -96,7 +108,7 @@ export function buildSankey(sources: InsightSource[], categories: InsightCategor
       id: `category:${category.categoryId ?? "uncategorized"}`,
       name: category.name,
       value: category.amount,
-      color: category.color ?? fallbackColor(index),
+      color: insightCategoryColor(category),
     }));
 
   const income = sourceItems.reduce((sum, source) => sum + source.value, 0);
@@ -144,7 +156,7 @@ export function buildStacks(monthly: MonthlySummary[], monthlyCategories: Monthl
           id: category.categoryId ?? "uncategorized",
           name: category.name,
           value: category.amount,
-          color: category.color ?? fallbackColor(index),
+          color: insightCategoryColor(category),
         }));
       return {
         month: new Intl.DateTimeFormat("en", { month: "short" }).format(new Date(`${summary.month}-01T00:00:00.000Z`)),

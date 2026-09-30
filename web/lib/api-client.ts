@@ -1,6 +1,14 @@
 export type TokenProvider = () => Promise<string | null>;
 
 /**
+ * Timeout for full-ledger aggregates (insights summary, net worth, flags).
+ * These scan every transaction and convert every currency, so a cold API start
+ * runs well past the default 15s. Call sites opt in explicitly rather than
+ * raising the global default.
+ */
+export const AGGREGATE_TIMEOUT_MS = 45_000;
+
+/**
  * Error carrying the API's machine-readable code, so callers can tell an
  * expired trial from a generic failure.
  */
@@ -81,7 +89,7 @@ export function createApiClient(
     return (await response.json()) as T;
   }
 
-  async function get<T>(path: string): Promise<T> {
+  async function get<T>(path: string, options: { timeoutMs?: number } = {}): Promise<T> {
     const key = `${root}${path}`;
 
     const cached = responseCache.get(key);
@@ -93,7 +101,7 @@ export function createApiClient(
     const pending = inflight.get(key);
     if (pending) return pending as Promise<T>;
 
-    const promise = request<T>(path)
+    const promise = request<T>(path, {}, options)
       .then((value) => {
         if (isCacheable(path)) responseCache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
         return value;
