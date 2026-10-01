@@ -117,6 +117,124 @@ const statementPageJsonSchema = {
   additionalProperties: false,
 };
 
+/**
+ * Input-token budget for one extraction call.
+ *
+ * Groq's on-demand tier for the statement model allows 7,000 input tokens per
+ * minute *for the whole organisation*. A page of bank statement text is dense
+ * numeric content, roughly 3.8 characters per token, so the old 30,000-character
+ * cap came to ~7,900 tokens — one page was already bigger than the entire
+ * minute's allowance, which is why every statement failed with "Request too
+ * large ... ITPM: Limit 7000, Requested 7862". No retry and no provider swap
+ * can rescue a request that is itself larger than the budget.
+ *
+ * 2,000 leaves generous headroom for the prompt, the rendered page image and
+ * the few pages processed back to back.
+ */
+const EXTRACTION_TOKEN_BUDGET = 2_000;
+/** Dense statement text: dates, amounts, short descriptions. */
+const CHARS_PER_TOKEN = 3.8;
+/** A rendered page image costs roughly this many input tokens on a vision call. */
+const IMAGE_TOKEN_ALLOWANCE = 1_500;
+
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
+/**
+ * Splits page text into request-sized pieces on line boundaries.
+ *
+ * Statement transactions are one per line, so cutting between lines keeps every
+ * row intact — splitting mid-row would produce rows the source verifier cannot
+ * match, which then show up as rejections.
+ */
+export function chunkStatementText(text: string, maxChars = Math.floor(EXTRACTION_TOKEN_BUDGET * CHARS_PER_TOKEN)): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.length <= maxChars) return [trimmed];
+
+  const lines = trimmed.split(/\r?\n/);
+  const chunks: string[] = [];
+  let current = "";
+  for (const line of lines) {
+    // A single line longer than the budget still has to go somewhere; give it
+    // its own chunk and let the token estimate absorb it rather than looping
+    // forever on an over-long line.
+    if (current.length + line.length + 1 > maxChars) {
+      if (current.trim()) chunks.push(current.trim());
+      current = line;
+      continue;
+    }
+    current = current ? `${current}\n${line}` : line;
+  }
+  if (current.trim()) chunks.push(current.trim());
+  return chunks;
+}
+
+/**
+ * Per-minute input-token budget for the statement model.
+ *
+ * Chunking makes each request small enough to be accepted, but a statement is
+ * many requests: a ten-page statement at four chunks a page is ~40 calls and
+ * ~80k input tokens, so firing them back to back blows the same 7,000/minute
+ * allowance just as surely as one oversized request did. This paces them.
+ *
+ * Deliberately an in-process rolling window rather than a queue: it is a
+ * courtesy guard that keeps a burst inside the tier's ceiling, not a
+ * distributed quota, and it costs nothing when the budget is not under
+ * pressure.
+ */
+const ITPM_LIMIT = 7_000;
+const ITPM_WINDOW_MS = 60_000;
+
+type Spend = { at: number; tokens: number };
+const spendLog: Spend[] = [];
+
+/** Sum of tokens recorded in the trailing minute. */
+function spentInWindow(now: number): number {
+  const cutoff = now - ITPM_WINDOW_MS;
+  let total = 0;
+  // Walked newest-first so the common case (nothing has aged out) stops early.
+  for (let i = spendLog.length - 1; i >= 0; i -= 1) {
+    const entry = spendLog[i];
+    if (!entry || entry.at < cutoff) break;
+    total += entry.tokens;
+  }
+  return total;
+}
+
+/**
+ * Blocks until `tokens` fit in the trailing minute, then records them.
+ *
+ * A request larger than the whole allowance is admitted rather than deadlocked —
+ * chunking is what keeps that from happening, and refusing here would only turn
+ * a size problem into a hang.
+ */
+export async function reserveInputTokens(tokens: number): Promise<void> {
+  if (!(tokens > 0)) return;
+  for (;;) {
+    const now = Date.now();
+    const used = spentInWindow(now);
+    if (used + tokens <= ITPM_LIMIT || tokens > ITPM_LIMIT) {
+      spendLog.push({ at: now, tokens });
+      return;
+    }
+    const oldest = spendLog[0];
+    const waitMs = Math.max(250, oldest ? oldest.at + ITPM_WINDOW_MS - now : 1_000);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+}
+
+/**
+ * True when the provider rejected the payload for being too large, as opposed
+ * to being busy. These need opposite handling: a busy provider is worth
+ * retrying, an oversized one only gets smaller, so the caller must split.
+ */
+export function isPayloadTooLarge(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /too large|reduce your message size|context length|maximum context|too many tokens|request too long/i.test(message);
+}
+
 function groqRetryDelayMs(attempt: number, retryAfter: string | null) {
   const retryAfterSeconds = retryAfter ? Number(retryAfter) : Number.NaN;
   const retryAfterDate = retryAfter ? Date.parse(retryAfter) - Date.now() : Number.NaN;
@@ -130,6 +248,10 @@ function groqRetryDelayMs(attempt: number, retryAfter: string | null) {
 
 async function generateWithGroqVision(instruction: string, image: string) {
   if (!env.GROQ_API_KEY) throw new AppError(503, "Groq is not configured.", "GROQ_NOT_CONFIGURED");
+  // Paced against the tier's per-minute input allowance. An image is billed as
+  // tokens too, so the reservation covers the instruction plus a rough allowance
+  // for the rendered page.
+  await reserveInputTokens(estimateTokens(instruction) + IMAGE_TOKEN_ALLOWANCE);
   const imageBytes = Buffer.byteLength(image, "base64");
   if (imageBytes > 19 * 1024 * 1024) throw new Error("Rendered statement page exceeds Groq's 20 MB image limit.");
   const requestBody = JSON.stringify({
@@ -380,32 +502,69 @@ export async function extractStatementReport(data: { mimeType: string; bytes: st
       continue;
     }
 
-    const maxPageTextLength = 30_000;
-    const pageText = sourceText.slice(0, maxPageTextLength);
-    const truncated = sourceText.length > maxPageTextLength;
+    // Extract in request-sized chunks rather than one oversized page. The page
+    // image is only sent when the page has no usable text: with OCR text present
+    // the model can read it, and attaching a rendered page too costs ~1,500
+    // tokens for a second copy of the same content.
+    const baseChunks = chunkStatementText(sourceText);
+    const truncated = baseChunks.length === 0;
+    const useVision = !page.text.trim();
     let pageRows: Array<Record<string, unknown>> = [];
     let rejectedRows = 0;
     let extractionError: unknown;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      try {
-        const prompt = statementPagePrompt(page.page, pageText, previousClosingBalance);
-        const response = await generateTextJson(prompt, page.image);
-        const parsed = parseAiStatementRows(response, page.page, sourceText);
-        if (parsed.rows.length > pageRows.length || (parsed.rows.length === pageRows.length && parsed.rejectedRows < rejectedRows)) {
-          pageRows = parsed.rows;
-          rejectedRows = parsed.rejectedRows;
+
+    for (const chunk of baseChunks) {
+      let chunkRows: Array<Record<string, unknown>> = [];
+      let chunkRejected = 0;
+      let chunkError: unknown;
+      // A chunk that the provider still calls oversized gets halved and retried
+      // rather than resent unchanged, which is what the old loop did.
+      let sizes = [chunk];
+      for (let split = 0; split < 3 && sizes.length > 0; split += 1) {
+        const nextSizes: string[] = [];
+        for (const piece of sizes) {
+          for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+              const prompt = statementPagePrompt(page.page, piece, previousClosingBalance);
+              const response = await generateTextJson(prompt, useVision ? page.image : undefined);
+              const parsed = parseAiStatementRows(response, page.page, sourceText);
+              if (parsed.rows.length > chunkRows.length || (parsed.rows.length === chunkRows.length && parsed.rejectedRows < chunkRejected)) {
+                chunkRows = parsed.rows;
+                chunkRejected = parsed.rejectedRows;
+              }
+              if (parsed.rows.length > 0 && parsed.rejectedRows === 0) break;
+              if (parsed.rows.length > 0) {
+                chunkError = new Error(`${parsed.rejectedRows} AI row(s) could not be verified against source text.`);
+                break;
+              }
+              chunkError = new Error("AI returned no source-verified transaction rows.");
+              break;
+            } catch (error) {
+              chunkError = error;
+              if (isPayloadTooLarge(error)) {
+                const halved = chunkStatementText(piece, Math.max(600, Math.floor(piece.length / 2)));
+                if (halved.length > 1) {
+                  nextSizes.push(...halved);
+                  logger.warn({ page: page.page, from: piece.length, into: halved.length }, "statement payload too large; splitting into smaller chunks");
+                  break;
+                }
+              }
+              if (!isPayloadTooLarge(error)) {
+                logger.warn({ page: page.page, attempt, error: error instanceof Error ? error.message : String(error) }, "AI statement chunk attempt failed");
+              }
+              await new Promise((resolve) => setTimeout(resolve, groqRetryDelayMs(attempt, null)));
+            }
+          }
         }
-        if (parsed.rows.length === 0) throw new Error("AI returned no source-verified transaction rows.");
-        if (parsed.rejectedRows === 0) {
-          extractionError = undefined;
-          break;
-        }
-        extractionError = new Error(`${parsed.rejectedRows} AI row(s) could not be verified against source text.`);
-        logger.warn({ page: page.page, attempt, acceptedRows: parsed.rows.length, rejectedRows: parsed.rejectedRows }, "AI statement page response contained unverifiable rows; retrying");
-      } catch (error) {
-        extractionError = error;
-        logger.warn({ page: page.page, attempt, error: error instanceof Error ? error.message : String(error) }, "AI statement page extraction attempt failed");
+        sizes = nextSizes;
       }
+      rejectedRows += chunkRejected;
+      if (chunkRows.length === 0 && chunkError) extractionError = chunkError;
+      pageRows.push(...chunkRows);
+      // Carry the running closing balance between chunks so page-to-page
+      // continuity survives the split.
+      const chunkClosing = [...chunkRows].reverse().find((row) => typeof row.balance === "number")?.balance;
+      if (typeof chunkClosing === "number") previousClosingBalance = chunkClosing;
     }
 
     if (pageRows.length === 0) {
