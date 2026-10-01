@@ -14,6 +14,23 @@ export const ACCENT_COLORS: Array<{ id: AccentColor; label: string; value: strin
 export const DEFAULT_ACCENT: AccentColor = "brand";
 export const ACCENT_STORAGE_KEY = "dobby-accent-color";
 
+/**
+ * The accent saved on this device, or `null` when nothing valid is stored.
+ *
+ * Storage holds the id rather than the hex so that repointing "brand" at a new
+ * colour reaches everyone who chose Brand, including on devices that were set
+ * up before the change.
+ */
+export function readStoredAccent(): AccentColor | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(ACCENT_STORAGE_KEY);
+    return ACCENT_COLORS.some((entry) => entry.id === stored) ? (stored as AccentColor) : null;
+  } catch {
+    return null;
+  }
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   const value = hex.replace("#", "");
   return [
@@ -147,9 +164,7 @@ export function applyTheme(preference: ThemePreference, options: { animate?: boo
     // own attribute or the tables and sidebars would stay on the OS scheme
     // while the rest of the app followed the setting.
     root.setAttribute("data-theme", resolved);
-    const stored = window.localStorage.getItem(ACCENT_STORAGE_KEY);
-    const accent = ACCENT_COLORS.some((entry) => entry.id === stored) ? (stored as AccentColor) : DEFAULT_ACCENT;
-    applyAccentColor(accent);
+    applyAccentColor(readStoredAccent() ?? DEFAULT_ACCENT);
   };
   if (options.animate === false) {
     apply();

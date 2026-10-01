@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, THEME_STORAGE_KEY, announceThemeChange, applyAccentColor, applyTheme, isThemePreference, withoutTransitions, type AccentColor, type ThemePreference } from "@/lib/theme";
+import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, THEME_STORAGE_KEY, announceThemeChange, applyAccentColor, applyTheme, isThemePreference, readStoredAccent, withoutTransitions, type AccentColor, type ThemePreference } from "@/lib/theme";
+import { readStoredCurrency, writeStoredCurrency } from "@/lib/format";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
@@ -319,21 +320,29 @@ export function SettingsPage() {
     const profile = me?.profile;
     if (!profile) return;
     if (profile.country) setCountry(profile.country.toLowerCase() === "us" ? "united-states" : "nigeria");
+    // The saved profile wins whenever it has a currency, but a missing one must
+    // not overwrite a choice already made on this device: the country is only a
+    // first-run hint. Writing a derived default back is what made Settings
+    // appear to forget the change every time it was reopened.
+    const storedCurrency = readStoredCurrency();
     if (profile.currency) {
-      const supported = profile.currency.toLowerCase() === "usd" ? "usd" : "ngn";
+      const supported = profile.currency.toUpperCase() === "USD" ? "usd" : "ngn";
       setCurrency(supported);
-      window.localStorage.setItem("dobby-currency", supported.toUpperCase());
-    } else if (profile.country?.toUpperCase() === "NG") {
-      setCurrency("ngn");
-      window.localStorage.setItem("dobby-currency", "NGN");
-    } else if (profile.country?.toUpperCase() === "US") {
-      setCurrency("usd");
-      window.localStorage.setItem("dobby-currency", "USD");
+      writeStoredCurrency(supported.toUpperCase());
+    } else if (storedCurrency) {
+      setCurrency(storedCurrency.toLowerCase() === "usd" ? "usd" : "ngn");
+    } else {
+      const seeded = profile.country?.toUpperCase() === "US" ? "USD" : "NGN";
+      setCurrency(seeded.toLowerCase());
+      writeStoredCurrency(seeded);
     }
     if (isThemePreference(profile.theme)) setTheme(profile.theme);
     if (profile.taxJurisdiction && TAX_JURISDICTIONS.some((entry) => entry.value === profile.taxJurisdiction)) setJurisdiction(profile.taxJurisdiction);
+    // An accent stored on the account wins, but hex values written before a
+    // brand change no longer match any swatch, so fall back to this device's
+    // choice rather than snapping the picker back to the default.
     const accent = ACCENT_COLORS.find((item) => item.value.toLowerCase() === profile.accentColor?.toLowerCase());
-    if (accent) setAccentColor(accent.id);
+    setAccentColor(accent?.id ?? readStoredAccent() ?? DEFAULT_ACCENT);
   }, [me, user]);
 
   const mountedRef = useRef(true);
@@ -611,9 +620,13 @@ export function SettingsPage() {
         accentColor: ACCENT_COLORS.find((item) => item.id === accentColor)?.value,
       });
       try { window.localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* private mode */ }
-      window.localStorage.setItem("dobby-currency", currency.toUpperCase());
+      writeStoredCurrency(currency);
       announceThemeChange();
       window.dispatchEvent(new CustomEvent("dobby-currency-change", { detail: currency.toUpperCase() }));
+      // PlanProvider caches `/v1/me` for the session, and this page re-seeds its
+      // form from that payload on mount. Without this the next visit to Settings
+      // hydrated from the pre-save profile and put every control back.
+      refreshPlan();
       refreshOptions();
       toast.success("Settings saved");
       setSaved(true);

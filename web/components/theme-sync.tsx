@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, applyTheme, readStoredTheme, type AccentColor, type ThemePreference } from "@/lib/theme";
+import { ACCENT_STORAGE_KEY, applyTheme, readStoredTheme, type ThemePreference } from "@/lib/theme";
 
 /**
  * Owns the theme class on <html>.
@@ -18,11 +18,6 @@ import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, ap
 export function ThemeSync() {
   useEffect(() => {
     const query = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const readAccent = () => {
-      const stored = window.localStorage.getItem(ACCENT_STORAGE_KEY);
-      return (ACCENT_COLORS.some((entry) => entry.id === stored) ? stored : DEFAULT_ACCENT) as AccentColor;
-    };
 
     /** The first application is skipped: the inline script already set it. */
     let first = true;
@@ -43,7 +38,7 @@ export function ThemeSync() {
 
     // Another tab changing the accent shouldn't leave this one stale.
     const onStorage = (event: StorageEvent) => {
-      if (event.key === ACCENT_STORAGE_KEY) applyAccentColor(readAccent());
+      if (event.key === ACCENT_STORAGE_KEY) applyTheme(readStoredTheme() ?? "system", { animate: false });
       if (event.key === "dobby-theme") sync();
     };
     window.addEventListener("storage", onStorage);

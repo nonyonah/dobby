@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { AppSidebar } from "./app-sidebar";
 import { TopBar } from "./topbar";
 import { SidebarProvider } from "./ui/sidebar";
@@ -13,7 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { QuestionIcon } from "./icons";
-import { useApi } from "@/hooks/use-api";
+import { readStoredCurrency, writeStoredCurrency } from "@/lib/format";
+import { usePlan } from "./plan-provider";
 import { QuickCreateModals } from "./quick-create-modals";
 import { TrialExpiredBanner } from "./upgrade";
 
@@ -34,30 +34,26 @@ export function Shell({ title, active, children }: ShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [peek, setPeek] = useState(false);
   const [quickCreate, setQuickCreate] = useState<"import" | "budget" | "goal" | null>(null);
-  const [, setCurrency] = useState("NGN");
-  const api = useApi();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { me } = usePlan();
 
+  /**
+   * Seeds the display currency from the saved profile the first time a device
+   * runs the app, so a fresh browser matches the account instead of showing
+   * naira to a US user.
+   *
+   * Seed only — never a sync. This used to fetch `/v1/me` itself and write the
+   * result unconditionally, on every mount, which meant a stale profile
+   * silently overwrote the currency the user had just saved: the change appeared
+   * to stick across the app, then reverted on the next navigation or reload.
+   * The profile now comes from PlanProvider, which Settings refreshes after a
+   * save, and a currency already stored here always wins.
+   */
   useEffect(() => {
-    const handleCurrencyChange = (event: Event) => {
-      const next = (event as CustomEvent<string>).detail;
-      if (next) setCurrency(next.toUpperCase());
-    };
-    window.addEventListener("dobby-currency-change", handleCurrencyChange);
-    return () => window.removeEventListener("dobby-currency-change", handleCurrencyChange);
-  }, []);
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    void api.get<{ data: { profile?: { currency?: string | null; country?: string | null } | null } }>("/v1/me").then((response) => {
-      const profile = response.data.profile;
-      const currency = profile?.currency?.toUpperCase() ?? (profile?.country?.toUpperCase() === "US" ? "USD" : "NGN");
-      window.localStorage.setItem("dobby-currency", currency);
-      setCurrency(currency);
-    }).catch(() => {
-      setCurrency(window.localStorage.getItem("dobby-currency")?.toUpperCase() ?? "NGN");
-    });
-  }, [api, isLoaded, isSignedIn]);
+    if (readStoredCurrency()) return;
+    const profile = me?.profile;
+    const seeded = profile?.currency?.toUpperCase() ?? (profile?.country?.toUpperCase() === "US" ? "USD" : null);
+    if (seeded) writeStoredCurrency(seeded);
+  }, [me]);
 
   useEffect(() => {
     try {
