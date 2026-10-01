@@ -2,7 +2,7 @@ import { ImportType } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { storePrivateObject } from "../lib/r2.js";
-import { persistReviewItems, countDuplicateRows, processImportRecord, type PreparedReview } from "../imports/pipeline.js";
+import { persistReviewItems, countDuplicateRows, findCompletedImportByHash, processImportRecord, type PreparedReview } from "../imports/pipeline.js";
 import { extractBankAlert } from "../providers/gemini.js";
 import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
@@ -246,7 +246,7 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
         continue;
       }
 
-      const importId = await storeAttachment(ownerClerkId, file.filename, file.mimeType, file.bytes);
+      const importId = await storeAttachment(ownerClerkId, file.filename, file.mimeType, file.bytes, contentHash);
       const duplicateRows = await countDuplicateRows(ownerClerkId, importId);
       const totalRows = await prisma.transactionReviewItem.count({ where: { ownerClerkId, importId } });
       // A statement or receipt whose every row already exists is a duplicate
@@ -319,15 +319,41 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
 }
 
 /** Download a file, store it in R2, and run it through the normal import pipeline. */
-async function storeAttachment(ownerClerkId: string, filename: string, contentType: string, bytes: Buffer): Promise<string> {
+/**
+ * Stores an attachment and processes it, unless these exact bytes were already
+ * imported successfully.
+ *
+ * The caller has already checked the hash, so reaching a completed sibling here
+ * means the statement arrived twice under different messages. Returns the import
+ * id either way so the caller can record what happened.
+ */
+async function storeAttachment(ownerClerkId: string, filename: string, contentType: string, bytes: Buffer, contentHash?: string): Promise<string> {
   const name = safeFilename(filename);
   const { type, contentType: detectedType } = importTypeFor(name);
   const extension = (name.split(".").pop() ?? "bin").toLowerCase();
   const objectKey = `users/${ownerClerkId}/imports/${randomUUID()}.${extension}`;
   await storePrivateObject(objectKey, contentType || detectedType, bytes);
   const record = await prisma.transactionImport.create({
-    data: { ownerClerkId, type, status: "PROCESSING", objectKey, originalName: name },
+    data: { ownerClerkId, type, status: "PROCESSING", objectKey, originalName: name, contentHash },
   });
+  if (contentHash) {
+    const already = await findCompletedImportByHash(ownerClerkId, contentHash);
+    if (already && already.id !== record.id) {
+      // Settle immediately rather than paying for a second extraction of a file
+      // we have already read. The extraction is the expensive part — and the
+      // part that runs into the provider's rate limit.
+      await prisma.transactionImport.update({
+        where: { id: record.id },
+        data: {
+          status: "COMPLETED",
+          rowCount: already.rowCount ?? 0,
+          errorMessage: `Already imported${already.originalName ? ` as "${already.originalName}"` : ""}.`,
+        },
+      });
+      logger.info({ importId: record.id, originalImportId: already.id }, "statement bytes already imported; skipped extraction");
+      return record.id;
+    }
+  }
   try {
     await processImportRecord(ownerClerkId, { id: record.id, objectKey, type, originalName: name });
   } catch (error) {

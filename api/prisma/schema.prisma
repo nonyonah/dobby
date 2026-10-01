@@ -389,6 +389,11 @@ model TransactionImport {
   status       ImportStatus @default(CREATED)
   objectKey    String?
   originalName String?
+  /// sha256 of the uploaded bytes. A statement already imported under this hash
+  /// is recognised and skipped, which is what stops a re-upload from paying for
+  /// a second extraction — the expensive part, and the part that runs into the
+  /// provider's rate limit.
+  contentHash  String?
   rowCount     Int?
   errorMessage String?
   createdAt    DateTime     @default(now())
@@ -398,6 +403,7 @@ model TransactionImport {
   reviewItems  TransactionReviewItem[]
 
   @@index([ownerClerkId, status, createdAt])
+  @@index([ownerClerkId, contentHash])
 }
 
 model TransactionReviewItem {

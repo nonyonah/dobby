@@ -298,6 +298,64 @@ export function excelToStatementRows(bytes: Buffer): { rows: Record<string, stri
 }
 
 /**
+ * Records the hash for this import and settles it if the same bytes are already
+ * in the ledger.
+ *
+ * Called with the bytes immediately after they are read from storage and before
+ * anything is extracted. Reading the file is cheap; extracting it is not, and
+ * extraction is what burns the statement provider's token budget — so this is
+ * the point where recognising a repeat pays off. Returns true when the caller
+ * should stop.
+ */
+export async function shortCircuitIfAlreadyImported(
+  ownerClerkId: string,
+  importId: string,
+  bytes: Buffer,
+): Promise<boolean> {
+  const contentHash = createHash("sha256").update(bytes).digest("hex");
+  const already = await findCompletedImportByHash(ownerClerkId, contentHash);
+  if (!already || already.id === importId) {
+    // Still record the hash on the first sighting, so the next copy of this file
+    // is recognised even if that import later fails.
+    await prisma.transactionImport.updateMany({
+      where: { id: importId, contentHash: null },
+      data: { contentHash },
+    });
+    return false;
+  }
+  await prisma.transactionImport.update({
+    where: { id: importId },
+    data: {
+      contentHash,
+      status: ImportStatus.COMPLETED,
+      rowCount: already.rowCount ?? 0,
+      errorMessage: `Already imported${already.originalName ? ` as "${already.originalName}"` : ""}.`,
+    },
+  });
+  logger.info({ importId, originalImportId: already.id }, "statement bytes already imported; skipped extraction");
+  return true;
+}
+
+/**
+ * True when these exact bytes have already been imported successfully.
+ *
+ * Only a settled import counts. A FAILED one is deliberately re-runnable: the
+ * usual reason it failed was a locked PDF or a provider error, and refusing to
+ * retry would strand the user with a file they cannot get in.
+ */
+export async function findCompletedImportByHash(ownerClerkId: string, contentHash: string) {
+  return prisma.transactionImport.findFirst({
+    where: {
+      ownerClerkId,
+      contentHash,
+      status: { in: [ImportStatus.COMPLETED, ImportStatus.REVIEW] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, originalName: true, rowCount: true, createdAt: true },
+  });
+}
+
+/**
  * Closes an import once every one of its review items is resolved.
  *
  * An import moves to REVIEW when its rows are extracted and nothing ever moved
@@ -326,6 +384,7 @@ export async function settleImportsFor(importIds: Iterable<string>): Promise<voi
 
 export async function processPdfStatement(ownerClerkId: string, record: { id: string; objectKey: string; originalName?: string | null }) {
   const bytes = await getPrivateObjectBytes(record.objectKey);
+  if (await shortCircuitIfAlreadyImported(ownerClerkId, record.id, bytes)) return;
   const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
   const defaultCurrency = profile?.currency?.toUpperCase() ?? "USD";
   const report = await extractStatementReport({ mimeType: "application/pdf", bytes: bytes.toString("base64") });
@@ -394,6 +453,14 @@ export async function processImportRecord(
     return { rowCount: saved?.rowCount ?? reviewCount, reviewCount };
   }
 
+  // Gate the generic branch too: a receipt image re-uploaded is the same waste.
+  {
+    const bytes = await getPrivateObjectBytes(record.objectKey);
+    if (await shortCircuitIfAlreadyImported(ownerClerkId, record.id, bytes)) {
+      const saved = await prisma.transactionImport.findUnique({ where: { id: record.id }, select: { rowCount: true } });
+      return { rowCount: saved?.rowCount ?? 0, reviewCount: 0 };
+    }
+  }
   const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
   const defaultCurrency = profile?.currency?.toUpperCase() ?? "USD";
   let prepared: PreparedReview[];

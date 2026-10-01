@@ -4,7 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { createUploadUrl, storePrivateObject } from "../lib/r2.js";
-import { isPdfImport, processImportRecord, processPdfStatement } from "../imports/pipeline.js";
+import { findCompletedImportByHash, isPdfImport, processImportRecord, processPdfStatement } from "../imports/pipeline.js";
 import { notifyImportComplete } from "../lib/mailer.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
@@ -81,6 +81,25 @@ importsRouter.post("/:id/process", async (req, res) => {
     return;
   }
 
+  // The bytes were hashed on upload. If this exact statement was already
+  // imported, say so instead of extracting it a second time — the same file
+  // arriving twice is the common case, and extraction is the expensive part.
+  if (record.contentHash) {
+    const already = await findCompletedImportByHash(ownerClerkId, record.contentHash);
+    if (already && already.id !== record.id) {
+      await prisma.transactionImport.update({
+        where: { id: record.id },
+        data: {
+          status: ImportStatus.COMPLETED,
+          rowCount: already.rowCount ?? 0,
+          errorMessage: `Already imported${already.originalName ? ` as "${already.originalName}"` : ""}.`,
+        },
+      });
+      logger.info({ importId: record.id, originalImportId: already.id }, "statement bytes already imported; skipped extraction");
+      res.json({ data: { id: record.id, status: ImportStatus.COMPLETED, duplicate: true } });
+      return;
+    }
+  }
   await prisma.transactionImport.update({ where: { id: record.id }, data: { status: ImportStatus.PROCESSING, errorMessage: null } });
   const filename = record.originalName ?? "import";
   if (isPdfImport(record)) {

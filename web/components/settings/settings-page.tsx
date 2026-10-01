@@ -183,6 +183,8 @@ type SyncState = {
   done?: boolean;
   /** The last attempt failed; the row says so instead of pretending all is well. */
   failed?: boolean;
+  /** When the last successful sync finished, for the periodic nudge. */
+  lastSyncedAt?: number;
 };
 
 const KIND_LABELS: Record<string, string> = { statement: "Statement", receipt: "Receipt", alert: "Bank alert" };
@@ -267,26 +269,38 @@ function providerState(connected: boolean, live: boolean, sync: SyncState | unde
   return "idle";
 }
 
-/** Plain-language line under the provider name, per state. */
+
+/** How long the checkmark stays up before the button returns to its idle state. */
+const SYNC_DONE_MS = 2600;
+/** How long a synced provider stays quiet before we suggest syncing again. */
+const SYNC_NUDGE_DAYS = 7;
+
+/** Plain-language line under the provider name. A healthy connection says so and
+ *  stops; the suggestion to sync comes back only once a week has passed, because
+ *  a standing "you should sync" on a working integration is nagging, not guidance. */
 function providerCopy(state: ProviderState, sync: SyncState | undefined, isEmail: boolean, fallback: string) {
+  const stale =
+    state === "synced" && typeof sync?.lastSyncedAt === "number"
+      ? Date.now() - sync.lastSyncedAt > SYNC_NUDGE_DAYS * 24 * 60 * 60 * 1000
+      : false;
   switch (state) {
     case "disconnected":
       return fallback;
     case "syncing":
-      return "Syncing your inbox for statements, receipts, and bank alerts…";
+      return "Syncing your inbox for statements, receipts, and bank alerts\u2026";
     case "synced":
-      return sync?.summary ? `Synced · ${sync.summary}` : "Synced — your latest statements and receipts are up to date.";
+      if (stale) return "Connected \u00b7 last synced over a week ago \u2014 sync to pick up anything new";
+      return "Connected";
     case "failed":
-      return "That sync didn't finish. Try again — nothing was lost.";
+      return "That sync didn't finish. Try again \u2014 nothing was lost.";
     case "attention":
-      return "Connected, but the connection needs attention — reconnect to resume syncing";
+      return "Connected, but the connection needs attention \u2014 reconnect to resume syncing";
     default:
-      return isEmail ? "Connected — sync to import statements, receipts, and bank alerts" : "Connected";
+      return isEmail
+        ? "Connected \u2014 sync to import statements, receipts, and bank alerts"
+        : "Connected";
   }
 }
-
-/** How long the checkmark stays up before the button returns to its idle state. */
-const SYNC_DONE_MS = 2600;
 
 /**
  * Sync, as a button that reports itself.
@@ -534,7 +548,7 @@ export function SettingsPage() {
    * page is gone would call setState on a dead component.
    */
   const markSyncDone = useCallback((provider: string, summary: string) => {
-    setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary, done: true } }));
+    setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary, done: true, lastSyncedAt: Date.now() } }));
     const existing = syncDoneTimers.current.get(provider);
     if (existing) clearTimeout(existing);
     syncDoneTimers.current.set(

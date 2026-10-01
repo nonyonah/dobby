@@ -60,6 +60,26 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
   const reduce = useReducedMotion() ?? false;
   const allChecked = rows.length > 0 && rows.every((row) => checked.has(row.id));
   const approvableRows = rows.filter((row) => !row.needsManualReview);
+  // `amount` is already converted into the display currency; `sourceAmount` and
+  // `currency` are what the statement was actually denominated in. They are only
+  // both worth showing when the two currencies differ.
+  const currencyFacts = (row: TxFull) => {
+    const displayCurrency = row.displayCurrency ?? appCurrency;
+    const sourceCurrency = typeof row.currency === "string" ? row.currency.toUpperCase() : null;
+    const sourceAmount = row.sourceAmount;
+    const convertible =
+      typeof sourceAmount === "number" &&
+      Number.isFinite(sourceAmount) &&
+      sourceCurrency !== null &&
+      sourceCurrency !== displayCurrency.toUpperCase();
+    return {
+      displayCurrency,
+      // Formatted here so the cell needs no narrowing, and null when there is
+      // nothing worth adding — an account already in the display currency, or a
+      // row we never priced.
+      sourceLabel: convertible ? formatCurrency(Math.abs(sourceAmount), sourceCurrency) : null,
+    };
+  };
 
   const toggle = (id: string) => {
     setChecked((current) => {
@@ -152,6 +172,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                 </HeroTable.Header>
                 <HeroTable.Body>
                   {rows.map((row) => {
+                    const { displayCurrency, sourceLabel } = currencyFacts(row);
                     const meta = categoryMeta(row.category, row.categoryName);
                     const SourceIcon = SOURCE_ICON[row.source];
                     const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
@@ -164,7 +185,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                             aria-label={`Category for ${row.name}`}
                             value={overrides[row.id] ?? suggestedId ?? ""}
                             onChange={(event) => setOverride(row.id, event.target.value || suggestedId || null)}
-                            className="h-7 min-w-36 cursor-pointer appearance-none rounded-lg border border-line bg-white bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat px-2 pr-6 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 bg-muted"
+                            className="h-7 min-w-36 cursor-pointer appearance-none rounded-lg border border-line bg-card bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat px-2 pr-6 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 bg-muted"
                             style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")" }}
                           >
                             {categories.map((option) => (
@@ -179,7 +200,26 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                         <span className="ml-2 text-[11px] text-muted-foreground">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
                       </HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
-                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-success" : "text-danger"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.displayCurrency ?? appCurrency)}</>}</HeroTable.Cell>
+                      <HeroTable.Cell className="px-2 py-3 text-right">
+                        {row.needsManualReview ? (
+                          <span className="mono text-[12px] text-muted-foreground">Not extracted</span>
+                        ) : (
+                          <span className="mono block tabular-nums">
+                            {/* The converted figure leads, but only ever next to the
+                                currency it was actually fetched in. Showing the
+                                converted number alone made a naira statement look
+                                like a dollar one, which is the whole reason a
+                                statement import exists. */}
+                            <span className={`block text-[13px] font-medium ${row.amount >= 0 ? "text-success" : "text-danger"}`}>
+                              {row.amount >= 0 ? "+" : "−"}
+                              {formatCurrency(Math.abs(row.amount), displayCurrency)}
+                            </span>
+                            {sourceLabel ? (
+                              <span className="block text-[11px] text-muted-foreground">{sourceLabel}</span>
+                            ) : null}
+                          </span>
+                        )}
+                      </HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><HugeiconsIcon icon={EditIcon} size={15}  /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
                     </HeroTable.Row>;
                   })}
@@ -200,7 +240,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
             role="toolbar"
             aria-label={`${checked.size} review transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-full bg-card py-2 pr-2 pl-4 text-white shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
+            <div className="flex items-center gap-2 rounded-full bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
               <p className="m-0 text-[13px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>

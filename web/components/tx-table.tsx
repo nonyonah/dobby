@@ -570,7 +570,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             role="toolbar"
             aria-label={`${checked.size} transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-full bg-card py-2 pr-2 pl-4 text-white shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
+            <div className="flex items-center gap-2 rounded-full bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
               <p className="m-0 text-[12px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>

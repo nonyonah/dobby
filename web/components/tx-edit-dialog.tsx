@@ -127,7 +127,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Merchant">
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 bg-white bg-muted text-[13px]" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 bg-card text-[13px]" />
           </Field>
           <Field label="Amount">
             <div className="relative">
@@ -139,12 +139,12 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
                 onChange={(e) => setAmount(e.target.value)}
                 inputMode="decimal"
                 aria-label={`Amount in ${amountCurrency}`}
-                className="mono h-8 bg-white bg-muted pr-3 pl-10 text-[13px]"
+                className="mono h-8 bg-card pr-3 pl-10 text-[13px]"
               />
             </div>
           </Field>
           <Field label="Date">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-white bg-muted text-[13px]" />
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-card text-[13px]" />
           </Field>
           <Field label="Category">
             <NativeSelect
@@ -185,7 +185,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
                 placeholder="Add context for your books…"
-                className="bg-white bg-muted text-[13px]"
+                className="bg-card text-[13px]"
               />
             </Field>
           </div>

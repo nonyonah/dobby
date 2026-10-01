@@ -266,7 +266,7 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
         {mode === "manual" ? (
           <div className="grid gap-3">
             <Field label="Merchant">
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Whole Foods" className="h-8 bg-white bg-muted text-[13px]" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Whole Foods" className="h-8 bg-card text-[13px]" />
             </Field>
             <Field label="Transaction type">
               <NativeSelect
@@ -283,11 +283,11 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
               <Field label="Amount">
                 <div className="relative">
                   <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
-                  <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount in dollars" className="mono h-8 bg-white bg-muted pr-3 pl-10 text-[13px]" />
+                  <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount in dollars" className="mono h-8 bg-card pr-3 pl-10 text-[13px]" />
                 </div>
               </Field>
               <Field label="Date">
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-white bg-muted text-[13px]" />
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-card text-[13px]" />
               </Field>
             </div>
             <Field label="Category">
