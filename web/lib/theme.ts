@@ -1,7 +1,7 @@
 export type AccentColor = "brand" | "graphite" | "green" | "blue" | "violet" | "orange" | "rose" | "amber";
 
 export const ACCENT_COLORS: Array<{ id: AccentColor; label: string; value: string }> = [
-  { id: "brand", label: "Brand", value: "#003f88" },
+  { id: "brand", label: "Brand", value: "#411880" },
   { id: "graphite", label: "Graphite", value: "#52525b" },
   { id: "green", label: "Green", value: "#00afb9" },
   { id: "blue", label: "Blue", value: "#2563eb" },

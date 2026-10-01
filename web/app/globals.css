@@ -40,9 +40,9 @@
   --line: #e3e5e8;
   --text: #1c1d20;
   --text-muted: #6b6d72;
-  --accent: #003f88;
-  --accent-600: #003a7d;
-  --accent-100: #e2e8f0;
+  --accent: #411880;
+  --accent-600: #3c1676;
+  --accent-100: #ddd5e8;
   --green: #1b4332;
   --green-100: #e7ecea;
   --green-vivid: #1b4332;
@@ -251,7 +251,7 @@
   --card-foreground: #eceef0;
   --popover: #1a1a1d;
   --popover-foreground: #eceef0;
-  --primary: #16558f;
+  --primary: #634297;
   --primary-foreground: #ffffff;
   --secondary: #26262a;
   --secondary-foreground: #eceef0;
