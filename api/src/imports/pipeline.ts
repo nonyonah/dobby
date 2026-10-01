@@ -241,6 +241,10 @@ function excelCellToString(value: unknown): string {
 
 export async function processExcelStatement(ownerClerkId: string, record: { id: string; objectKey: string }) {
   const bytes = await getPrivateObjectBytes(record.objectKey);
+  // Spreadsheets went ungated until now, so a re-uploaded .xlsx was extracted a
+  // second time and its rows queued again — the same duplicate-transaction
+  // problem the PDF and upload paths already avoided.
+  if (await shortCircuitIfAlreadyImported(ownerClerkId, record.id, bytes)) return;
   const { rows, sheetName } = excelToStatementRows(bytes);
   const prepared = prepareStatementRows(rows);
   logger.info({ importId: record.id, sheet: sheetName, transactionCount: prepared.length }, "completed Excel bank statement job");
@@ -297,9 +301,102 @@ export function excelToStatementRows(bytes: Buffer): { rows: Record<string, stri
   return { rows, sheetName };
 }
 
+/** Prisma's unique-constraint violation, which the import hash index raises. */
+export function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+export type HashHolder = {
+  id: string;
+  originalName: string | null;
+  rowCount: number | null;
+  status: string;
+};
+
+export type HashClaimAction =
+  | { kind: "proceed" }
+  | { kind: "skip"; original: { id: string; originalName: string | null; rowCount: number | null } }
+  | { kind: "retry-later"; message: string };
+
 /**
- * Records the hash for this import and settles it if the same bytes are already
- * in the ledger.
+ * What to do about an import whose bytes another import already holds.
+ *
+ * Every path that can meet a duplicate — a settled sibling found by hash, or a
+ * claim the database refused — funnels through here, so "is this already
+ * imported?" is answered the same way everywhere. Extracting a statement costs
+ * real money, so the outcomes are deliberately distinct: skip when the result
+ * exists, proceed when nobody holds the bytes, and fail with a plain message when
+ * someone is still mid-extraction.
+ */
+export function hashClaimAction(input: { selfId: string; holder: HashHolder | null }): HashClaimAction {
+  if (!input.holder || input.holder.id === input.selfId) return { kind: "proceed" };
+  // A failed import never got these bytes into the ledger — that is precisely
+  // why FAILED rows are excluded from the unique index — so it must not block
+  // the retry it was supposed to enable.
+  if (input.holder.status === ImportStatus.FAILED) return { kind: "proceed" };
+  const settled = input.holder.status === ImportStatus.COMPLETED || input.holder.status === ImportStatus.REVIEW;
+  if (!settled) {
+    // Marking this COMPLETED would assert a result that does not exist yet, and
+    // extracting it here would pay twice for one file. Neither is acceptable, so
+    // it fails with something the user can act on.
+    return {
+      kind: "retry-later",
+      message: `An identical file ("${input.holder.originalName ?? "statement"}") is still being imported. Try again in a moment.`,
+    };
+  }
+  return {
+    kind: "skip",
+    original: { id: input.holder.id, originalName: input.holder.originalName, rowCount: input.holder.rowCount },
+  };
+}
+
+/**
+ * Settles an import whose bytes are already in the ledger.
+ *
+ * The row deliberately does not keep `contentHash`. The unique index allows one
+ * non-failed import per owner per hash, and the import that actually read these
+ * bytes is the rightful owner of it — copying the hash onto the repeat is what
+ * let the same file land 30 times in one account. This row records that the file
+ * arrived again, which is what the user needs to see; the hash stays where it was
+ * earned.
+ */
+export async function settleAsDuplicate(
+  importId: string,
+  original: { id: string; originalName: string | null; rowCount: number | null },
+): Promise<void> {
+  await prisma.transactionImport.update({
+    where: { id: importId },
+    data: {
+      status: ImportStatus.COMPLETED,
+      rowCount: original.rowCount ?? 0,
+      contentHash: null,
+      errorMessage: `Already imported${original.originalName ? ` as "${original.originalName}"` : ""}.`,
+    },
+  });
+  logger.info({ importId, originalImportId: original.id }, "statement bytes already imported; skipped extraction");
+}
+
+async function markRetryLater(importId: string, message: string): Promise<void> {
+  await prisma.transactionImport.update({
+    where: { id: importId },
+    data: { status: ImportStatus.FAILED, contentHash: null, errorMessage: message },
+  });
+}
+
+/** Applies a decision and reports whether the caller should stop processing. */
+async function applyHashClaim(importId: string, action: HashClaimAction): Promise<boolean> {
+  if (action.kind === "proceed") return false;
+  if (action.kind === "skip") {
+    await settleAsDuplicate(importId, action.original);
+    return true;
+  }
+  await markRetryLater(importId, action.message);
+  return true;
+}
+
+/**
+ * Claims `contentHash` for this import, settling it instead if the bytes are
+ * already in the ledger.
  *
  * Called with the bytes immediately after they are read from storage and before
  * anything is extracted. Reading the file is cheap; extracting it is not, and
@@ -313,27 +410,24 @@ export async function shortCircuitIfAlreadyImported(
   bytes: Buffer,
 ): Promise<boolean> {
   const contentHash = createHash("sha256").update(bytes).digest("hex");
-  const already = await findCompletedImportByHash(ownerClerkId, contentHash);
-  if (!already || already.id === importId) {
-    // Still record the hash on the first sighting, so the next copy of this file
-    // is recognised even if that import later fails.
+  const settled = await findCompletedImportByHash(ownerClerkId, contentHash);
+  if (settled) return applyHashClaim(importId, hashClaimAction({ selfId: importId, holder: settled }));
+
+  // First sighting: record the hash so the next copy is recognised even if this
+  // import later fails. The unique index makes this a claim rather than a copy —
+  // two imports of one file can both reach this line, and the loser is told what
+  // it lost to instead of crashing on the constraint.
+  try {
     await prisma.transactionImport.updateMany({
       where: { id: importId, contentHash: null },
       data: { contentHash },
     });
     return false;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const winner = await findImportHoldingHash(ownerClerkId, contentHash);
+    return applyHashClaim(importId, hashClaimAction({ selfId: importId, holder: winner }));
   }
-  await prisma.transactionImport.update({
-    where: { id: importId },
-    data: {
-      contentHash,
-      status: ImportStatus.COMPLETED,
-      rowCount: already.rowCount ?? 0,
-      errorMessage: `Already imported${already.originalName ? ` as "${already.originalName}"` : ""}.`,
-    },
-  });
-  logger.info({ importId, originalImportId: already.id }, "statement bytes already imported; skipped extraction");
-  return true;
 }
 
 /**
@@ -351,7 +445,21 @@ export async function findCompletedImportByHash(ownerClerkId: string, contentHas
       status: { in: [ImportStatus.COMPLETED, ImportStatus.REVIEW] },
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true, originalName: true, rowCount: true, createdAt: true },
+    select: { id: true, originalName: true, rowCount: true, status: true, createdAt: true },
+  });
+}
+
+/**
+ * Whoever currently holds these bytes, settled or not. Used after a claim is
+ * refused, where the winner may still be mid-extraction.
+ */
+export async function findImportHoldingHash(ownerClerkId: string, contentHash: string) {
+  return prisma.transactionImport.findFirst({
+    // FAILED is excluded for the same reason the index excludes it: such a row
+    // does not hold the claim, and returning one would hide the row that does.
+    where: { ownerClerkId, contentHash, status: { not: ImportStatus.FAILED } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, originalName: true, rowCount: true, status: true },
   });
 }
 

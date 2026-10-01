@@ -1,8 +1,10 @@
 import { Plan } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { mailConfigured, sendEmail } from "../lib/mailer.js";
+import { mailConfigured, sendDeadlineNotification } from "../lib/mailer.js";
+import { getTaxRules } from "../tax/registry.js";
 import { logger } from "../lib/logger.js";
 import { computeEffectivePlan } from "../middleware/plan.js";
+import { jurisdictionLabel } from "./monthly-tax-reminder.js";
 
 export const DEADLINE_MARKS = [30, 14, 7, 1] as const;
 export const OVERDUE_MARK = -1;
@@ -40,6 +42,16 @@ export function markForDeadline(deadlineIso: string, now: Date): number | null {
   return null;
 }
 
+/**
+ * Subject and display facts for the deadline email.
+ *
+ * Returns facts, not markup: the job stays plain TypeScript and the template
+ * owns the rendering. Urgency is not decided here either — the template derives
+ * tone, weight and wording from `daysLeft`, so the 30-day notice and the
+ * overdue one cannot drift apart as two separately-maintained sets of copy. The
+ * outstanding documents are counted, not listed: an email is the wrong place for
+ * a list the user has to work through in the checklist anyway.
+ */
 export function deadlineEmail(input: {
   country: string;
   taxYear: number;
@@ -47,32 +59,21 @@ export function deadlineEmail(input: {
   daysLeft: number;
   estimatedTaxOwed: string;
   outstanding: string[];
-}): { subject: string; text: string } {
-  const when = new Date(`${input.deadline}T12:00:00Z`).toLocaleDateString("en-US", {
-    month: "long",
+}): { subject: string; deadlineLabel: string; jurisdiction: string } {
+  const deadlineLabel = new Date(`${input.deadline}T12:00:00Z`).toLocaleDateString("en-GB", {
     day: "numeric",
+    month: "long",
     year: "numeric",
+    timeZone: "UTC",
   });
-  const headline =
+  const jurisdiction = jurisdictionLabel(input.country);
+  const subject =
     input.daysLeft < 0
-      ? `Your ${input.taxYear} tax filing deadline (${when}) has passed`
-      : input.daysLeft <= 1
-        ? `Your ${input.taxYear} tax filing deadline is ${input.daysLeft === 0 ? "today" : "tomorrow"} (${when})`
-        : `${input.daysLeft} days left to file your ${input.taxYear} taxes (deadline ${when})`;
-  const lines = [
-    headline,
-    "",
-    `Estimated tax owed: ${input.estimatedTaxOwed} (informational estimate only).`,
-    input.outstanding.length > 0
-      ? `Outstanding documents (${input.outstanding.length}):\n${input.outstanding.map((label) => `- ${label}`).join("\n")}`
-      : "All checklist documents are marked ready.",
-    "",
-    "Please confirm your records with a qualified tax professional. Dobby doesn't prepare or file returns.",
-  ];
-  return {
-    subject: input.daysLeft < 0 ? `Dobby: your ${input.taxYear} tax deadline passed` : `Dobby: ${input.daysLeft <= 1 ? "final call" : `${input.daysLeft} days left`} — ${input.taxYear} tax deadline`,
-    text: lines.join("\n"),
-  };
+      ? `Dobby: your ${jurisdiction} tax deadline has passed`
+      : input.daysLeft <= 7
+        ? `Dobby: ${jurisdiction} tax is due ${input.daysLeft === 0 ? "today" : `in ${input.daysLeft} days`}`
+        : `Dobby: ${jurisdiction} filing deadline ${deadlineLabel}`;
+  return { subject, deadlineLabel, jurisdiction };
 }
 
 /**
@@ -129,7 +130,18 @@ export async function runFilingDeadlineReminders(now = new Date()) {
         estimatedTaxOwed: profile.estimatedTaxOwed.toString(),
         outstanding,
       });
-      const ok = await sendEmail(profile.owner.email, email.subject, email.text);
+      const ok = await sendDeadlineNotification({
+        to: profile.owner.email,
+        firstName: profile.owner.firstName,
+        deadlineLabel: email.deadlineLabel,
+        daysRemaining: daysLeft,
+        jurisdictionLabel: email.jurisdiction,
+        estimatedTaxOwed: Number(profile.estimatedTaxOwed ?? 0),
+        currency: getTaxRules(profile.country as never).currency,
+        checklistReady: 0,
+        checklistTotal: outstanding.length,
+        subject: email.subject,
+      });
       if (!ok) {
         skipped += 1;
         continue;

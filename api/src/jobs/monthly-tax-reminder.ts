@@ -1,10 +1,17 @@
 import { Plan } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { mailConfigured, sendEmail } from "../lib/mailer.js";
+import { mailConfigured, sendMonthlyTaxNotification } from "../lib/mailer.js";
 import { getTaxRules } from "../tax/registry.js";
-import { generateGatewaySummary } from "../providers/ai-gateway.js";
 import { computeEffectivePlan } from "../middleware/plan.js";
 
+/**
+ * Monthly tax reminder.
+ *
+ * Scheduling, plan gating and the once-per-month guard all stay here — they are
+ * job concerns. Only the rendering moved into the template, so the email is
+ * deterministic and looks like the product instead of being written fresh by a
+ * model each month and landing in a different shape every time.
+ */
 export async function runMonthlyTaxReminder(now = new Date()) {
   if (!mailConfigured()) return { sent: 0, skipped: "RESEND_NOT_CONFIGURED" as const };
   // Monthly email reminders are a paid feature: active subscribers and anyone
@@ -32,16 +39,21 @@ export async function runMonthlyTaxReminder(now = new Date()) {
     });
     if (already) continue;
     const rules = getTaxRules(profile.country);
-    // Checklists are per jurisdiction; only the active country's items are this user's outstanding work.
-    const outstanding = profile.checklistItems.filter((item) => item.country === profile.country && item.status === "OUTSTANDING");
-    const facts = [`Country: ${rules.country}`, `Tax year: ${profile.taxYear}`, `Estimated tax owed: ${profile.estimatedTaxOwed.toString()}`, `Outstanding documents: ${outstanding.length}`, ...outstanding.map((item) => `- ${item.label}`)].join("\n");
-    let summary = facts;
-    try {
-      summary = await generateGatewaySummary(`Create a concise monthly tax reminder email summary using only these facts:\n${facts}\nAsk the user to confirm their documents are ready. State that the estimate is informational only.`);
-    } catch (error) {
-      summary = `${facts}\nPlease confirm your records with a qualified tax professional.`;
-    }
-    const delivered = await sendEmail(profile.owner.email, `Dobby tax reminder \u2014 ${profile.taxYear}`, `${summary}\n\nPlease confirm your records with a qualified tax professional.`);
+    // Checklists are per jurisdiction; only the active country's items are this
+    // user's outstanding work.
+    const items = profile.checklistItems.filter((item) => item.country === profile.country);
+    const ready = items.filter((item) => item.status === "READY").length;
+
+    const delivered = await sendMonthlyTaxNotification({
+      to: profile.owner.email,
+      firstName: profile.owner.firstName,
+      estimatedTaxOwed: Number(profile.estimatedTaxOwed ?? 0),
+      currency: rules.currency,
+      checklistReady: ready,
+      checklistTotal: items.length,
+      jurisdictionLabel: jurisdictionLabel(profile.country),
+      taxYear: profile.taxYear,
+    });
     if (!delivered) continue;
     await prisma.reminderLog.create({
       data: { ownerClerkId: profile.ownerClerkId, kind: "monthly-tax", taxYear: profile.taxYear, daysBefore: monthMark },
@@ -49,4 +61,22 @@ export async function runMonthlyTaxReminder(now = new Date()) {
     sent += 1;
   }
   return { sent };
+}
+
+/** Plain-language country name, matching the jurisdiction labels in the app. */
+export function jurisdictionLabel(country: string): string {
+  switch (country) {
+    case "US":
+      return "US federal";
+    case "UK":
+      return "UK";
+    case "KENYA":
+      return "Kenyan";
+    case "SOUTH_AFRICA":
+      return "South African";
+    case "CANADA":
+      return "Canadian federal";
+    default:
+      return "Nigerian";
+  }
 }

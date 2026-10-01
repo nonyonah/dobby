@@ -1091,7 +1091,7 @@ export function SettingsPage() {
               <span
                 className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-[12px] font-semibold ${
                   plan === "ACTIVE"
-                    ? "border-transparent bg-primary/10 text-primary"
+                    ? "border-transparent bg-primary text-primary-foreground"
                     : plan === "TRIAL"
                       ? "border-success/40 bg-success-soft text-success"
                       : plan === "EXPIRED"

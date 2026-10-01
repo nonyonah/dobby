@@ -2,7 +2,17 @@ import { ImportType } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { storePrivateObject } from "../lib/r2.js";
-import { persistReviewItems, countDuplicateRows, findCompletedImportByHash, processImportRecord, type PreparedReview } from "../imports/pipeline.js";
+import {
+  persistReviewItems,
+  countDuplicateRows,
+  findCompletedImportByHash,
+  findImportHoldingHash,
+  hashClaimAction,
+  isUniqueViolation,
+  settleAsDuplicate,
+  processImportRecord,
+  type PreparedReview,
+} from "../imports/pipeline.js";
 import { extractBankAlert } from "../providers/gemini.js";
 import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
@@ -333,26 +343,30 @@ async function storeAttachment(ownerClerkId: string, filename: string, contentTy
   const extension = (name.split(".").pop() ?? "bin").toLowerCase();
   const objectKey = `users/${ownerClerkId}/imports/${randomUUID()}.${extension}`;
   await storePrivateObject(objectKey, contentType || detectedType, bytes);
-  const record = await prisma.transactionImport.create({
-    data: { ownerClerkId, type, status: "PROCESSING", objectKey, originalName: name, contentHash },
-  });
-  if (contentHash) {
-    const already = await findCompletedImportByHash(ownerClerkId, contentHash);
-    if (already && already.id !== record.id) {
-      // Settle immediately rather than paying for a second extraction of a file
-      // we have already read. The extraction is the expensive part — and the
-      // part that runs into the provider's rate limit.
+  const fields = { ownerClerkId, type, status: "PROCESSING" as const, objectKey, originalName: name };
+  let record;
+  try {
+    record = await prisma.transactionImport.create({ data: { ...fields, contentHash } });
+  } catch (error) {
+    // The unique index rejects a second non-failed import of the same bytes. That
+    // is the duplicate signal — the caller checked by hash moments ago, so the only
+    // way to get here is a second copy arriving concurrently. Keep the row so the
+    // sync's history still shows the message, but drop the hash: the import that
+    // actually read these bytes owns it.
+    if (!contentHash || !isUniqueViolation(error)) throw error;
+    record = await prisma.transactionImport.create({ data: { ...fields, contentHash: null } });
+    const holder = await findImportHoldingHash(ownerClerkId, contentHash);
+    const action = hashClaimAction({ selfId: record.id, holder });
+    logger.info({ importId: record.id, holderId: holder?.id, action: action.kind }, "duplicate attachment claim refused; settled without extracting");
+    if (action.kind === "skip") {
+      await settleAsDuplicate(record.id, action.original);
+    } else if (action.kind === "retry-later") {
       await prisma.transactionImport.update({
         where: { id: record.id },
-        data: {
-          status: "COMPLETED",
-          rowCount: already.rowCount ?? 0,
-          errorMessage: `Already imported${already.originalName ? ` as "${already.originalName}"` : ""}.`,
-        },
+        data: { status: "FAILED", errorMessage: action.message },
       });
-      logger.info({ importId: record.id, originalImportId: already.id }, "statement bytes already imported; skipped extraction");
-      return record.id;
     }
+    return record.id;
   }
   try {
     await processImportRecord(ownerClerkId, { id: record.id, objectKey, type, originalName: name });

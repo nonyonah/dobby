@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { utils, write } from "xlsx";
-import { excelToStatementRows, prepareStatementRows } from "./pipeline.js";
+import { excelToStatementRows, hashClaimAction, prepareStatementRows } from "./pipeline.js";
 
 function bookToBuffer(grid: unknown[][], bookType: "xlsx" | "xls" = "xlsx"): Buffer {
   const workbook = utils.book_new();
@@ -47,5 +47,47 @@ describe("excelToStatementRows — single amount + DR/CR indicator", () => {
 describe("excelToStatementRows — failures", () => {
   it("throws when no header row exists", () => {
     expect(() => excelToStatementRows(bookToBuffer([["hello", "world"], ["foo", "bar"]]))).toThrow(/header row/);
+  });
+});
+
+describe("hashClaimAction — deciding what to do about repeated bytes", () => {
+  const settled = { id: "import-1", originalName: "July_Statement.pdf", rowCount: 48, status: "COMPLETED" };
+
+  it("proceeds when nobody holds the hash", () => {
+    expect(hashClaimAction({ selfId: "import-2", holder: null }).kind).toBe("proceed");
+  });
+
+  it("proceeds when the row holding the hash is this row", () => {
+    expect(hashClaimAction({ selfId: "import-1", holder: settled }).kind).toBe("proceed");
+  });
+
+  it("skips extraction when a settled import already read these bytes", () => {
+    const action = hashClaimAction({ selfId: "import-2", holder: settled });
+    expect(action.kind).toBe("skip");
+    if (action.kind !== "skip") throw new Error("expected skip");
+    // The row count carries over so the repeat shows the same result as the
+    // original instead of an empty import.
+    expect(action.original.rowCount).toBe(48);
+    expect(action.original.id).toBe("import-1");
+  });
+
+  it("treats an in-review import as already read too", () => {
+    expect(hashClaimAction({ selfId: "import-2", holder: { ...settled, status: "REVIEW" } }).kind).toBe("skip");
+  });
+
+  it("asks the user to retry when the other import is still extracting", () => {
+    // Marking this COMPLETED would claim a result nobody has yet, so the race
+    // has to surface as an actionable failure instead.
+    const action = hashClaimAction({ selfId: "import-2", holder: { ...settled, status: "PROCESSING" } });
+    expect(action.kind).toBe("retry-later");
+    if (action.kind !== "retry-later") throw new Error("expected retry-later");
+    expect(action.message).toContain("July_Statement.pdf");
+    expect(action.message).toContain("Try again");
+  });
+
+  it("ignores a failed import, which stays retryable", () => {
+    // FAILED rows are excluded from the unique index precisely so a locked PDF
+    // or a provider error can be imported again.
+    expect(hashClaimAction({ selfId: "import-2", holder: { ...settled, status: "FAILED" } }).kind).toBe("proceed");
   });
 });

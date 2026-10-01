@@ -1,31 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { deadlineEmail, filingDeadlineFor, markForDeadline } from "./filing-deadline-reminder.js";
-
-describe("filingDeadlineFor", () => {
-  it("uses April 15 (US) and March 31 (Nigeria) of the year after the tax year", () => {
-    expect(filingDeadlineFor("US", 2026)).toBe("2027-04-15");
-    expect(filingDeadlineFor("NIGERIA", 2026)).toBe("2027-03-31");
-  });
-});
-
-describe("markForDeadline", () => {
-  const deadline = "2027-04-15";
-  it("returns null when the deadline is more than 30 days out", () => {
-    expect(markForDeadline(deadline, new Date("2027-01-01T00:00:00Z"))).toBeNull();
-  });
-  it("walks the 30/14/7/1 windows", () => {
-    expect(markForDeadline(deadline, new Date("2027-03-20T00:00:00Z"))).toBe(30);
-    expect(markForDeadline(deadline, new Date("2027-04-05T00:00:00Z"))).toBe(14);
-    expect(markForDeadline(deadline, new Date("2027-04-10T00:00:00Z"))).toBe(7);
-    expect(markForDeadline(deadline, new Date("2027-04-15T23:59:58Z"))).toBe(1);
-  });
-  it("returns the overdue mark once the deadline passes", () => {
-    expect(markForDeadline(deadline, new Date("2027-04-16T00:00:01Z"))).toBe(-1);
-  });
-});
+import { deadlineCountdown, deadlineUrgency } from "../emails/tokens.js";
 
 describe("deadlineEmail", () => {
-  it("names the deadline, the amount owed, and outstanding documents", () => {
+  it("returns the subject and the facts the template needs", () => {
     const email = deadlineEmail({
       country: "NIGERIA",
       taxYear: 2026,
@@ -34,12 +12,25 @@ describe("deadlineEmail", () => {
       estimatedTaxOwed: "45000",
       outstanding: ["Pension receipts"],
     });
-    expect(email.subject).toContain("7 days left");
-    expect(email.text).toContain("March 31, 2027");
-    expect(email.text).toContain("45000");
-    expect(email.text).toContain("Pension receipts");
-    expect(email.text).toContain("doesn't prepare or file returns");
+    expect(email.subject).toContain("7 days");
+    expect(email.deadlineLabel).toBe("31 March 2027");
+    expect(email.jurisdiction).toBe("Nigerian");
   });
+
+  it("counts the outstanding documents instead of listing them", () => {
+    const email = deadlineEmail({
+      country: "NIGERIA",
+      taxYear: 2026,
+      deadline: "2027-03-31",
+      daysLeft: 7,
+      estimatedTaxOwed: "45000",
+      outstanding: ["Pension receipts", "Bank statement"],
+    });
+    // The count travels separately as checklistTotal; the email itself must not
+    // reproduce a list the user has to work through in the checklist anyway.
+    expect(email).not.toHaveProperty("text");
+  });
+
   it("switches to the overdue subject after the deadline", () => {
     const email = deadlineEmail({
       country: "US",
@@ -50,6 +41,45 @@ describe("deadlineEmail", () => {
       outstanding: [],
     });
     expect(email.subject).toContain("passed");
-    expect(email.text).toContain("All checklist documents are marked ready.");
+    expect(email.jurisdiction).toBe("US federal");
+  });
+});
+
+describe("deadline urgency", () => {
+  it("escalates the visual weight as the date approaches", () => {
+    expect(deadlineUrgency(30).tone).toBe("accent");
+    expect(deadlineUrgency(20).tone).toBe("accent");
+    expect(deadlineUrgency(14).tone).toBe("warning");
+    expect(deadlineUrgency(8).tone).toBe("warning");
+    expect(deadlineUrgency(7).tone).toBe("danger");
+    expect(deadlineUrgency(1).tone).toBe("danger");
+    expect(deadlineUrgency(-1).tone).toBe("danger");
+  });
+
+  it("reads as plain language", () => {
+    expect(deadlineCountdown(1)).toBe("tomorrow");
+    expect(deadlineCountdown(0)).toBe("today");
+    expect(deadlineCountdown(-1)).toBe("today");
+    expect(deadlineCountdown(12)).toBe("in 12 days");
+  });
+});
+
+describe("existing scheduling", () => {
+  it("keeps the per-jurisdiction deadline rule", () => {
+    expect(filingDeadlineFor("US", 2026)).toBe("2027-04-15");
+    expect(filingDeadlineFor("NIGERIA", 2026)).toBe("2027-03-31");
+  });
+
+  it("picks one mark per window so a late joiner still gets one notice", () => {
+    // Days are measured to the deadline's end of day and rounded up, so the
+    // boundaries are a day earlier than the raw date arithmetic suggests.
+    expect(markForDeadline("2027-03-31", new Date("2027-03-02T00:00:00Z"))).toBe(30);
+    expect(markForDeadline("2027-03-31", new Date("2027-03-20T00:00:00Z"))).toBe(14);
+    expect(markForDeadline("2027-03-31", new Date("2027-03-26T00:00:00Z"))).toBe(7);
+    expect(markForDeadline("2027-03-31", new Date("2027-03-31T00:00:00Z"))).toBe(1);
+    expect(markForDeadline("2027-03-31", new Date("2027-04-02T00:00:00Z"))).toBe(-1);
+    // More than 30 days out is genuinely too early to be worth an email.
+    expect(markForDeadline("2027-03-31", new Date("2027-03-01T00:00:00Z"))).toBeNull();
+    expect(markForDeadline("2027-03-31", new Date("2027-01-01T00:00:00Z"))).toBeNull();
   });
 });
