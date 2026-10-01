@@ -12,8 +12,19 @@ import { preparsedAlert } from "./alerts.js";
 import { EmailProviderClient, type EmailProvider, type RawAttachment, type RawMessage } from "./providers.js";
 
 /** Cap per run so one inbox cannot turn a sync into a marathon. */
-const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 40;
+/**
+ * Messages *newly processed* per run, not messages looked at. Previously this
+ * counted every message the walk touched, so a mailbox whose newest window was
+ * already fully imported spent its whole budget re-reading that one window and
+ * never reached anything older — a YouTube Premium receipt from months back was
+ * simply never in range.
+ */
+const DEFAULT_LIMIT = 60;
+const MAX_LIMIT = 250;
+/** Hard ceiling on messages examined, so a steady-state re-sync stays cheap. */
+const MAX_EXAMINED = 400;
+/** Stop digging after this many consecutive windows that yield nothing new. */
+const IDLE_WINDOWS = 2;
 const DEFAULT_LOOKBACK_DAYS = 365;
 const MAX_LOOKBACK_DAYS = 730;
 
@@ -129,14 +140,25 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
   const seenIds = new Set<string>();
   const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
   const now = new Date();
-  for (let windowEnd = now; windowEnd > since && counts.scanned < limit; windowEnd = new Date(windowEnd.getTime() - WINDOW_MS)) {
+  let examined = 0;
+  let idleWindows = 0;
+  for (
+    let windowEnd = now;
+    windowEnd > since && counts.scanned < limit && examined < MAX_EXAMINED && idleWindows < IDLE_WINDOWS;
+    windowEnd = new Date(windowEnd.getTime() - WINDOW_MS)
+  ) {
     const windowStart = new Date(Math.max(since.getTime(), windowEnd.getTime() - WINDOW_MS));
-    const messages = await adapter.search(windowStart, limit - counts.scanned, windowEnd);
+    const messages = await adapter.search(windowStart, Math.min(MAX_EXAMINED - examined, 50), windowEnd);
+    let freshInWindow = 0;
 
   for (const message of messages) {
     if (seenIds.has(message.id)) continue;
     seenIds.add(message.id);
-    counts.scanned += 1;
+    // Examined is the cost bound; scanned is the user-facing count of messages
+    // this run actually processed. A message we have already handled costs
+    // budget but must not consume the quota, or the walk stalls on the newest
+    // window forever.
+    examined += 1;
     // Heartbeat per message start (not just per completed message) so the
     // job row — and its updatedAt — stays live through multi-minute PDFs.
     await saveJob();
@@ -149,6 +171,8 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
         await saveJob();
         continue;
       }
+      freshInWindow += 1;
+      counts.scanned += 1;
 
       const full = await adapter.hydrate(message);
       const kind = classifyEmail({
@@ -267,6 +291,9 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
       await saveJob();
     }
   }
+  // A window that produced nothing new means we have drained this depth of the
+  // mailbox. Two in a row and there is no point paying for another search.
+  idleWindows = freshInWindow === 0 ? idleWindows + 1 : 0;
   }
 
   if (alertRows.length > 0) {

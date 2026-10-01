@@ -297,6 +297,33 @@ export function excelToStatementRows(bytes: Buffer): { rows: Record<string, stri
   return { rows, sheetName };
 }
 
+/**
+ * Closes an import once every one of its review items is resolved.
+ *
+ * An import moves to REVIEW when its rows are extracted and nothing ever moved
+ * it on again, so imports accumulated in REVIEW forever with nothing left to do
+ * — 21 of them on this account, each holding zero pending rows. The queue is
+ * built from pending items, so those imports showed up as permanently "in
+ * review" with no actionable content, which is what made a completed sync look
+ * like it had produced nothing. Returns whether the import was settled.
+ */
+export async function settleImportIfResolved(importId: string): Promise<boolean> {
+  const pending = await prisma.transactionReviewItem.count({
+    where: { importId, status: ReviewStatus.PENDING },
+  });
+  if (pending > 0) return false;
+  const settled = await prisma.transactionImport.updateMany({
+    where: { id: importId, status: ImportStatus.REVIEW },
+    data: { status: ImportStatus.COMPLETED },
+  });
+  return settled.count > 0;
+}
+
+/** Settles every import touched by a set of review decisions. */
+export async function settleImportsFor(importIds: Iterable<string>): Promise<void> {
+  await Promise.all([...new Set(importIds)].map((id) => settleImportIfResolved(id)));
+}
+
 export async function processPdfStatement(ownerClerkId: string, record: { id: string; objectKey: string; originalName?: string | null }) {
   const bytes = await getPrivateObjectBytes(record.objectKey);
   const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });

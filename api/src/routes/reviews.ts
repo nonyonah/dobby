@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { convertCurrencyAmount, getConversionFactors } from "../providers/frankfurter.js";
 import { assertPro } from "../middleware/plan.js";
+import { settleImportsFor } from "../imports/pipeline.js";
 
 export const reviewsRouter = Router();
 reviewsRouter.use(requireAuth);
@@ -66,8 +67,12 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
   const byId = new Map(items.map((item) => [item.id, item]));
   const categoryCache = new Map<string, boolean>();
   const results: ApproveResult[] = [];
+  // Imports whose items this call touched, settled once at the end so the
+  // single-approve and bulk-approve paths behave the same.
+  const touched = new Set<string>();
   for (const input of inputs) {
     const item = byId.get(input.id);
+    if (item) touched.add(item.importId);
     if (!item) {
       results.push({ id: input.id, ok: false, code: "REVIEW_ITEM_NOT_FOUND", message: "Pending review item was not found." });
       continue;
@@ -137,6 +142,7 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
       results.push({ id: input.id, ok: false, code: "APPROVE_FAILED", message: error instanceof Error ? error.message : "Could not approve this transaction." });
     }
   }
+  await settleImportsFor(touched);
   return results;
 }
 
@@ -173,6 +179,12 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
 
 reviewsRouter.post("/:id/reject", async (req, res) => {
   await assertPro(req.auth?.userId, "Resolving reviewed transactions");
+  // Read the parent first: updateMany below returns a count, not the row, and
+  // the import has to be settled once this is the last pending item in it.
+  const target = await prisma.transactionReviewItem.findFirst({
+    where: { id: req.params.id, ownerClerkId: req.auth!.userId },
+    select: { importId: true },
+  });
   const item = await prisma.transactionReviewItem.updateMany({
     where: { id: req.params.id, ownerClerkId: req.auth!.userId, status: ReviewStatus.PENDING },
     data: { status: ReviewStatus.REJECTED },
@@ -181,5 +193,6 @@ reviewsRouter.post("/:id/reject", async (req, res) => {
     res.status(404).json({ error: { code: "REVIEW_ITEM_NOT_FOUND", message: "Pending review item was not found." } });
     return;
   }
+  if (target) await settleImportsFor([target.importId]);
   res.status(204).send();
 });

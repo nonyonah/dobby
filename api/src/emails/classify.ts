@@ -13,12 +13,32 @@ const STATEMENT_EXTENSIONS = ["pdf", "csv", "ofx", "qfx", "xls", "xlsx", "zip"];
 const RECEIPT_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "heic"];
 
 const STATEMENT_TERMS = /\b(statement|stmt|account summary|transaction history|mini[- ]statement|bank statement|account activity|monthly summary)\b/i;
-const RECEIPT_TERMS = /\b(receipt|invoice|order confirmation|your order|purchase|payment confirmation|billing|rcpt|e[- ]?receipt)\b/i;
+// Subscription services word their receipts differently from shops — "your
+// subscription renewed", "payment received", "membership renewed" — and none
+// of that matched, so a YouTube Premium or Netflix receipt classified `none`.
+const RECEIPT_TERMS = /\b(receipt|invoice|order confirmation|your order|purchase|payment confirmation|payment received|billing|rcpt|e[- ]?receipt|subscription|subscription (receipt|renewal|renewed|confirmed)|renew(?:al|ed)|membership|your plan|plan (renewal|renewed)|charged)\b/i;
 const ALERT_TERMS = /\b(debited|credited|debit|credit|withdrawn|withdrawal|deposited|deposit|transaction (alert|notification|declined|successful|failed)|debit alert|credit alert|payment alert|account alert|funds (received|transferred)|transfer (alert|successful|received)|upi|atm (withdrawal|usage)|available balance|insufficient funds|money (sent|received)|direct deposit)\b/i;
 
 /** Senders that look like banks, card issuers, or payment providers. */
 const FINANCIAL_SENDER =
   /\b(bank|banking|chase|citi|citibank|hsbc|barclays|santander|natwest|revolut|monzo|starling|n26|wise|transferwise|ally|wellsfargo|bankofamerica|bofa|capitalone|capital one|american ?express|discover|paypal|stripe|venmo|cash ?app|zelle|square|adyen|ramp|brex|mercury|plaid|coinbase|kraken|binance|robinhood|fidelity|vanguard|schwab|geico|gtbank|guaranty trust|zenith|access bank|first bank|firstbank|uba|united bank|sterling|kuda|opay|palmpay|paystack|flutterwave|interswitch|kojak|mtn|airtel)\b/i;
+
+/**
+ * Senders that bill for a subscription or send purchase receipts.
+ *
+ * The sender directory is seeded from bank lists, so it holds banks and card
+ * issuers only — `matchMerchant` could never hit. Subscription services send
+ * their receipts as HTML with no attachment, so without this they had neither a
+ * trust signal nor a way in. Deliberately senders, not subjects: a subject can
+ * be spoofed and a newsletter can say "receipt".
+ */
+const MERCHANT_SENDER =
+  /\b(youtube|google\.com|googleplay|play\.google|google\.tv|netflix|spotify|apple\.com|icloud|amazon|aws|microsoft|office365|adobe|dropbox|github|gitlab|zoom|slack|notion|figma|openai|anthropic|claude|chatgpt|midjourney|canva|ebay|aliexpress|temu|shein|asos|zalando|paypal|payoneer|wise|revolut|stripe|shopify|walmart|target|bestbuy|costco|ikea|h&m|zara|uniqlo|asos|subscriptions?\.)/i;
+
+/** A sender we are willing to import an attachment-less receipt from. */
+export function isMerchantSender(address: string): boolean {
+  return MERCHANT_SENDER.test(address);
+}
 
 function extensionOf(filename: string): string | undefined {
   const match = /\.([a-z0-9]+)$/i.exec(filename.trim());
@@ -76,6 +96,7 @@ export function classifyEmail(input: ClassifyInput): EmailKind {
   const text = `${subject}\n${body}`.slice(0, 4000);
   const { bank, merchant } = attributeSender(input);
   const senderIsFinancial = isFinanceSender(from) || isFinanceSender(subject) || bank !== undefined;
+  const senderIsMerchant = isMerchantSender(from);
 
   if (filenames.length > 0) {
     const byExtension = filenames.map((filename) => extensionKind(filename));
@@ -95,6 +116,10 @@ export function classifyEmail(input: ClassifyInput): EmailKind {
   }
 
   if (ALERT_TERMS.test(text) && (senderIsFinancial || ALERT_TERMS.test(subject))) return "alert";
+  // Subscription receipts arrive as HTML with nothing attached. Accept one when
+  // the wording is unambiguous *and* it comes from a known merchant — the sender
+  // requirement is what keeps newsletters and marketing out.
+  if (RECEIPT_TERMS.test(text) && senderIsMerchant) return "receipt";
   return "none";
 }
 
@@ -112,7 +137,7 @@ export function gmailQueries(since: Date, until: Date = new Date()): string[] {
   return [
     `${window} has:attachment filename:pdf`,
     `${window} has:attachment (filename:csv OR filename:xls OR filename:xlsx OR filename:ofx OR filename:qfx)`,
-    `${window} (subject:debited OR subject:credited OR subject:"transaction alert" OR subject:"debit alert" OR subject:"credit alert" OR subject:"withdrawal" OR subject:deposit OR subject:"payment alert" OR subject:"account alert" OR subject:statement OR subject:receipt OR subject:invoice)`,
+    `${window} (subject:debited OR subject:credited OR subject:"transaction alert" OR subject:"debit alert" OR subject:"credit alert" OR subject:"withdrawal" OR subject:deposit OR subject:"payment alert" OR subject:"account alert" OR subject:statement OR subject:receipt OR subject:invoice OR subject:"order confirmation" OR subject:"payment received" OR subject:subscription OR subject:renewed OR subject:renewal OR subject:membership)`,
   ];
 }
 

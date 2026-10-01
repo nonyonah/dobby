@@ -206,7 +206,13 @@ export function normalizeGmailMessage(raw: unknown, fallbackId?: string): RawMes
   const subject = [record.subject, headerValue(headers, "Subject")].find((value): value is string => typeof value === "string" && value.trim().length > 0);
   const from = [record.from, record.sender, record.fromAddress, headerValue(headers, "From"), headerValue(headers, "sender")]
     .find((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const receivedAt = parseTimestamp(record.internalDate ?? record.receivedDateTime ?? record.receivedAt ?? record.date);
+  // The `Date` header is the fallback that matters: Composio surfaces it there
+  // rather than as a top-level field, and without it receivedAt stayed null —
+  // which dated every imported transaction to the day of the sync.
+  const receivedAt = parseTimestamp(
+    record.internalDate ?? record.receivedDateTime ?? record.receivedAt ?? record.date
+    ?? headerValue(headers, "Date") ?? headerValue(headers, "date"),
+  );
   const body = normalizeGmailBody(payload) ?? (typeof record.bodyPreview === "string" ? stripHtml(record.bodyPreview) : undefined);
   const snippet = typeof record.snippet === "string" ? record.snippet : typeof record.preview === "string" ? record.preview : undefined;
   const attachments = normalizeGmailAttachments(payload, record);
