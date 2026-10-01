@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { ArrowLeft, ArrowRight, EnvelopeSimple, FileArrowUp, Wallet } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowLeftIcon, ArrowRightIcon, FileUpIcon, MailIcon, WalletIcon } from "@hugeicons/core-free-icons";
 import { PlanProvider, usePlan } from "@/components/plan-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -154,7 +155,7 @@ function ProfileStep({ onContinue }: { onContinue: () => void }) {
 
       <div className="mt-6 flex items-center justify-end gap-2">
         <Button variant="primary" onClick={() => void continueToConnections()} disabled={busy}>
-          Continue {busy ? "…" : <ArrowRight />}
+          Continue {busy ? "…" : <HugeiconsIcon icon={ArrowRightIcon}  />}
         </Button>
       </div>
     </>
@@ -248,7 +249,7 @@ function ConnectStep() {
   const rows = [
     {
       id: "statement",
-      icon: FileArrowUp,
+      icon: FileUpIcon,
       title: "Upload a statement",
       description: "Import a bank or wallet statement (CSV, OFX, PDF).",
       done: statuses?.statement ?? false,
@@ -256,7 +257,7 @@ function ConnectStep() {
     },
     {
       id: "email",
-      icon: EnvelopeSimple,
+      icon: MailIcon,
       title: "Connect your email",
       description: "Auto-import transactions from Gmail or Outlook.",
       done: statuses?.email ?? false,
@@ -265,7 +266,7 @@ function ConnectStep() {
     },
     {
       id: "wallet",
-      icon: Wallet,
+      icon: WalletIcon,
       title: "Add a stablecoin address",
       description: "Track USDC balances and net worth on Base or Solana.",
       done: statuses?.wallet ?? false,
@@ -295,7 +296,11 @@ function ConnectStep() {
                 className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"
                 aria-hidden="true"
               >
-                <row.icon />
+                {/* Phosphor icons were components, so this row was <row.icon />
+                    and inherited its size from the font. Hugeicons exports data
+                    plus a renderer, so the size is now stated: 16px, what 1em
+                    resolved to in that box. */}
+                <HugeiconsIcon icon={row.icon} size={16} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
@@ -315,7 +320,7 @@ function ConnectStep() {
                 </span>
                 <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{row.description}</span>
               </span>
-              <ArrowRight className="size-4 shrink-0 text-faint" aria-hidden="true" />
+              <HugeiconsIcon icon={ArrowRightIcon} className="size-4 shrink-0 text-faint" aria-hidden="true"  />
             </button>
           </li>
         ))}
@@ -326,7 +331,7 @@ function ConnectStep() {
           Skip for now
         </Button>
         <Button variant="primary" onClick={() => void finish(false)} disabled={busy || statuses === null}>
-          Go to dashboard {busy ? "…" : <ArrowRight />}
+          Go to dashboard {busy ? "…" : <HugeiconsIcon icon={ArrowRightIcon}  />}
         </Button>
       </div>
 
@@ -407,7 +412,7 @@ function OnboardingFlow() {
                 onClick={goBack}
                 className="mb-3 inline-flex w-fit items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground dark:text-muted-foreground dark:hover:text-white"
               >
-                <ArrowLeft size={14} /> Back
+                <HugeiconsIcon icon={ArrowLeftIcon} size={14}  /> Back
               </button>
             ) : null}
             <Progress step={step} />

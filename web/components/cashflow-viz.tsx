@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChartBar, FlowArrow } from "@phosphor-icons/react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { BarChartIcon, GitCompareIcon } from "@hugeicons/core-free-icons";
 
 
 import { buildSankey, buildStacks, type InsightCategory, type InsightSource, type MonthlyCategory, type MonthlySummary } from "@/lib/cashflow";
@@ -46,7 +47,7 @@ export function CashflowViz({ year, sources, categories, monthly, monthlyCategor
             size="sm"
             className="size-7 min-w-7 px-0 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
-            <FlowArrow size={16} weight="fill" aria-hidden="true" />
+            <HugeiconsIcon icon={GitCompareIcon} strokeWidth={2} size={16} aria-hidden="true"  />
           </Toggle>
           <Toggle
             pressed={viz === "bars"}
@@ -56,7 +57,7 @@ export function CashflowViz({ year, sources, categories, monthly, monthlyCategor
             size="sm"
             className="size-7 min-w-7 px-0 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
           >
-            <ChartBar size={16} weight="fill" aria-hidden="true" />
+            <HugeiconsIcon icon={BarChartIcon} strokeWidth={2} size={16} aria-hidden="true"  />
           </Toggle>
         </div>
       </div>

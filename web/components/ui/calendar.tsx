@@ -10,7 +10,8 @@ import {
 } from "react-day-picker"
 
 import { Button, buttonVariants } from "@/components/ui/button"
-import { CaretDown, CaretLeft, CaretRight } from "@phosphor-icons/react/dist/ssr"
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "@hugeicons/core-free-icons";
 
 function Calendar({
   className,
@@ -147,18 +148,18 @@ function Calendar({
         Chevron: ({ className, orientation, ...props }) => {
           if (orientation === "left") {
             return (
-              <CaretLeft size={16} className={cn("size-4", className)} {...props} />
+              <HugeiconsIcon icon={ChevronLeftIcon} size={16} className={cn("size-4", className)} {...props}  />
             )
           }
 
           if (orientation === "right") {
             return (
-              <CaretRight size={16} className={cn("size-4", className)} {...props} />
+              <HugeiconsIcon icon={ChevronRightIcon} size={16} className={cn("size-4", className)} {...props}  />
             )
           }
 
           return (
-            <CaretDown size={16} className={cn("size-4", className)} {...props} />
+            <HugeiconsIcon icon={ChevronDownIcon} size={16} className={cn("size-4", className)} {...props}  />
           )
         },
         DayButton: ({ ...props }) => (

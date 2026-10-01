@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { AlertIcon, CaretDownIcon, CheckIcon } from "@/components/icons";
-import { DotsThree } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AlertIcon as AlertGlyph, InformationCircleIcon, MoreVerticalIcon } from "@hugeicons/core-free-icons";
+
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,7 +20,8 @@ import { usePlan } from "@/components/plan-provider";
 import { useUpgrade } from "@/components/upgrade";
 import { deriveBillingNotice } from "@/lib/billing-notice";
 import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "@/components/ui/alert";
-import { Info, Warning } from "@phosphor-icons/react/dist/ssr";
+
+
 import { useMemo, useState } from "react";
 
 type KindFilter = "all" | AttentionItem["kind"];
@@ -78,7 +82,7 @@ export default function NotificationsPage() {
 
       {billingNotice ? (
         <Alert status={billingNotice.status} className="mb-4">
-          <AlertIndicator>{billingNotice.status === "danger" ? <Warning weight="fill" /> : <Info weight="fill" />}</AlertIndicator>
+          <AlertIndicator>{billingNotice.status === "danger" ? <HugeiconsIcon icon={AlertGlyph} strokeWidth={2}  /> : <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2}  />}</AlertIndicator>
           <AlertContent>
             <AlertTitle>{billingNotice.title}</AlertTitle>
             <AlertDescription>{billingNotice.body}</AlertDescription>
@@ -144,7 +148,7 @@ export default function NotificationsPage() {
                         aria-label={`Actions for ${item.title}`}
                         className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                       >
-                        <DotsThree size={16} weight="bold" aria-hidden="true" />
+                        <HugeiconsIcon icon={MoreVerticalIcon} strokeWidth={2} size={16} aria-hidden="true"  />
                       </button>
                     }
                   />

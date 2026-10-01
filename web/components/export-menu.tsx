@@ -1,6 +1,7 @@
 "use client";
 
-import { DownloadSimple, FileCsv, GoogleDriveLogo, MicrosoftExcelLogo } from "@phosphor-icons/react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Csv01Icon, DownloadIcon, FileSpreadsheetIcon, GoogleDriveIcon } from "@hugeicons/core-free-icons";
 import * as XLSX from "xlsx";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import { toast } from "@/components/ui/toast";
@@ -21,9 +22,9 @@ const OPTIONS: { id: ExportKind; label: string; detail: string }[] = [
 ];
 
 function OptionIcon({ kind }: { kind: ExportKind }) {
-  if (kind === "sheets") return <GoogleDriveLogo size={17} weight="fill" className="text-[#34a853]" aria-hidden="true" />;
-  if (kind === "xlsx") return <MicrosoftExcelLogo size={17} weight="fill" className="text-[#217346]" aria-hidden="true" />;
-  if (kind === "csv") return <FileCsv size={17} weight="fill" className="text-[#35754e]" aria-hidden="true" />;
+  if (kind === "sheets") return <HugeiconsIcon icon={GoogleDriveIcon} strokeWidth={2} size={17} className="text-[#34a853]" aria-hidden="true"  />;
+  if (kind === "xlsx") return <HugeiconsIcon icon={FileSpreadsheetIcon} strokeWidth={2} size={17} className="text-[#217346]" aria-hidden="true"  />;
+  if (kind === "csv") return <HugeiconsIcon icon={Csv01Icon} strokeWidth={2} size={17} className="text-[#35754e]" aria-hidden="true"  />;
   return null;
 }
 
@@ -56,7 +57,7 @@ export function ExportMenu({ rows, filename }: ExportMenuProps) {
         aria-label="Export data"
         className="inline-flex h-7 items-center gap-1.5 rounded-[50px] bg-primary px-[10px] text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
       >
-        <DownloadSimple size={14} weight="bold" aria-hidden="true" />
+        <HugeiconsIcon icon={DownloadIcon} strokeWidth={2} size={14} aria-hidden="true"  />
         Export
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">

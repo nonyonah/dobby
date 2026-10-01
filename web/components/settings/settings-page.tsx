@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { ArrowRight, Briefcase, CloudArrowDown, CloudCheck, Info, LinkSimple, Wallet, Warning, X } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AlertIcon, ArrowRightIcon, BriefcaseIcon, CancelIcon, CloudCheckIcon, CloudDownloadIcon, InformationCircleIcon, LinkIcon, WalletIcon } from "@hugeicons/core-free-icons";
 import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "cn";
@@ -326,21 +327,20 @@ function SyncButton({
       className={cn(done && "text-success")}
     >
       <span className="relative flex size-full items-center justify-center">
-        <CloudArrowDown
+        <HugeiconsIcon icon={CloudDownloadIcon}
           aria-hidden="true"
           className={cn(
             "transition-[transform,opacity] duration-150",
             busy ? "animate-spin" : done ? "scale-75 opacity-0" : "scale-100 opacity-100",
           )}
-        />
-        <CloudCheck
+         />
+        <HugeiconsIcon icon={CloudCheckIcon} strokeWidth={2}
           aria-hidden="true"
-          weight="bold"
           className={cn(
             "absolute transition-[transform,opacity] duration-150",
             done ? "scale-100 opacity-100" : "scale-75 opacity-0",
           )}
-        />
+         />
       </span>
     </Button>
   );
@@ -865,9 +865,9 @@ export function SettingsPage() {
           <Section label="Connections">
             {wallets.length === 0 ? (
               <Row
-                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">No wallets connected yet</span></span></span>}
+                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">No wallets connected yet</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><LinkSimple /> Connect</Button>
+                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><HugeiconsIcon icon={LinkIcon}  /> Connect</Button>
               </Row>
             ) : (
               wallets.map((wallet) => (
@@ -875,18 +875,18 @@ export function SettingsPage() {
                   key={wallet.id}
                   label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-[13px]" style={{ backgroundColor: `${wallet.color}1A` }} aria-hidden="true"><span className="size-2.5 rounded-full" style={{ backgroundColor: wallet.color }} /></span><span><span className="block">{wallet.displayName} <span className="flex items-center gap-1.5 font-normal text-muted-foreground"><span aria-hidden="true">·</span><ChainLogo chain={wallet.chain} className="block size-3.5 shrink-0 rounded-full ring-1 ring-inset ring-foreground/10" />{chainLabel(wallet.chain)}</span></span><span className="mt-0.5 block font-mono text-[12px] font-medium leading-4 text-muted-foreground">{shortAddress(wallet.address)} · {walletSummaries[wallet.id] ?? "Loading activity…"}</span></span></span>}
                 >
-                  <Button variant="secondary" size="small" onClick={() => void disconnectWallet(wallet.id)}><X /> Disconnect</Button>
+                  <Button variant="secondary" size="small" onClick={() => void disconnectWallet(wallet.id)}><HugeiconsIcon icon={CancelIcon}  /> Disconnect</Button>
                 </Row>
               ))
             )}
             {wallets.length > 0 ? (
               <Row
-                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Wallet size={16} /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Base or Solana address with a custom color</span></span></span>}
+                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Base or Solana address with a custom color</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><LinkSimple /> Connect</Button>
+                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><HugeiconsIcon icon={LinkIcon}  /> Connect</Button>
               </Row>
             ) : null}
-            <Row label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><Briefcase size={16} /></span><span><span className="block">Bank</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Bank connections are planned for a future release.</span></span></span>}><Button variant="secondary" size="small" disabled>Coming soon</Button></Row>
+            <Row label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={BriefcaseIcon} size={16}  /></span><span><span className="block">Bank</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Bank connections are planned for a future release.</span></span></span>}><Button variant="secondary" size="small" disabled>Coming soon</Button></Row>
           </Section>
 
           <Section label="Integrations">
@@ -895,7 +895,7 @@ export function SettingsPage() {
                  until the user reviews them or leaves the page. */
               <Alert status="warning" className="mb-2 gap-2 px-2.5 py-1.5 text-[12px]">
                 <AlertIndicator className="[&_svg]:size-3.5">
-                  <Warning size={14} weight="fill" />
+                  <HugeiconsIcon icon={AlertIcon} strokeWidth={2} size={14}  />
                 </AlertIndicator>
                 <AlertContent>
                   <AlertTitle className="text-[12px]">
@@ -913,7 +913,7 @@ export function SettingsPage() {
                   aria-label="Dismiss duplicate email notice"
                   className="-mr-1 shrink-0 rounded-full p-1 text-muted-foreground outline-none transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 >
-                  <X size={12} weight="bold" />
+                  <HugeiconsIcon icon={CancelIcon} strokeWidth={2} size={12}  />
                 </button>
               </Alert>
             ) : null}
@@ -940,11 +940,11 @@ export function SettingsPage() {
                       {isEmail ? (
                         <SyncButton state={sync} providerName={row.name} onSync={() => void syncEmailProvider(row.id)} />
                       ) : null}
-                      <Button variant="destructive" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
+                      <Button variant="destructive" size="small" onClick={() => void disconnectProvider(row.id)}><HugeiconsIcon icon={CancelIcon}  /> Disconnect</Button>
                     </div>
                   ) : (
                     <Button variant="secondary" size="small" disabled={busy} onClick={() => void connectProvider(row.id)}>
-                      {busy ? "Connecting…" : (<><LinkSimple /> Connect</>)}
+                      {busy ? "Connecting…" : (<><HugeiconsIcon icon={LinkIcon}  /> Connect</>)}
                     </Button>
                   )}
                 </Row>
@@ -993,14 +993,14 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Categories & rules">
-            <Row label="Categorization" description="Keep categorization consistent across new imports."><Link href="/settings/categories-rules" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-accent-600">Manage categories and rules <ArrowRight size={14} /></Link></Row>
+            <Row label="Categorization" description="Keep categorization consistent across new imports."><Link href="/settings/categories-rules" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-accent-600">Manage categories and rules <HugeiconsIcon icon={ArrowRightIcon} size={14}  /></Link></Row>
           </Section>
 
           <Section label="Plan">
             {billingNotice ? (
               <Alert status={billingNotice.status}>
                 <AlertIndicator>
-                  {billingNotice.status === "danger" ? <Warning weight="fill" /> : <Info weight="fill" />}
+                  {billingNotice.status === "danger" ? <HugeiconsIcon icon={AlertIcon} strokeWidth={2}  /> : <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2}  />}
                 </AlertIndicator>
                 <AlertContent>
                   <AlertTitle>{billingNotice.title}</AlertTitle>

@@ -3,7 +3,8 @@
 import * as React from "react"
 import { Menu as MenuPrimitive } from "@base-ui/react/menu"
 import { cn } from "cn"
-import { ArrowRight, Check } from "@phosphor-icons/react/dist/ssr"
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowRightIcon, Checkmark } from "@hugeicons/core-free-icons";
 import { useDialogSurface } from "./dialog-surface"
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
@@ -131,7 +132,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <ArrowRight size={14} className="ml-auto" />
+      <HugeiconsIcon icon={ArrowRightIcon} size={14} className="ml-auto"  />
     </MenuPrimitive.SubmenuTrigger>
   )
 }
@@ -182,7 +183,7 @@ function DropdownMenuCheckboxItem({
         data-slot="dropdown-menu-checkbox-item-indicator"
       >
         <MenuPrimitive.CheckboxItemIndicator>
-          <Check size={14} />
+          <HugeiconsIcon icon={Checkmark} size={14}  />
         </MenuPrimitive.CheckboxItemIndicator>
       </span>
       {children}
@@ -222,7 +223,7 @@ function DropdownMenuRadioItem({
         data-slot="dropdown-menu-radio-item-indicator"
       >
         <MenuPrimitive.RadioItemIndicator>
-          <Check size={14} />
+          <HugeiconsIcon icon={Checkmark} size={14}  />
         </MenuPrimitive.RadioItemIndicator>
       </span>
       {children}

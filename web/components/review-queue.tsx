@@ -8,7 +8,8 @@ import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } fro
 import { formatCurrency } from "@/lib/format";
 import { useAppCurrency } from "@/hooks/use-app-currency";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
-import { PencilSimple, Sparkle } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { EditIcon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { CardIcon, CheckIcon, CloseSmallIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
 import type { TxSource } from "@/lib/finance";
 import { CategoryChip } from "@/components/ui/category-chip";
@@ -107,7 +108,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
           the user still has to act on, and it stays until they do. */}
       <Alert status="accent" className="mb-3">
         <AlertIndicator>
-          <Sparkle size={16} weight="fill" />
+          <HugeiconsIcon icon={SparklesIcon} strokeWidth={2} size={16}  />
         </AlertIndicator>
         <AlertContent>
           <AlertTitle className="flex flex-wrap items-center gap-2">
@@ -179,7 +180,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                       </HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
                       <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-success" : "text-danger"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.displayCurrency ?? appCurrency)}</>}</HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
+                      <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><HugeiconsIcon icon={EditIcon} size={15}  /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
                     </HeroTable.Row>;
                   })}
                 </HeroTable.Body>

@@ -15,7 +15,8 @@ import {
   InputGroup,
   InputGroupAddon,
 } from "@/components/ui/input-group"
-import { Check, MagnifyingGlass } from "@phosphor-icons/react/dist/ssr"
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Checkmark, SearchIcon } from "@hugeicons/core-free-icons";
 
 function Command({
   className,
@@ -82,7 +83,7 @@ function CommandInput({
           {...props}
         />
         <InputGroupAddon>
-          <MagnifyingGlass size={14} className="size-3.5 shrink-0 opacity-50" />
+          <HugeiconsIcon icon={SearchIcon} size={14} className="size-3.5 shrink-0 opacity-50"  />
         </InputGroupAddon>
       </InputGroup>
     </div>
@@ -162,7 +163,7 @@ function CommandItem({
       {...props}
     >
       {children}
-      <Check size={14} className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+      <HugeiconsIcon icon={Checkmark} size={14} className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100"  />
     </CommandPrimitive.Item>
   )
 }

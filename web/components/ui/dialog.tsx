@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { X } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { CancelIcon } from "@hugeicons/core-free-icons";
 import { cn } from "cn";
 import { DialogSurfaceContext } from "./dialog-surface";
 
@@ -97,7 +98,7 @@ function DialogContent({
             aria-label="Close dialog"
             className="absolute top-2 right-2 flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring"
           >
-            <X size={14} />
+            <HugeiconsIcon icon={CancelIcon} size={14}  />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
         ) : null}

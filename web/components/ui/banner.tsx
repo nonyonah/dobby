@@ -1,7 +1,8 @@
 "use client";
 
 import { cn } from "cn";
-import { Clock, Sparkle } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ClockIcon, SparklesIcon } from "@hugeicons/core-free-icons";
 import { CheckCircleIcon, FileIcon, WalletIcon } from "@/components/icons";
 
 /**
@@ -19,8 +20,8 @@ export type BannerTone = "review" | "upgrade" | "info" | "done" | "wallet";
 const TONE: Record<BannerTone, { icon: (props: { className?: string }) => React.ReactNode; surface: string; mark: string }> = {
   // Lighter version of the brand colour: the accent tint, which is derived
   // light- or dark-aware and already follows the chosen accent.
-  review: { icon: (p: { className?: string }) => <Sparkle size={16} weight="fill" className={p.className} />, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
-  upgrade: { icon: (p: { className?: string }) => <Clock size={16} weight="fill" className={p.className} />, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
+  review: { icon: (p: { className?: string }) => <HugeiconsIcon icon={SparklesIcon} strokeWidth={2} size={16} className={p.className}  />, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
+  upgrade: { icon: (p: { className?: string }) => <HugeiconsIcon icon={ClockIcon} strokeWidth={2} size={16} className={p.className}  />, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
   info: { icon: FileIcon, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
   done: { icon: CheckCircleIcon, surface: "border-success/30 bg-success-soft", mark: "bg-success-soft text-success" },
   wallet: { icon: WalletIcon, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },

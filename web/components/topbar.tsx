@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useClerk } from "@clerk/nextjs";
-import { SignOut } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { SignOut } from "@hugeicons/core-free-icons";
 import { SidebarTrigger } from "./ui/sidebar";
 
 import { Button } from "./ui/button";
@@ -36,7 +37,7 @@ export function TopBar({ title }: { title: string }) {
             title="Log out"
             className="text-muted-foreground hover:text-destructive"
           >
-            <SignOut size={16} weight="fill" aria-hidden="true" />
+            <HugeiconsIcon icon={SignOut} strokeWidth={2} size={16} aria-hidden="true"  />
           </Button>
           <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
             <AlertDialogContent className="z-[100]">

@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Gear, Warning } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { AlertIcon, SettingsIcon } from "@hugeicons/core-free-icons";
 import { Alert, AlertContent, AlertDescription, AlertIndicator } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -141,7 +142,7 @@ export function TaxSettingsForm({ onSaved }: { onSaved?: () => void }) {
         {jurisdiction?.scope ? (
           <Alert status="warning" className="mt-2">
             <AlertIndicator>
-              <Warning weight="fill" />
+              <HugeiconsIcon icon={AlertIcon} strokeWidth={2}  />
             </AlertIndicator>
             <AlertContent>
               <AlertDescription>{jurisdiction.scope}</AlertDescription>
@@ -187,7 +188,7 @@ export function TaxSettingsForm({ onSaved }: { onSaved?: () => void }) {
           {hasEvidenceRequirements ? (
             <Alert status="warning" className="mb-2">
               <AlertIndicator>
-                <Warning weight="fill" />
+                <HugeiconsIcon icon={AlertIcon} strokeWidth={2}  />
               </AlertIndicator>
               <AlertContent>
                 <AlertDescription>
@@ -275,7 +276,7 @@ export function TaxSettingsDialog({ onSaved }: { onSaved?: () => void }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="icon-sm" aria-label="Tax settings" title="Tax settings">
-          <Gear weight="bold" />
+          <HugeiconsIcon icon={SettingsIcon} strokeWidth={2}  />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">

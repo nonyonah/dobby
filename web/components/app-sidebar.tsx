@@ -33,7 +33,8 @@ import { AISidebar, type SidebarResource } from "./agents/ai-sidebar";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@clerk/nextjs";
 import { FEATURES } from "@/lib/features";
-import { SignOut, Sparkle } from "@phosphor-icons/react/dist/ssr";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { SignOut, SparklesIcon } from "@hugeicons/core-free-icons";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import {
   AccountsIcon,
@@ -276,7 +277,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
               </span>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => window.open("mailto:support@riftlabs.xyz?subject=Dobby%20feedback", "_self")} className="items-start gap-2">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"><Sparkle size={14} aria-hidden="true" /></span>
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"><HugeiconsIcon icon={SparklesIcon} size={14} aria-hidden="true"  /></span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium">Send feedback</span>
                 <span className="block text-[11px] text-muted-foreground">Tell us what to build next</span>
@@ -284,7 +285,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setLogoutOpen(true)} className="text-destructive focus:text-destructive data-[variant=destructive]:*:[svg]:text-destructive">
-              <SignOut className="size-4 shrink-0" />
+              <HugeiconsIcon icon={SignOut} className="size-4 shrink-0"  />
               <span className="flex-1">Log out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
