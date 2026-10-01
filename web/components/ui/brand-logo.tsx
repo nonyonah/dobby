@@ -12,12 +12,18 @@ export interface BrandLogoProps {
 }
 
 /**
- * The vector at `/dobby-logo.svg` is the artwork that actually ships, so it is
- * the default rather than an on-error fallback. Pointing the `src` at a raster
+ * The squircle tile at `/dobby-logo-squircle.svg` is the artwork that ships, so
+ * it is the default rather than an on-error fallback. Pointing `src` at a raster
  * that may not exist makes the browser 404 first and swap afterwards, which
  * reads as a broken image on every load.
+ *
+ * The shape is a true continuous-corner squircle (superellipse, n=5) drawn as an
+ * SVG path, not a `border-radius`. A radius can only round the corners; the
+ * squircle's curvature continues into the edges, which is what makes it read as
+ * an app icon at 16px. The same file backs the favicon, so the tab and the
+ * sidebar are the same mark at two sizes.
  */
-const DEFAULT_SRC = "/dobby-logo.svg";
+const DEFAULT_SRC = "/dobby-logo-squircle.svg";
 
 /**
  * The Dobby mascot, centred in a square box with `object-contain` so it never
