@@ -1,9 +1,16 @@
+/**
+ * Locale per currency, so amounts are grouped the way that currency writes them.
+ * Anything missing falls back to en-US, which is right for most but not all —
+ * CAD and ZAR were formatting with US grouping and decimal marks.
+ */
 const CURRENCY_LOCALES: Record<string, string> = {
   USD: "en-US",
   NGN: "en-NG",
   GBP: "en-GB",
   GHS: "en-GH",
   KES: "en-KE",
+  CAD: "en-CA",
+  ZAR: "en-ZA",
 };
 
 export const CURRENCY_STORAGE_KEY = "dobby-currency";

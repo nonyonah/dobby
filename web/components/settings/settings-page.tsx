@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { ArrowRight, Briefcase, CloudArrowDown, Info, LinkSimple, Wallet, Warning, X } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, Briefcase, CloudArrowDown, CloudCheck, Info, LinkSimple, Wallet, Warning, X } from "@phosphor-icons/react/dist/ssr";
 import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { cn } from "cn";
 import { ColorSelect } from "@/components/ui/color-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,7 +18,7 @@ import { readStoredCurrency, setAppCurrency, writeStoredCurrency } from "@/lib/f
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
-import { COUNTRY_OPTIONS, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS, THEME_OPTIONS } from "@/lib/countries";
+import { BILLING_COUNTRIES, COUNTRY_OPTIONS, CURRENCIES, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS, THEME_OPTIONS } from "@/lib/countries";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { deriveBillingNotice } from "@/lib/billing-notice";
 import { usePlan } from "@/components/plan-provider";
@@ -74,6 +75,28 @@ function Row({ label, description, children, align = "center" }: { label: React.
         {description ? <p className="mt-0.5 max-w-[440px] text-[12px] font-medium leading-4 text-muted-foreground">{description}</p> : null}
       </div>
       <div className="flex w-full shrink-0 justify-start sm:w-[220px] sm:justify-end">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Stands in for a row whose real value has not arrived yet.
+ *
+ * Without this the page painted its own defaults — Nigeria, NGN, System — and
+ * then swapped them for the saved values a moment later. That read as the page
+ * being slow, and worse, it flashed the wrong currency at someone who had just
+ * set it to dollars, which is easy to mistake for the setting having reverted.
+ * A neutral placeholder is honest about not knowing yet.
+ */
+function RowPlaceholder({ labelWidth = 92 }: { labelWidth?: number }) {
+  return (
+    <div className={rowClass} aria-hidden="true">
+      <div className="min-w-0 flex-1">
+        <span className="block h-[13px] rounded-[50px] bg-muted" style={{ width: labelWidth }} />
+      </div>
+      <div className="flex w-full shrink-0 justify-start sm:w-[220px] sm:justify-end">
+        <span className="block h-7 w-[132px] rounded-[50px] bg-muted" />
+      </div>
     </div>
   );
 }
@@ -150,7 +173,16 @@ type SyncJob = {
   errorMessage?: string | null;
 };
 
-type SyncState = { busy: boolean; summary?: string };
+/** `done` is set on a successful sync and cleared after a beat, so the button
+ * can acknowledge the result instead of the spinner just stopping. */
+type SyncState = {
+  busy: boolean;
+  summary?: string;
+  /** A sync has completed successfully — drives the green state and the checkmark. */
+  done?: boolean;
+  /** The last attempt failed; the row says so instead of pretending all is well. */
+  failed?: boolean;
+};
 
 const KIND_LABELS: Record<string, string> = { statement: "Statement", receipt: "Receipt", alert: "Bank alert" };
 
@@ -208,13 +240,109 @@ function SelectField({ id, label, value, options, onValueChange }: { id: string;
  * needs attention (expired grant, re-auth), muted = not connected. A dot rather
  * than a filled pill because the provider logo already anchors the row.
  */
-function ProviderStatusDot({ state }: { state: "connected" | "attention" | "disconnected" }) {
+function ProviderStatusDot({ state }: { state: ProviderState }) {
   if (state === "disconnected") return null;
+  const tone = {
+    synced: "bg-success",
+    syncing: "bg-accent animate-pulse",
+    failed: "bg-danger",
+    // Connected but nothing has synced yet: neutral, not claiming health.
+    idle: "bg-muted-foreground",
+    attention: "bg-warning",
+  }[state];
+  return <span aria-hidden="true" className={`mt-1.5 size-2 shrink-0 rounded-full ${tone}`} />;
+}
+
+/** One place that turns a provider's raw status plus its sync outcome into a
+ *  single state, so the dot, the copy and the button can never disagree. */
+type ProviderState = "disconnected" | "idle" | "syncing" | "synced" | "failed" | "attention";
+
+function providerState(connected: boolean, live: boolean, sync: SyncState | undefined): ProviderState {
+  if (!connected) return "disconnected";
+  if (sync?.busy) return "syncing";
+  if (sync?.failed) return "failed";
+  if (sync?.done) return "synced";
+  if (!live) return "attention";
+  return "idle";
+}
+
+/** Plain-language line under the provider name, per state. */
+function providerCopy(state: ProviderState, sync: SyncState | undefined, isEmail: boolean, fallback: string) {
+  switch (state) {
+    case "disconnected":
+      return fallback;
+    case "syncing":
+      return "Syncing your inbox for statements, receipts, and bank alerts…";
+    case "synced":
+      return sync?.summary ? `Synced · ${sync.summary}` : "Synced — your latest statements and receipts are up to date.";
+    case "failed":
+      return "That sync didn't finish. Try again — nothing was lost.";
+    case "attention":
+      return "Connected, but the connection needs attention — reconnect to resume syncing";
+    default:
+      return isEmail ? "Connected — sync to import statements, receipts, and bank alerts" : "Connected";
+  }
+}
+
+/** How long the checkmark stays up before the button returns to its idle state. */
+const SYNC_DONE_MS = 2600;
+
+/**
+ * Sync, as a button that reports itself.
+ *
+ * A spinner alone only says "something is happening" and stops with no signal
+ * that it worked — the user has to read the row description to find out. So the
+ * glyph carries the whole cycle: the cloud rotates while the job runs, then
+ * becomes a cloud-with-check for a beat, tinted success.
+ *
+ * Icon-only because the label would have to change with the glyph and fight it
+ * at 26px. `aria-label` and `title` carry the state for assistive tech and on
+ * hover, and the row description still spells the sync out in words underneath.
+ *
+ * The two glyphs are stacked rather than swapped so the change crossfades —
+ * `transition-[transform,opacity]` naming the exact properties, so the colour
+ * does not smear along with it.
+ */
+function SyncButton({
+  state,
+  providerName,
+  onSync,
+}: {
+  state: SyncState | undefined;
+  providerName: string;
+  onSync: () => void;
+}) {
+  const busy = state?.busy === true;
+  const done = state?.done === true;
+  const label = busy ? `Syncing ${providerName}` : done ? `${providerName} synced` : `Sync ${providerName}`;
   return (
-    <span
-      aria-hidden="true"
-      className={`mt-1.5 size-2 shrink-0 rounded-full ${state === "connected" ? "bg-success" : "bg-warning"}`}
-    />
+    <Button
+      variant="secondary"
+      size="icon-sm"
+      disabled={busy}
+      onClick={onSync}
+      aria-label={label}
+      title={busy ? "Syncing…" : done ? "Synced" : "Sync"}
+      className={cn(done && "text-success")}
+    >
+      <span className="relative flex size-full items-center justify-center">
+        <CloudArrowDown
+          aria-hidden="true"
+          className={cn(
+            "transition-[transform,opacity] duration-150",
+            busy ? "animate-spin" : done ? "scale-75 opacity-0" : "scale-100 opacity-100",
+          )}
+        />
+        <CloudCheck
+          aria-hidden="true"
+          weight="bold"
+          className={cn(
+            "absolute transition-[transform,opacity] duration-150",
+            done ? "scale-100 opacity-100" : "scale-75 opacity-0",
+          )}
+        />
+      </span>
+    </Button>
   );
 }
 
@@ -248,6 +376,9 @@ export function SettingsPage() {
   const [syncState, setSyncState] = useState<Record<string, SyncState>>({});
   const [duplicateEmails, setDuplicateEmails] = useState<EmailImportRow[]>([]);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  // Which duplicate batch the user has dismissed. Keyed by count, not a bare
+  // boolean, so dismissing the current batch does not also hide the next one.
+  const [dismissedDuplicates, setDismissedDuplicates] = useState<number | null>(null);
   const [accentColor, setAccentColor] = useState<AccentColor>(DEFAULT_ACCENT);
   const [country, setCountry] = useState("nigeria");
   const [currency, setCurrency] = useState("ngn");
@@ -256,7 +387,7 @@ export function SettingsPage() {
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  const { plan, isPro, trialEndsAt, me, refresh: refreshPlan } = usePlan();
+  const { plan, isPro, trialEndsAt, me, loading: planLoading, refresh: refreshPlan } = usePlan();
   const trialEndsOn = trialEndsAt
     ? new Date(trialEndsAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : null;
@@ -342,16 +473,30 @@ export function SettingsPage() {
     // not overwrite a choice already made on this device: the country is only a
     // first-run hint. Writing a derived default back is what made Settings
     // appear to forget the change every time it was reopened.
+    //
+    // Resolve against the currency list rather than testing for USD. Anything the
+    // picker cannot represent used to collapse to NGN here *and be written back*,
+    // so a profile holding a currency we do not offer — CAD, say — was silently
+    // overwritten with NGN on every visit, and the next Save persisted that. It
+    // read as "saved, but it went back to naira". An unrecognised stored value is
+    // now left alone rather than destroyed.
     const storedCurrency = readStoredCurrency();
-    if (profile.currency) {
-      const supported = profile.currency.toUpperCase() === "USD" ? "usd" : "ngn";
-      setCurrency(supported);
-      writeStoredCurrency(supported.toUpperCase());
-    } else if (storedCurrency) {
-      setCurrency(storedCurrency.toLowerCase() === "usd" ? "usd" : "ngn");
+    const asOption = (code: string | null | undefined) => {
+      if (!code) return null;
+      const match = CURRENCIES.find((currency) => currency.code === code.toUpperCase());
+      return match ? match.value : null;
+    };
+    const fromProfile = asOption(profile.currency);
+    const fromStorage = asOption(storedCurrency);
+    if (fromProfile) {
+      setCurrency(fromProfile);
+      writeStoredCurrency(fromProfile.toUpperCase());
+    } else if (fromStorage) {
+      setCurrency(fromStorage);
     } else {
-      const seeded = profile.country?.toUpperCase() === "US" ? "USD" : "NGN";
-      setCurrency(seeded.toLowerCase());
+      // First run on this device: the billing country is only a starting guess.
+      const seeded = BILLING_COUNTRIES.find((entry) => entry.iso === profile.country?.toUpperCase())?.currency ?? "NGN";
+      setCurrency(asOption(seeded) ?? "ngn");
       writeStoredCurrency(seeded);
     }
     if (isThemePreference(profile.theme)) setTheme(profile.theme);
@@ -365,16 +510,46 @@ export function SettingsPage() {
 
   const mountedRef = useRef(true);
   const inflightSyncs = useRef(new Set<string>());
+  // Pending "synced" timers, one per provider, so a second sync cancels the
+  // first one's pending reset instead of leaving a stale checkmark behind.
+  const syncDoneTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   useEffect(() => {
     mountedRef.current = true;
+    // The ref object itself, not `.current`: reading `.current` in a cleanup
+    // would look up the map at teardown rather than the one this effect filled.
+    const timers = syncDoneTimers;
     return () => {
       mountedRef.current = false;
+      for (const timer of timers.current.values()) clearTimeout(timer);
+      timers.current.clear();
     };
   }, []);
 
   // Poll a sync job to completion and render its outcome. Shared by manual
   // syncs and by resuming an in-flight sync when Settings is reopened, so
   // leaving the page mid-sync never loses the result. Never throws.
+  /**
+   * Flags a provider as just-synced, then clears the flag so the button returns
+   * to its resting glyph. Cleared on unmount too: a timeout that fires after the
+   * page is gone would call setState on a dead component.
+   */
+  const markSyncDone = useCallback((provider: string, summary: string) => {
+    setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary, done: true } }));
+    const existing = syncDoneTimers.current.get(provider);
+    if (existing) clearTimeout(existing);
+    syncDoneTimers.current.set(
+      provider,
+      setTimeout(() => {
+        syncDoneTimers.current.delete(provider);
+        setSyncState((prev) => {
+          const current = prev[provider];
+          if (!current?.done) return prev;
+          return { ...prev, [provider]: current.summary === undefined ? { busy: current.busy } : { busy: current.busy, summary: current.summary } };
+        });
+      }, SYNC_DONE_MS),
+    );
+  }, []);
+
   const pollSyncJob = useCallback(async (provider: string, jobId: string) => {
     let job: SyncJob | null = null;
     for (let attempt = 0; attempt < 120; attempt += 1) {
@@ -393,7 +568,7 @@ export function SettingsPage() {
       return;
     }
     if (job.status === "failed") {
-      setSyncState((prev) => ({ ...prev, [provider]: { busy: false } }));
+      setSyncState((prev) => ({ ...prev, [provider]: { busy: false, failed: true } }));
       toast.error(job.errorMessage ?? "The email sync failed.");
       return;
     }
@@ -410,13 +585,13 @@ export function SettingsPage() {
     }
     if (!mountedRef.current) return;
     setDuplicateEmails(duplicates);
-    setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary: parts.join(" · ") } }));
+    markSyncDone(provider, parts.join(" · "));
     toast.success(
       job.imported === 0 && job.duplicates === 0
         ? "Nothing new to import from this inbox."
         : `Imported ${job.imported} email item${job.imported === 1 ? "" : "s"} · ${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"}`,
     );
-  }, [api]);
+  }, [api, markSyncDone]);
 
   // One watcher per job: manual syncs, mount resumes, and StrictMode
   // double-effects all funnel here without duplicate toasts.
@@ -543,13 +718,15 @@ export function SettingsPage() {
   };
 
   const syncEmailProvider = async (provider: string) => {
+    // Replaces the whole entry rather than merging: a new attempt must clear
+    // the previous outcome, or the row keeps showing green or red while it runs.
     setSyncState((prev) => ({ ...prev, [provider]: { busy: true } }));
     try {
       const started = await api.post<{ data: { jobId: string } }>("/v1/emails/sync", { provider });
       await finishSync(provider, started.data.jobId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not sync this inbox.";
-      setSyncState((prev) => ({ ...prev, [provider]: { busy: false } }));
+      setSyncState((prev) => ({ ...prev, [provider]: { busy: false, failed: true } }));
       toast.error(message);
     }
   };
@@ -678,9 +855,11 @@ export function SettingsPage() {
 
         <div className="space-y-5">
           <Section label="Profile">
+            {planLoading ? <RowPlaceholder labelWidth={104} /> : (
             <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" value={fullName} onChange={setFullName} /></Row>
+            )}
             <Row label="Email address" description="Used for account messages and notifications. Managed by your sign-in provider."><TextField id="profile-email" label="Email address" value={user?.primaryEmailAddress?.emailAddress ?? me?.email ?? ""} readOnly type="email" /></Row>
-            <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); /* Applying straight away keeps Currency in step with Country instead of waiting for Save and leaving the two controls disagreeing. */ if (next === "nigeria") handleCurrencyChange("ngn"); if (next === "united-states") handleCurrencyChange("usd"); }} options={COUNTRY_OPTIONS} /></Row>
+            <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); /* Applying straight away keeps Currency in step with Country instead of waiting for Save and leaving the two controls disagreeing. The currency comes from the billing-country table so the two cannot drift apart. */ const match = BILLING_COUNTRIES.find((entry) => entry.value === next); if (match) handleCurrencyChange(match.currency.toLowerCase()); }} options={COUNTRY_OPTIONS} /></Row>
           </Section>
 
           <Section label="Connections">
@@ -711,20 +890,31 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Integrations">
-            {duplicateEmails.length > 0 ? (
+            {duplicateEmails.length > 0 && dismissedDuplicates !== duplicateEmails.length ? (
               /* An alert, not a toast: duplicates were dropped, so this stays
                  until the user reviews them or leaves the page. */
-              <Alert status="warning" className="mb-2">
-                <AlertIndicator>
-                  <Warning size={16} weight="fill" />
+              <Alert status="warning" className="mb-2 gap-2 px-2.5 py-1.5 text-[12px]">
+                <AlertIndicator className="[&_svg]:size-3.5">
+                  <Warning size={14} weight="fill" />
                 </AlertIndicator>
                 <AlertContent>
-                  <AlertTitle>
+                  <AlertTitle className="text-[12px]">
                     {duplicateEmails.length} duplicate {duplicateEmails.length === 1 ? "email was" : "emails were"} skipped
                   </AlertTitle>
-                  <AlertDescription>Already imported, so they were not added again.</AlertDescription>
+                  <AlertDescription className="text-[11px]">Already imported, so they were not added again.</AlertDescription>
                 </AlertContent>
                 <Button variant="secondary" size="small" onClick={() => setDuplicatesOpen(true)}>Review duplicates</Button>
+                {/* Dismissible: the duplicates are already recorded, so re-reading
+                    the notice every visit is noise. Review stays one click away
+                    from the provider row that imports them. */}
+                <button
+                  type="button"
+                  onClick={() => setDismissedDuplicates(duplicateEmails.length)}
+                  aria-label="Dismiss duplicate email notice"
+                  className="-mr-1 shrink-0 rounded-full p-1 text-muted-foreground outline-none transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <X size={12} weight="bold" />
+                </button>
               </Alert>
             ) : null}
             {PROVIDER_ROWS.map((row) => {
@@ -735,37 +925,25 @@ export function SettingsPage() {
               const isEmail = EMAIL_PROVIDER_IDS.has(row.id);
               // `live` is the provider's own signal that the connection still
               // works; connected-but-not-live is the re-auth case.
-              const needsAttention = connected && providers[row.id]?.live === false;
-              const description = !connected
-                ? row.description
-                : needsAttention
-                  ? "Connected, but the connection needs attention — reconnect to resume syncing"
-                  : !isEmail
-                    ? "Connected"
-                  : sync?.busy
-                    ? "Syncing inbox for statements, receipts, and bank alerts…"
-                    : sync?.summary ?? "Connected — sync to import statements, receipts, and bank alerts";
+              const state = providerState(connected, providers[row.id]?.live !== false, sync);
+              // A completed sync supersedes the re-auth warning: if we just pulled
+              // statements through, the connection is demonstrably working, and
+              // leaving "needs attention" under a green row read as a contradiction.
+              const description = providerCopy(state, sync, isEmail, row.description);
               return (
                 <Row
                   key={row.id}
-                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><ProviderStatusDot state={connected ? (needsAttention ? "attention" : "connected") : "disconnected"} /><span><span className="block">{row.name}</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{description}</span></span></span>}
+                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><ProviderStatusDot state={state} /><span><span className="block">{row.name}</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{description}</span></span></span>}
                 >
                   {connected ? (
-                    <div className="flex w-full flex-wrap justify-end gap-2">
+                    <div className="flex w-full flex-wrap items-center justify-end gap-2">
                       {isEmail ? (
-                        <Button variant="secondary" size="small" disabled={sync?.busy} onClick={() => void syncEmailProvider(row.id)}>
-                          {sync?.busy ? "Syncing…" : <><CloudArrowDown /> Sync</>}
-                        </Button>
+                        <SyncButton state={sync} providerName={row.name} onSync={() => void syncEmailProvider(row.id)} />
                       ) : null}
-                      {/* Disconnect is reversible and sits next to a working
-                          action, so it gets the soft destructive treatment
-                          rather than a filled red. */}
-                      <Button variant="destructive-outline" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
+                      <Button variant="destructive" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
                     </div>
                   ) : (
-                    /* Connect is the one action this row offers, so it is the
-                       brand-outlined CTA rather than another neutral chip. */
-                    <Button variant="brand" size="small" disabled={busy} onClick={() => void connectProvider(row.id)}>
+                    <Button variant="secondary" size="small" disabled={busy} onClick={() => void connectProvider(row.id)}>
                       {busy ? "Connecting…" : (<><LinkSimple /> Connect</>)}
                     </Button>
                   )}
@@ -791,6 +969,17 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Preferences">
+            {/* Every control here is prefilled from /v1/me. Showing them before it
+                lands means showing a default the user may not have chosen. */}
+            {planLoading ? (
+              <>
+                <RowPlaceholder labelWidth={72} />
+                <RowPlaceholder labelWidth={86} />
+                <RowPlaceholder labelWidth={64} />
+                <RowPlaceholder labelWidth={104} />
+              </>
+            ) : (
+              <>
             <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => { const next = isThemePreference(value) ? value : "system"; setTheme(next); /* Apply straight away — waiting for Save left the control looking broken. */ try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* private mode: the save below still persists it */ } applyTheme(next); }} options={THEME_OPTIONS} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
             <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => handleCurrencyChange(value ?? "ngn")} options={CURRENCY_OPTIONS} /></Row>
@@ -799,6 +988,8 @@ export function SettingsPage() {
               setJurisdiction(next);
               window.localStorage.setItem("dobby-tax-jurisdiction", next);
             }} /></Row>
+              </>
+            )}
           </Section>
 
           <Section label="Categories & rules">
