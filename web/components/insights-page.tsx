@@ -20,7 +20,7 @@ import { type DayRange } from "@/lib/insights-data";
 import type { InsightsSummary } from "@/lib/cashflow";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 import { TAX_JURISDICTIONS } from "@/lib/countries";
-import { TaxPlanningCard } from "@/components/tax-planning-card";
+import { TaxSettingsDialog } from "@/components/tax-settings";
 import { Alert, AlertContent, AlertDescription, AlertIndicator } from "@/components/ui/alert";
 import { Segmented } from "@/components/ui/segmented";
 
@@ -350,7 +350,11 @@ export default function InsightsPage() {
             onValueChange={setSection}
             options={(["cashflow", "spending", "income", "stablecoin", "tax"] as Section[]).map((s) => ({ value: s, label: <span className="capitalize">{s}</span> }))}
           />
-          {section !== "tax" ? <ExportMenu rows={exportRows} filename={exportFilename} /> : null}
+          {section === "tax" ? (
+            <TaxSettingsDialog onSaved={() => void refreshTax()} />
+          ) : (
+            <ExportMenu rows={exportRows} filename={exportFilename} />
+          )}
         </div>
 
         {summaryLoading && !yearSummary ? <div className="mb-4 rounded-lg border border-line bg-card px-4 py-3 text-[13px] text-muted-foreground" role="status">Loading this year’s transaction insights…</div> : null}
@@ -495,10 +499,6 @@ export default function InsightsPage() {
                   })}
                 </ul>
               </section>
-            </div>
-
-            <div className="mt-8">
-              <TaxPlanningCard onSaved={() => void refreshTax()} />
             </div>
 
             <Alert status="default" className="mt-8">

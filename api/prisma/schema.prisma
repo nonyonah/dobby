@@ -166,6 +166,11 @@ model TaxProfile {
 model TaxChecklistItem {
   id            String             @id @default(cuid())
   taxProfileId  String
+  /// Each jurisdiction has its own filing checklist, so items are scoped to the
+  /// country that owns them. Switching jurisdiction must not discard progress on
+  /// the previous one — a UK user researching Kenya and switching back has still
+  /// done the UK work.
+  country       TaxCountry
   key           String
   label         String
   status        TaxChecklistStatus @default(OUTSTANDING)
@@ -173,8 +178,8 @@ model TaxChecklistItem {
   updatedAt     DateTime           @updatedAt
   taxProfile    TaxProfile         @relation(fields: [taxProfileId], references: [id], onDelete: Cascade)
 
-  @@unique([taxProfileId, key])
-  @@index([taxProfileId, status])
+  @@unique([taxProfileId, country, key])
+  @@index([taxProfileId, country, status])
 }
 
 /**

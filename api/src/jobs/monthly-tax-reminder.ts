@@ -32,7 +32,8 @@ export async function runMonthlyTaxReminder(now = new Date()) {
     });
     if (already) continue;
     const rules = getTaxRules(profile.country);
-    const outstanding = profile.checklistItems.filter((item) => item.status === "OUTSTANDING");
+    // Checklists are per jurisdiction; only the active country's items are this user's outstanding work.
+    const outstanding = profile.checklistItems.filter((item) => item.country === profile.country && item.status === "OUTSTANDING");
     const facts = [`Country: ${rules.country}`, `Tax year: ${profile.taxYear}`, `Estimated tax owed: ${profile.estimatedTaxOwed.toString()}`, `Outstanding documents: ${outstanding.length}`, ...outstanding.map((item) => `- ${item.label}`)].join("\n");
     let summary = facts;
     try {

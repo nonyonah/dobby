@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Warning } from "@phosphor-icons/react/dist/ssr";
+import { Gear, Warning } from "@phosphor-icons/react/dist/ssr";
 import { Alert, AlertContent, AlertDescription, AlertIndicator } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
@@ -56,7 +58,7 @@ const numberControl =
  * publishes via `GET /v1/tax/rules`, so a field can never appear without a rule
  * that reads it, and a new country needs no changes here at all.
  */
-export function TaxPlanningCard({ onSaved }: { onSaved?: () => void }) {
+export function TaxSettingsForm({ onSaved }: { onSaved?: () => void }) {
   const api = useApi();
   const [rules, setRules] = React.useState<TaxRules | null>(null);
   const [answers, setAnswers] = React.useState<Record<string, string>>({});
@@ -121,11 +123,7 @@ export function TaxPlanningCard({ onSaved }: { onSaved?: () => void }) {
   };
 
   if (!rules) {
-    return (
-      <section aria-label="Tax settings" className="rounded-xl border border-line bg-card p-4">
-        <p className="m-0 text-[13px] text-muted-foreground">Loading your tax settings…</p>
-      </section>
-    );
+    return <p className="m-0 text-[13px] text-muted-foreground">Loading your tax settings…</p>;
   }
 
   const jurisdiction = TAX_JURISDICTIONS.find(
@@ -135,10 +133,9 @@ export function TaxPlanningCard({ onSaved }: { onSaved?: () => void }) {
   const hasEvidenceRequirements = rules.deductions.some((spec) => spec.requiresEvidence);
 
   return (
-    <section aria-label="Tax settings" className="rounded-xl border border-line bg-card p-4">
-      <header className="mb-3">
-        <h2 className="m-0 text-[13px] font-semibold">Tax settings</h2>
-        <p className="m-0 mt-1 text-[12px] text-muted-foreground">
+    <div aria-label="Tax settings">
+      <div className="mb-3">
+        <p className="m-0 text-[12px] text-muted-foreground">
           {jurisdiction?.label ?? rules.country} · {rules.taxYearLabel} · estimated in {rules.currency}
         </p>
         {jurisdiction?.scope ? (
@@ -151,7 +148,7 @@ export function TaxPlanningCard({ onSaved }: { onSaved?: () => void }) {
             </AlertContent>
           </Alert>
         ) : null}
-      </header>
+      </div>
 
       {rules.inputs.length > 0 ? (
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -257,6 +254,46 @@ export function TaxPlanningCard({ onSaved }: { onSaved?: () => void }) {
       >
         {saving ? "Saving…" : "Save tax settings"}
       </button>
-    </section>
+    </div>
+  );
+}
+
+/**
+ * Tax settings live behind a dialog rather than inline on the Insights page.
+ *
+ * The form is a working surface — jurisdiction switches, a dozen deduction
+ * fields, income labelling — and inline it buried the actual estimate below a
+ * wall of controls. Behind a button the estimate is the first thing you read,
+ * and the settings are there when you want them.
+ *
+ * The trigger is `outline`, the lowest-emphasis button variant this app has: a
+ * settings affordance should not compete with the numbers it configures.
+ */
+export function TaxSettingsDialog({ onSaved }: { onSaved?: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="icon-sm" aria-label="Tax settings" title="Tax settings">
+          <Gear weight="bold" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Tax settings</DialogTitle>
+          <DialogDescription>
+            Deduction amounts, jurisdiction details and income labelling. Estimates only — Dobby does not file
+            anything.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[70vh] overflow-y-auto pr-1">
+          <TaxSettingsForm
+            onSaved={() => {
+              onSaved?.();
+            }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

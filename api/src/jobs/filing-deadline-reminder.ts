@@ -120,7 +120,7 @@ export async function runFilingDeadlineReminders(now = new Date()) {
         skipped += 1;
         continue;
       }
-      const outstanding = profile.checklistItems.filter((item) => item.status === "OUTSTANDING").map((item) => item.label);
+      const outstanding = profile.checklistItems.filter((item) => item.country === profile.country && item.status === "OUTSTANDING").map((item) => item.label);
       const email = deadlineEmail({
         country: profile.country,
         taxYear: profile.taxYear,

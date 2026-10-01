@@ -11,7 +11,10 @@ import { Skeleton } from "./ui/skeleton";
 
 type Estimate = {
   country?: string;
+  /** Currency the jurisdiction's rules are expressed in. Set by the module, never assumed. */
+  currency?: string;
   taxYear?: number;
+  taxYearLabel?: string;
   estimatedTaxOwed: number;
   filingDeadline: string;
   deductions?: Record<string, number>;
@@ -36,9 +39,13 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
   const owed = estimate?.estimatedTaxOwed ?? 0;
-  const currency = estimate?.country === "US" ? "USD" : "NGN";
+  // The estimate is returned in the jurisdiction's own currency, which is not the
+  // display currency and is not the billing country. Inferring it from `country`
+  // meant every jurisdiction that was not the US still showed naira.
+  const currency = estimate?.currency ?? "NGN";
   const money = (value: number) => formatCurrency(value, currency);
   const taxYear = estimate?.taxYear ?? new Date().getFullYear();
+  const taxYearLabel = estimate?.taxYearLabel;
   const deductionsTotal = estimate?.deductions?.total ?? 0;
   const deadline = estimate?.filingDeadline ?? null;
   const daysToDeadline = deadline ? Math.ceil((new Date(deadline).getTime() - Date.now()) / 86_400_000) : null;
@@ -84,7 +91,7 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
             {money(owed)}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="m-0 text-[12px] text-muted-foreground">Estimated tax · {taxYear}</p>
+            <p className="m-0 text-[12px] text-muted-foreground">Estimated tax · {taxYearLabel ?? taxYear}</p>
             <span className="rounded-full border-transparent bg-[#ffc8dd] px-2 py-0.5 text-[12px] font-semibold text-white">
               Informational estimate
             </span>

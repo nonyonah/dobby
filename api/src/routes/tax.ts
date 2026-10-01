@@ -28,25 +28,24 @@ async function taxCountryFor(ownerClerkId: string): Promise<TaxCountry> {
 
 async function ensureTaxProfile(ownerClerkId: string) {
   const country = await taxCountryFor(ownerClerkId);
-  const existing = await prisma.taxProfile.findUnique({ where: { ownerClerkId } });
-  const countryChanged = existing !== null && existing.country !== country;
   const profile = await prisma.taxProfile.upsert({
     where: { ownerClerkId },
     create: { ownerClerkId, country, taxYear: currentYear() },
     update: { country },
-    include: { checklistItems: true },
   });
-  // Switching jurisdiction must swap the whole filing checklist, not merge the
-  // two: the old country's rows would otherwise linger alongside the new ones.
-  if (countryChanged) {
-    await prisma.taxChecklistItem.deleteMany({ where: { taxProfileId: profile.id } });
-  }
   const rules = getTaxRules(profile.country);
+  // Each jurisdiction has its own checklist, so switching does not delete the
+  // previous country's rows — the user researching a second country must not
+  // lose their progress on the first. Rows for other countries are simply not
+  // returned.
   await prisma.taxChecklistItem.createMany({
-    data: rules.checklist.map((item) => ({ taxProfileId: profile.id, key: item.key, label: item.label })),
+    data: rules.checklist.map((item) => ({ taxProfileId: profile.id, country, key: item.key, label: item.label })),
     skipDuplicates: true,
   });
-  return prisma.taxProfile.findUniqueOrThrow({ where: { id: profile.id }, include: { checklistItems: true } });
+  return prisma.taxProfile.findUniqueOrThrow({
+    where: { id: profile.id },
+    include: { checklistItems: { where: { country }, orderBy: { createdAt: "asc" } } },
+  });
 }
 
 /**
@@ -149,7 +148,7 @@ taxRouter.patch("/profile", async (req, res) => {
       ...(input.ageBand !== undefined ? { ageBand: input.ageBand } : {}),
     },
   });
-  await prisma.taxChecklistItem.createMany({ data: rules.checklist.map((item) => ({ taxProfileId: existing.id, key: item.key, label: item.label })), skipDuplicates: true });
+  await prisma.taxChecklistItem.createMany({ data: rules.checklist.map((item) => ({ taxProfileId: existing.id, country, key: item.key, label: item.label })), skipDuplicates: true });
   res.json({ data: await ensureTaxProfile(req.auth!.userId) });
 });
 
@@ -196,7 +195,7 @@ taxRouter.get("/checklist", async (req, res) => {
 taxRouter.patch("/checklist/:key", async (req, res) => {
   const status = z.nativeEnum(TaxChecklistStatus).parse(req.body.status);
   const profile = await ensureTaxProfile(req.auth!.userId);
-  const item = await prisma.taxChecklistItem.updateMany({ where: { taxProfileId: profile.id, key: req.params.key }, data: { status } });
+  const item = await prisma.taxChecklistItem.updateMany({ where: { taxProfileId: profile.id, country: profile.country, key: req.params.key }, data: { status } });
   if (!item.count) { res.status(404).json({ error: { code: "CHECKLIST_ITEM_NOT_FOUND", message: "Tax checklist item was not found." } }); return; }
-  res.json({ data: await prisma.taxChecklistItem.findFirst({ where: { taxProfileId: profile.id, key: req.params.key } }) });
+  res.json({ data: await prisma.taxChecklistItem.findFirst({ where: { taxProfileId: profile.id, country: profile.country, key: req.params.key } }) });
 });
