@@ -84,6 +84,12 @@ export interface TxFull {
   date: string; // ISO
   amount: number; // signed display amount: + income, − spend
   sourceAmount?: number;
+  /**
+   * Currency `amount` is actually denominated in. Distinct from `currency`,
+   * which is the account's source currency and pairs with `sourceAmount` — the
+   * two must not be confused, or a converted figure gets re-symbolised.
+   */
+  displayCurrency?: string;
   currency?: string;
   needsManualReview?: boolean;
   category: string;

@@ -39,6 +39,7 @@ type ApiTransaction = {
   merchant?: string | null;
   amount: number | string;
   displayAmount?: number;
+  displayCurrency?: string;
   currency?: string;
   type: "INCOME" | "EXPENSE" | "TRANSFER";
   occurredAt: string;
@@ -78,6 +79,7 @@ function mapTransaction(item: ApiTransaction): TxFull {
     date: item.occurredAt.slice(0, 10),
     amount,
     sourceAmount: Number(item.amount),
+    displayCurrency: item.displayCurrency,
     currency: item.currency,
     category: item.category?.id ?? categoryId(item.category?.name),
     categoryId: item.category?.id,
@@ -105,6 +107,7 @@ function mapReview(item: ApiReview): TxFull {
     amount: proposed?.type === "INCOME" ? Math.abs(amount) : -Math.abs(amount),
     sourceAmount: Number(proposed?.amount ?? raw.amount ?? raw.total ?? 0),
     currency: proposed?.currency ?? (typeof raw.currency === "string" ? raw.currency : undefined),
+    displayCurrency: item.displayCurrency,
     needsManualReview: Boolean(raw.needsReview && !proposed),
     category: categoryId(item.proposedData?.categoryName),
     categoryId: item.proposedData?.categoryId,

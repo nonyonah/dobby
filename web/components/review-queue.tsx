@@ -4,8 +4,7 @@ import React, { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Table as HeroTable } from "@heroui/react";
 import { Button } from "./ui/button";
-import { Alert, AlertContent, AlertDescription, AlertTitle } from "./ui/alert";
-import { Banner } from "./ui/banner";
+import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "./ui/alert";
 import { formatCurrency, getAppCurrency } from "@/lib/format";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import { PencilSimple, Sparkle } from "@phosphor-icons/react/dist/ssr";
@@ -100,25 +99,34 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
 
   return (
     <>
-      <Banner
-        className="mb-3"
-        tone="review"
-        title="To review"
-        count={rows.length}
-        description="AI-suggested categories and tax treatment are ready for a quick decision."
-        actions={
-          rows.length > 0 ? (
-            <>
-              <Button variant="ghost" size="small" onClick={() => onDecline(rows.map((row) => row.id))}>Decline all</Button>
-              {approvableRows.length > 0 ? (
-                <Button variant="primary" size="small" disabled={busy !== false} onClick={() => approve(approvableRows.map((row) => row.id))}>
-                  {busy ? busyLabel : "Approve all"}
-                </Button>
-              ) : null}
-            </>
-          ) : null
-        }
-      />
+      {/* An alert, not a toast: a transaction waiting on a decision is a state
+          the user still has to act on, and it stays until they do. */}
+      <Alert status="accent" className="mb-3">
+        <AlertIndicator>
+          <Sparkle size={16} weight="fill" />
+        </AlertIndicator>
+        <AlertContent>
+          <AlertTitle className="flex flex-wrap items-center gap-2">
+            To review
+            {rows.length > 0 ? (
+              <span className="rounded-full bg-accent-100 px-2 py-0.5 text-[11px] font-semibold text-accent-600 tabular-nums">
+                {rows.length}
+              </span>
+            ) : null}
+          </AlertTitle>
+          <AlertDescription>AI-suggested categories and tax treatment are ready for a quick decision.</AlertDescription>
+        </AlertContent>
+        {rows.length > 0 ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2 self-center">
+            <Button variant="ghost" size="small" onClick={() => onDecline(rows.map((row) => row.id))}>Decline all</Button>
+            {approvableRows.length > 0 ? (
+              <Button variant="primary" size="small" disabled={busy !== false} onClick={() => approve(approvableRows.map((row) => row.id))}>
+                {busy ? busyLabel : "Approve all"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+      </Alert>
       <div className="mb-4">
         {rows.length === 0 ? (
           <div className="rounded-lg bg-[#f9fafb] px-4 py-5 text-center dark:bg-[#1f1f22]" role="status">
@@ -166,7 +174,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                         <span className="ml-2 text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
                       </HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
-                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.currency ?? getAppCurrency())}</>}</HeroTable.Cell>
+                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.displayCurrency ?? getAppCurrency())}</>}</HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
                     </HeroTable.Row>;
                   })}

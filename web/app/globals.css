@@ -11,6 +11,24 @@
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * HeroUI paints muted *text* with `text-muted`, but this theme's `--color-muted`
+ * is the muted **background** token that `bg-muted` uses. So HeroUI's alert
+ * descriptions and table column headers were rendering in a surface colour —
+ * `--paper-100` on white in light, `#1f1f22` on `#1A1A1B` in dark, both
+ * effectively invisible, and neither adapting.
+ *
+ * The token cannot simply be redefined: `bg-muted` is used across the app for
+ * real surfaces. So the text role is remapped at the slots HeroUI paints, leaving
+ * the background role alone.
+ */
+.alert .text-muted,
+.alert__description,
+.table-root .text-muted,
+.table__column {
+  color: var(--muted-foreground);
+}
+
 :root {
   /* Rift Labs palette (source of visual truth) */
   --ink-900: #17181c;
@@ -176,6 +194,40 @@
   --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* HeroUI surface tokens.
+     HeroUI's Alert and Table ship their own CSS, which paints itself with its own
+     token names. This theme declares a different `--color-*` namespace, so every
+     one of those utilities resolved to nothing: alerts had no background at all
+     (`bg-surface`), table headers and row hairlines lost their fill and separators
+     (`bg-surface-secondary`, `border-separator`), and the accent title/indicator
+     inherited the surrounding colour (`text-accent-soft-foreground`). Aliasing
+     them here — onto the app's existing per-mode variables — makes HeroUI's
+     styles adapt to light and dark without restating either one. */
+  --color-surface: var(--card);
+  --color-surface-secondary: var(--muted);
+  --color-separator: var(--line);
+  --color-separator-tertiary: var(--line);
+  --color-default: var(--line);
+  /* The accent pair the app already uses for a tinted chip: a mode-aware tint
+     with a foreground chosen to stay readable on it in both themes. */
+  --color-accent-soft: var(--accent-token);
+  --color-accent-soft-foreground: var(--accent-token-foreground);
+  --color-success-soft-foreground: var(--success);
+  --color-warning-soft-foreground: var(--warning);
+  --color-danger-soft-foreground: var(--danger);
+
+  /* Radius and shadow steps HeroUI's own CSS reads directly.
+     `.alert` sets `border-radius: min(32px, var(--radius-3xl))`, so with
+     `--radius-3xl` undefined the whole declaration is invalid at computed-value
+     time and the alert falls back to a square 0 radius. `--surface-shadow` has
+     the same problem for `box-shadow`, which gets dropped entirely; it is a
+     transparent shadow here because this app's surfaces are flat by design and
+     HeroUI must not inject elevation the palette does not use. */
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 32px;
+  --surface-shadow: 0 0 0 0 rgb(0 0 0 / 0);
 
   --color-sidebar-background: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
