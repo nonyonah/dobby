@@ -38,9 +38,19 @@ async function ensureTaxProfile(ownerClerkId: string) {
   // previous country's rows — the user researching a second country must not
   // lose their progress on the first. Rows for other countries are simply not
   // returned.
+  const keys = rules.checklist.map((item) => item.key);
   await prisma.taxChecklistItem.createMany({
     data: rules.checklist.map((item) => ({ taxProfileId: profile.id, country, key: item.key, label: item.label })),
     skipDuplicates: true,
+  });
+  // The module's list is the source of truth, so anything else is pruned. This
+  // is not a migration clean-up: older rows accumulated every country's keys
+  // into one list (the previous delete-on-switch was a no-op, because Settings
+  // writes TaxProfile.country before this ran), so a profile can still be
+  // carrying a union of checklists. Enforcing the invariant on every read means
+  // a stale or renamed key cannot survive to be shown to the user.
+  await prisma.taxChecklistItem.deleteMany({
+    where: { taxProfileId: profile.id, country, key: { notIn: keys } },
   });
   return prisma.taxProfile.findUniqueOrThrow({
     where: { id: profile.id },
@@ -137,7 +147,6 @@ taxRouter.patch("/profile", async (req, res) => {
   }).parse(req.body);
   const existing = await ensureTaxProfile(req.auth!.userId);
   const country = input.country ?? existing.country;
-  const rules = getTaxRules(country);
   await prisma.taxProfile.update({
     where: { id: existing.id },
     data: {
@@ -148,7 +157,8 @@ taxRouter.patch("/profile", async (req, res) => {
       ...(input.ageBand !== undefined ? { ageBand: input.ageBand } : {}),
     },
   });
-  await prisma.taxChecklistItem.createMany({ data: rules.checklist.map((item) => ({ taxProfileId: existing.id, country, key: item.key, label: item.label })), skipDuplicates: true });
+  // Checklist seeding and pruning both live in ensureTaxProfile, so there is one
+  // path that can keep a country's list correct rather than two that can drift.
   res.json({ data: await ensureTaxProfile(req.auth!.userId) });
 });
 
