@@ -30,6 +30,14 @@
 }
 
 :root {
+  /* Tells the browser which palette to draw the parts CSS cannot reach: the
+     option list of a native <select>, scrollbars, and form-control defaults.
+     Without it a <select> renders its own light dropdown over the dark app no
+     matter what the trigger looks like, because the popup is painted by the OS
+     and inherits only this property. Pairs with the .dark block below; set from
+     the same class the theme system already drives, so it needs no JS. */
+  color-scheme: light;
+
   /* Rift Labs palette (source of visual truth) */
   --ink-900: #17181c;
   --ink-700: #2b2d33;
@@ -43,14 +51,19 @@
   --accent: #411880;
   --accent-600: #3c1676;
   --accent-100: #ddd5e8;
-  --green: #1b4332;
-  --green-100: #e7ecea;
-  --green-vivid: #1b4332;
-  --red: #ef233c;
-  --red-100: #f7e6e2;
-  --red-vivid: #ef233c;
-  --warning: #ad7f22;
-  --warning-100: #f6ecd6;
+  /* Money in / success is emerald, money out / danger is rose. The steps are
+     chosen for contrast, not for matching Tailwind's defaults: emerald-700 and
+     rose-600 are the darkest steps that still clear 4.5:1 as body text on white
+     *and* carry white label text at 5.47:1 / 4.70:1. Everything else in the
+     light block derives from these three. */
+  --green: #047857;
+  --green-100: #ecfdf5;
+  --green-vivid: #047857;
+  --red: #e11d48;
+  --red-100: #fff1f2;
+  --red-vivid: #e11d48;
+  --warning: #b45309;
+  --warning-100: #fffbeb;
   --faint: #8a8b91;
   --input-border: #d7dade;
   --input-border-soft: #e8eaed;
@@ -240,6 +253,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   --paper-000: #121213;
   --paper-100: #1c1c1f;
   --paper-200: #252529;
@@ -257,15 +272,25 @@
   --secondary-foreground: #eceef0;
   --muted: #1f1f22;
   --muted-foreground: #a2a3a8;
-  --accent-token: #214341;
-  --accent-token-foreground: #b9e3df;
-  --destructive: #ef233c;
+  /* Dark mode needs its own money steps: the light emerald-700/rose-600 only
+     reach 3.39:1 on this background, so they are lifted to the 400s here. */
+  --green: #34d399;
+  --green-100: #022c22;
+  --green-vivid: #34d399;
+  --red: #fb7185;
+  --red-100: #4c0519;
+  --red-vivid: #e11d48;
+  --warning: #fbbf24;
+  --warning-100: #3b2c12;
+  --accent-token: #120724;
+  --accent-token-foreground: #a77cff;
+  --destructive: #e11d48;
   --destructive-foreground: #ffffff;
   --line: #252529;
   --border: #252529;
   --border-strong: #303036;
   --input: #252529;
-  --ring: #83c5be;
+  --ring: #a77cff;
   /* HeroUI dark surfaces. Cards intentionally stay #1A1A1B. */
   --surface: #1A1A1B;
   --surface-foreground: #eceef0;
@@ -285,35 +310,35 @@
   --field-placeholder: #a2a3a8;
   --field-border: #252529;
   --field-border-hover: #303036;
-  --field-border-focus: #83c5be;
+  --field-border-focus: #a77cff;
   --separator: #252529;
   --separator-secondary: #252529;
   --separator-tertiary: #252529;
-  --focus: #83c5be;
+  --focus: #a77cff;
   --accent-foreground: #ffffff;
-  --accent-hover: #9bd4ce;
-  --accent-soft: #214341;
-  --accent-soft-foreground: #b9e3df;
+  --accent-hover: #9d68f6;
+  --accent-soft: #120724;
+  --accent-soft-foreground: #a77cff;
   --success-foreground: #07130b;
-  --success-hover: #4cc38a;
-  --success-soft: #153526;
+  --success-hover: #6ee7b7;
+  --success-soft: #022c22;
   --success-soft-foreground: #6ee7b7;
   --warning-foreground: #17130a;
-  --warning-hover: #d9a441;
+  --warning-hover: #fcd34d;
   --warning-soft: #3b2c12;
-  --warning-soft-foreground: #fcd34d;
-  --danger: #d06853;
+  --warning-soft-foreground: #fde68a;
+  --danger: #fb7185;
   --danger-foreground: #ffffff;
-  --danger-hover: #e07861;
-  --danger-soft: #3a1f18;
-  --danger-soft-foreground: #f1997f;
+  --danger-hover: #fda4af;
+  --danger-soft: #4c0519;
+  --danger-soft-foreground: #fda4af;
   --backdrop: rgb(0 0 0 / 0.65);
   --sidebar-background: transparent;
   --sidebar-foreground: #8a8b91;
   --sidebar-accent: #18181a;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #252529;
-  --sidebar-ring: #83c5be;
+  --sidebar-ring: #a77cff;
   --chart-grid: #26262a;
   --chart-cursor: #26262a;
   --chart-tick: #8a8b91;

@@ -46,7 +46,7 @@ const currency = { format: (value: number) => new Intl.NumberFormat(getAppCurren
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">{label}</span>
+      <span className="mb-1 block text-[12px] font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -114,7 +114,7 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
         <div className="col-span-2">
           <Field label={type === "fixed" ? "Monthly amount" : "Percent of income"}>
             <div className="relative">
-              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">
+              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-muted-foreground">
                 {type === "fixed" ? "$" : "%"}
               </span>
               <Input
@@ -144,7 +144,7 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
       className="space-y-4"
     >
       <div className="space-y-1.5">
-        <label htmlFor="budget-category" className="text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">Choose a category</label>
+        <label htmlFor="budget-category" className="text-[12px] font-medium text-muted-foreground">Choose a category</label>
           <NativeSelect
             id="budget-category"
             aria-label="Choose a category"
@@ -177,7 +177,7 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
         </Field>
         <Field label={type === "fixed" ? "Monthly amount" : "Percent of income"}>
           <div className="relative">
-            <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">
+            <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[13px] text-muted-foreground">
               {type === "fixed" ? "$" : "%"}
             </span>
             <Input
@@ -243,7 +243,7 @@ export function BudgetDialog({ open, onOpenChange, catId, initial, title, onSave
         <p className="mt-2 mb-0 text-[12px] text-muted-foreground">Suggested from your current cash flow and recent activity.</p>
       </div>
       <fieldset>
-        <legend className="mb-2 text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">Recurring payment handling</legend>
+        <legend className="mb-2 text-[12px] font-medium text-muted-foreground">Recurring payment handling</legend>
         <button
           type="button"
           onClick={() => setIncludeRecurring((current) => !current)}

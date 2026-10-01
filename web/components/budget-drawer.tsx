@@ -99,7 +99,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
                       onDelete(catId);
                       setConfirming(false);
                     }}
-                    className="text-[#b0402f] dark:text-[#e0684f] focus:text-[#b0402f]"
+                    className="text-danger focus:text-danger"
                   >
                     Confirm delete
                   </DropdownMenuItem>
@@ -112,7 +112,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
                   <DropdownMenuItem onSelect={() => onToggleExclude(catId)}>
                     {excluded ? "Include in budget" : "Move to excluded"}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setConfirming(true)} className="text-[#b0402f] dark:text-[#e0684f] focus:text-[#b0402f]">
+                  <DropdownMenuItem onSelect={() => setConfirming(true)} className="text-danger focus:text-danger">
                     Delete category
                   </DropdownMenuItem>
                 </>
@@ -123,8 +123,8 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
       </div>
 
       <p className="mono m-0 mt-3 text-[13px] tabular-nums">
-        <span className="text-[20px] font-semibold text-[#1c1d20] dark:text-[#eceef0]">{formatUSD(spent)}</span>{" "}
-        <span className="text-[#8a8b91] dark:text-[#a2a3a8]">of {formatUSD(amount)} · {formatUSD(left)} left</span>
+        <span className="text-[20px] font-semibold text-foreground">{formatUSD(spent)}</span>{" "}
+        <span className="text-muted-foreground">of {formatUSD(amount)} · {formatUSD(left)} left</span>
       </p>
 
       <ChartContainer config={config} className="aspect-auto h-[130px] w-full">
@@ -133,7 +133,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
           <YAxis hide />
           <ChartTooltip
             cursor={{ fill: "var(--chart-cursor)", fillOpacity: 0.6 }}
-            content={<ChartTooltipContent className="bg-white dark:bg-[#1a1a1d]" formatter={(v) => formatUSD(Number(v))} />}
+            content={<ChartTooltipContent className="bg-popover" formatter={(v) => formatUSD(Number(v))} />}
           />
           <Bar dataKey="spent" fill="var(--color-spent)" radius={[3, 3, 0, 0]} maxBarSize={14} />
         </BarChart>
@@ -141,21 +141,21 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
 
       <div className="mt-2 grid grid-cols-2 gap-3 border-y border-soft-line py-2.5">
         <div>
-          <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Spent per year</p>
+          <p className="m-0 text-[12px] text-muted-foreground">Spent per year</p>
           <p className="mono m-0 text-[13px] font-semibold tabular-nums">{formatUSD(year)}</p>
         </div>
         <div className="text-right">
-          <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Avg monthly</p>
+          <p className="m-0 text-[12px] text-muted-foreground">Avg monthly</p>
           <p className="mono m-0 text-[13px] font-semibold tabular-nums">{formatUSD(Math.round(year / 12))}</p>
         </div>
       </div>
 
-      <p className="m-0 mt-3 mb-1 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Tracked from</p>
+      <p className="m-0 mt-3 mb-1 text-[12px] font-medium text-muted-foreground">Tracked from</p>
       <ul className="m-0 list-none p-0">
         {(Object.keys(feeds) as FeedKey[]).map((k) => {
           return (
             <li key={k} className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0">
-              <span className="flex size-7 items-center justify-center overflow-hidden rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]">
+              <span className="flex size-7 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
                 {k === "gmail" ? (
                   <img src={GMAIL_LOGO} alt="" width={16} height={16} className="size-4 rounded-[4px] outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10" />
                 ) : (
@@ -172,13 +172,13 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
         })}
       </ul>
 
-      <p className="m-0 mt-3 mb-1 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">September transactions</p>
+      <p className="m-0 mt-3 mb-1 text-[12px] font-medium text-muted-foreground">September transactions</p>
       {groups.length === 0 ? (
-        <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">Nothing tracked here yet.</p>
+        <p className="m-0 text-[13px] text-muted-foreground">Nothing tracked here yet.</p>
       ) : (
         groups.map((g) => (
           <div key={g.day}>
-            <p className="m-0 mt-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">{g.day}</p>
+            <p className="m-0 mt-2 text-[12px] font-medium text-muted-foreground">{g.day}</p>
             <ul className="m-0 list-none p-0">
               {g.items.map((t) => (
                 <li key={t.id} className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0">

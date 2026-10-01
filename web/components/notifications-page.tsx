@@ -102,7 +102,7 @@ export default function NotificationsPage() {
       ) : (
         /* Plain list on the page background — no card per row, so the list
            reads as one continuous feed with hairlines between entries. */
-        <ul className="m-0 list-none divide-y divide-[#e9e7e2] p-0 dark:divide-[#2d2d31]">
+        <ul className="m-0 list-none divide-y divide-line p-0">
           {visible.map((item) => {
             const read = isRead(item.id);
             return (

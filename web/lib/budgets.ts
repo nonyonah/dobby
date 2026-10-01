@@ -98,7 +98,7 @@ export function budgetStatus(spent: number, budget: number): "ok" | "near" | "ov
 }
 
 export const STATUS_BAR: Record<ReturnType<typeof budgetStatus>, string> = {
-  ok: "#1b4332",
-  near: "#F59E0B",
-  over: "#ef233c",
+  ok: "var(--color-success)",
+  near: "var(--color-warning)",
+  over: "var(--color-danger)",
 };

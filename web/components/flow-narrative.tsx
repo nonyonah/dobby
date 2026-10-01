@@ -8,7 +8,7 @@ export function FlowNarrative({ title, children }: { title: string; children: Re
   return (
     <ModuleCard title={title} className="h-fit self-start">
       <div className="space-y-2.5 text-[13px] leading-relaxed">{children}</div>
-      <p className="m-0 mt-3 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
+      <p className="m-0 mt-3 text-[12px] text-muted-foreground">
         Generated from your tracked data.
       </p>
     </ModuleCard>

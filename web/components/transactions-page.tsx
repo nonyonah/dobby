@@ -405,7 +405,7 @@ function TransactionsInner() {
               { value: "ledger", label: "Ledger" },
             ]}
           />
-          {effectiveView === "review" ? <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Approve items to add them to Ledger</p> : null}
+          {effectiveView === "review" ? <p className="m-0 text-[12px] text-muted-foreground">Approve items to add them to Ledger</p> : null}
         </div>
         {effectiveView === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving ? (approveProgress ?? true) : false} focusId={focusId ?? undefined} /> : <>
           <TxTable

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "cn";
 
-type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive";
+type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "brand" | "destructive" | "destructive-outline";
 type ButtonSize = "default" | "small" | "icon" | "icon-sm";
 
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
@@ -9,7 +9,15 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   secondary: "bg-secondary text-foreground hover:bg-secondary/80",
   outline: "border border-line bg-card text-foreground hover:bg-muted",
   ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
+  // Brand-tinted outline: the row-level call to action that should read as
+  // "yours to press" without competing with a filled primary button for it.
+  // Driven by --accent, so it follows the accent the user picked.
+  brand: "border border-accent/40 text-accent hover:bg-accent/10",
   destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+  // Soft destructive for reversible teardown (disconnect a provider). Reads as
+  // destructive without the weight of a filled red, which is reserved for
+  // irreversible confirms.
+  "destructive-outline": "border border-destructive/40 text-destructive hover:bg-destructive/10",
 };
 
 function buttonVariants({ variant = "secondary" }: { variant?: ButtonVariant } = {}) {

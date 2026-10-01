@@ -133,16 +133,16 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
       </Alert>
       <div className="mb-4">
         {rows.length === 0 ? (
-          <div className="rounded-lg bg-[#f9fafb] px-4 py-5 text-center dark:bg-[#1f1f22]" role="status">
+          <div className="rounded-lg bg-muted px-4 py-5 text-center" role="status">
             <p className="m-0 text-[13px] font-medium">You’re all caught up</p>
-            <p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Nothing is waiting on you. Import a statement or add a transaction by hand — anything Dobby isn’t sure about lands here for a quick yes or no.</p>
+            <p className="m-0 mt-1 text-[12px] text-muted-foreground">Nothing is waiting on you. Import a statement or add a transaction by hand — anything Dobby isn’t sure about lands here for a quick yes or no.</p>
           </div>
         ) : (
           <HeroTable variant="primary" className="text-[13px]">
             <HeroTable.ScrollContainer>
               <HeroTable.Content aria-label="Transactions waiting for approval">
                 <HeroTable.Header>
-                  <HeroTable.Column className="w-10 px-2 py-2"><input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(rows.map((row) => row.id)))} aria-label="Select all transactions to review" className="size-4 accent-[#4a55c9]" /></HeroTable.Column>
+                  <HeroTable.Column className="w-10 px-2 py-2"><input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(rows.map((row) => row.id)))} aria-label="Select all transactions to review" className="size-4 accent-accent" /></HeroTable.Column>
                   <HeroTable.Column isRowHeader className="px-2 py-2 font-medium">Transaction</HeroTable.Column>
                   <HeroTable.Column className="px-2 py-2 font-medium">AI suggestion</HeroTable.Column>
                   <HeroTable.Column className="px-2 py-2 font-medium">Source</HeroTable.Column>
@@ -154,16 +154,16 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                     const meta = categoryMeta(row.category, row.categoryName);
                     const SourceIcon = SOURCE_ICON[row.source];
                     const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
-                    return <HeroTable.Row key={row.id} id={row.id} data-focused={focusId === row.id ? "true" : undefined} className={`border-b border-[#f1efeb] last:border-0 dark:border-[#26262a] ${focusId === row.id ? "bg-accent-100/40 ring-1 ring-inset ring-accent-600/30" : ""}`}>
-                      <HeroTable.Cell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-[#4a55c9]" /></HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.account} · {row.date.slice(5).replace("-", "/")}</span></HeroTable.Cell>
+                    return <HeroTable.Row key={row.id} id={row.id} data-focused={focusId === row.id ? "true" : undefined} className={`border-b border-line last:border-0 ${focusId === row.id ? "bg-accent-100/40 ring-1 ring-inset ring-accent-600/30" : ""}`}>
+                      <HeroTable.Cell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-accent" /></HeroTable.Cell>
+                      <HeroTable.Cell className="px-2 py-3"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-muted-foreground">{row.account} · {row.date.slice(5).replace("-", "/")}</span></HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3">
                         {categories.length > 0 ? (
                           <select
                             aria-label={`Category for ${row.name}`}
                             value={overrides[row.id] ?? suggestedId ?? ""}
                             onChange={(event) => setOverride(row.id, event.target.value || suggestedId || null)}
-                            className="h-7 min-w-36 cursor-pointer appearance-none rounded-lg border border-line bg-white bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat px-2 pr-6 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 dark:bg-[#232327]"
+                            className="h-7 min-w-36 cursor-pointer appearance-none rounded-lg border border-line bg-white bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat px-2 pr-6 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 bg-muted"
                             style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")" }}
                           >
                             {categories.map((option) => (
@@ -175,10 +175,10 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                         ) : (
                           <CategoryChip id={row.categoryId ?? row.category} name={row.categoryName} color={row.categoryColor} />
                         )}
-                        <span className="ml-2 text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
+                        <span className="ml-2 text-[11px] text-muted-foreground">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
                       </HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
-                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.displayCurrency ?? appCurrency)}</>}</HeroTable.Cell>
+                      <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
+                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-success" : "text-danger"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.displayCurrency ?? appCurrency)}</>}</HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
                     </HeroTable.Row>;
                   })}
@@ -199,7 +199,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
             role="toolbar"
             aria-label={`${checked.size} review transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-full bg-[#17181c] py-2 pr-2 pl-4 text-white shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
+            <div className="flex items-center gap-2 rounded-full bg-card py-2 pr-2 pl-4 text-white shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
               <p className="m-0 text-[13px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>

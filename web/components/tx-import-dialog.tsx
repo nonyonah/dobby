@@ -30,7 +30,7 @@ type Mode = "choose" | "document" | "manual";
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">{label}</span>
+      <span className="mb-1 block text-[12px] font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -51,14 +51,14 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-3 rounded-[10px] border border-[#e0ddd7] dark:border-[#2d2d31] px-3 py-2.5 text-left outline-none transition-colors hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-[#4a55c9]"
+      className="flex w-full cursor-pointer items-center gap-3 rounded-[10px] border border-line px-3 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-accent"
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
         {icon}
       </span>
       <span className="min-w-0">
         <span className="block text-[13px] font-medium">{title}</span>
-        <span className="block truncate text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{sub}</span>
+        <span className="block truncate text-[12px] text-muted-foreground">{sub}</span>
       </span>
     </button>
   );
@@ -259,14 +259,14 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
               }}
             />
             <Button variant="secondary" onClick={() => fileRef.current?.click()} className="max-w-full"><span className="min-w-0 flex-1 truncate">{fileName || "Choose file"}</span></Button>
-            {selectedFile && parsed.length > 0 ? <p className="m-0 text-[13px]" aria-live="polite"><span className="font-semibold">{parsed.length}</span>{" "}<span className="text-[#8a8b91] dark:text-[#a2a3a8]">transactions ready from <span className="break-all">{fileName}</span></span></p> : selectedFile ? <p className="m-0 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]" aria-live="polite">Ready to process <span className="break-all">{fileName}</span> securely.</p> : null}
+            {selectedFile && parsed.length > 0 ? <p className="m-0 text-[13px]" aria-live="polite"><span className="font-semibold">{parsed.length}</span>{" "}<span className="text-muted-foreground">transactions ready from <span className="break-all">{fileName}</span></span></p> : selectedFile ? <p className="m-0 text-[13px] text-muted-foreground" aria-live="polite">Ready to process <span className="break-all">{fileName}</span> securely.</p> : null}
           </div>
         ) : null}
 
         {mode === "manual" ? (
           <div className="grid gap-3">
             <Field label="Merchant">
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Whole Foods" className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Whole Foods" className="h-8 bg-white bg-muted text-[13px]" />
             </Field>
             <Field label="Transaction type">
               <NativeSelect
@@ -282,12 +282,12 @@ export function TxImportDialog({ open, onOpenChange, onImport, categories = [] }
             <div className="grid grid-cols-2 gap-3">
               <Field label="Amount">
                 <div className="relative">
-                  <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">$</span>
-                  <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount in dollars" className="mono h-8 bg-white dark:bg-[#232327] pr-3 pl-10 text-[13px]" />
+                  <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-muted-foreground">$</span>
+                  <Input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" aria-label="Amount in dollars" className="mono h-8 bg-white bg-muted pr-3 pl-10 text-[13px]" />
                 </div>
               </Field>
               <Field label="Date">
-                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-white bg-muted text-[13px]" />
               </Field>
             </div>
             <Field label="Category">

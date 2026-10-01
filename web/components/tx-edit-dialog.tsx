@@ -35,7 +35,7 @@ interface TxEditDialogProps {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[12px] font-medium text-[#55565c] dark:text-[#a2a3a8]">{label}</span>
+      <span className="mb-1 block text-[12px] font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -127,11 +127,11 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Merchant">
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 bg-white bg-muted text-[13px]" />
           </Field>
           <Field label="Amount">
             <div className="relative">
-              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-[#8a8b91] dark:text-[#a2a3a8]">
+              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[13px] text-muted-foreground">
                 {amountSymbol}
               </span>
               <Input
@@ -139,12 +139,12 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
                 onChange={(e) => setAmount(e.target.value)}
                 inputMode="decimal"
                 aria-label={`Amount in ${amountCurrency}`}
-                className="mono h-8 bg-white dark:bg-[#232327] pr-3 pl-10 text-[13px]"
+                className="mono h-8 bg-white bg-muted pr-3 pl-10 text-[13px]"
               />
             </div>
           </Field>
           <Field label="Date">
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-white dark:bg-[#232327] text-[13px]" />
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 bg-white bg-muted text-[13px]" />
           </Field>
           <Field label="Category">
             <NativeSelect
@@ -185,7 +185,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
                 placeholder="Add context for your books…"
-                className="bg-white dark:bg-[#232327] text-[13px]"
+                className="bg-white bg-muted text-[13px]"
               />
             </Field>
           </div>

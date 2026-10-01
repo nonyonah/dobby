@@ -49,7 +49,7 @@ const INCOME_SOURCES = [
 ];
 
 const numberControl =
-  "h-8 w-full rounded-[50px] border border-line bg-card px-3 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#2d2d31] dark:bg-[#232327]";
+  "h-8 w-full rounded-[50px] border border-line bg-card px-3 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * The deductions form did not exist at all, which made every statutory relief in

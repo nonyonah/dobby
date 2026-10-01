@@ -92,7 +92,7 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <p className="m-0 text-[12px] text-muted-foreground">Estimated tax · {taxYearLabel ?? taxYear}</p>
-            <span className="rounded-full border-transparent bg-[#ffc8dd] px-2 py-0.5 text-[12px] font-semibold text-white">
+            <span className="rounded-full border-transparent bg-warning-soft px-2 py-0.5 text-[12px] font-semibold text-warning">
               Informational estimate
             </span>
           </div>
@@ -135,7 +135,7 @@ export function TaxInsightsCard({ bare = false }: { bare?: boolean }) {
         <p className="mono m-0 text-[16px] font-semibold tracking-[-0.02em] tabular-nums">
           {readiness}%
         </p>
-        <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
+        <p className="m-0 text-[12px] text-muted-foreground">
           {done} of {docs.length} documents your accountant will ask for
         </p>
       </div>

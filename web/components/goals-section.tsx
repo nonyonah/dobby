@@ -38,7 +38,7 @@ function statusLabel(status: GoalStatus) {
 }
 
 function StatusPill({ status }: { status: GoalStatus }) {
-  const tone = status === "active" ? "bg-accent-100 text-accent-600" : status === "ready" ? "bg-[#1b4332] text-white" : "bg-secondary text-muted-foreground";
+  const tone = status === "active" ? "bg-accent-100 text-accent-600" : status === "ready" ? "bg-success text-white" : "bg-secondary text-muted-foreground";
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{statusLabel(status)}</span>;
 }
 

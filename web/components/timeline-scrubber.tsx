@@ -218,7 +218,7 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
           ref={popupRef}
           aria-hidden="true"
           style={{ display: "none" }}
-          className="mono pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md bg-[#17181c] px-2 py-1 text-[12px] whitespace-nowrap text-white"
+          className="mono pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-md bg-foreground px-2 py-1 text-[12px] whitespace-nowrap text-background"
         />
         <div
           ref={trackRef}
@@ -236,8 +236,8 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
                     key={m}
                     className={`flex-1 text-center text-[11px] ${
                       inWindow
-                        ? "font-semibold text-[#1c1d20] dark:text-[#eceef0]"
-                        : "font-medium text-[#8a8b91] dark:text-[#a2a3a8]"
+                        ? "font-semibold text-foreground"
+                        : "font-medium text-muted-foreground"
                     }`}
                   >
                     {m}
@@ -249,13 +249,13 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
               {MONTH_LABELS.map((_, i) => (
                 <span key={i}>
                   <span
-                    className="absolute bottom-0 w-[2px] bg-[#8a8b91] dark:bg-[#a2a3a8]"
+                    className="absolute bottom-0 w-[2px] bg-muted-foreground"
                     style={{ left: `${(i / 12) * 100}%`, height: 16 }}
                   />
                   {[1, 2, 3, 4, 5].map((k) => (
                     <span
                       key={k}
-                      className="absolute bottom-0 w-px bg-[#c4c2bc] dark:bg-[#3a3a40]"
+                      className="absolute bottom-0 w-px bg-line"
                       style={{ left: `${((i + k / 6) / 12) * 100}%`, height: 7 }}
                     />
                   ))}
@@ -264,7 +264,7 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
             </div>
             <div
               ref={overlayRef}
-              className="absolute top-1 bottom-1 rounded-md border border-[#4a55c9] bg-[#4a55c9]/10 transition-[left,width] duration-150 ease-out"
+              className="absolute top-1 bottom-1 rounded-md border border-accent bg-accent/10 transition-[left,width] duration-150 ease-out"
               style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
             >
               <span data-handle="body" className="absolute inset-0 cursor-grab active:cursor-grabbing" />
@@ -278,7 +278,7 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
                   if (e.key === "ArrowLeft") nudge("from", -1, e.shiftKey);
                   if (e.key === "ArrowRight") nudge("from", 1, e.shiftKey);
                 }}
-                className="absolute top-1 bottom-1 -left-[3px] w-[5px] cursor-ew-resize rounded-full bg-[#4a55c9] outline-none focus-visible:outline-2 focus-visible:outline-[#4a55c9] focus-visible:outline-offset-2"
+                className="absolute top-1 bottom-1 -left-[3px] w-[5px] cursor-ew-resize rounded-full bg-accent outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
               />
               <span
                 data-handle="right"
@@ -290,7 +290,7 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
                   if (e.key === "ArrowLeft") nudge("to", -1, e.shiftKey);
                   if (e.key === "ArrowRight") nudge("to", 1, e.shiftKey);
                 }}
-                className="absolute top-1 bottom-1 -right-[3px] w-[5px] cursor-ew-resize rounded-full bg-[#4a55c9] outline-none focus-visible:outline-2 focus-visible:outline-[#4a55c9] focus-visible:outline-offset-2"
+                className="absolute top-1 bottom-1 -right-[3px] w-[5px] cursor-ew-resize rounded-full bg-accent outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
               />
             </div>
           </div>

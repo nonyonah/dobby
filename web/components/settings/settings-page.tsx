@@ -27,11 +27,11 @@ import { WalletConnectModal } from "./wallet-connect-modal";
 // Shadow-as-border: a transparent ring reads as a 1px edge without a hard
 // border colour. Dark mode swaps to a single white ring, because layered black
 // depth shadows disappear against a dark surface and the inputs lose their edge.
-const controlClass = "h-8 w-full rounded-[50px] border-[#e9e7e2] bg-white px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] transition-shadow duration-150 ease-out focus-visible:border-[#e0ddd7] focus-visible:ring-0 dark:border-[#2d2d31] dark:bg-[#232327] dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
+const controlClass = "h-8 w-full rounded-[50px] border-line bg-card px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] transition-shadow duration-150 ease-out focus-visible:border-line focus-visible:ring-0 dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
 // Fills its container rather than shrinking to the widest option. A `w-fit`
 // select left a visible gap against the edge of the 220px column every Row
 // reserves, which read as a half-empty button.
-const selectClass = `${controlClass} pr-8 text-[#2C2D2F] dark:text-[#eceef0]`;
+const selectClass = `${controlClass} pr-8 text-foreground`;
 const rowClass = "flex min-h-15 flex-col items-start justify-between gap-3 px-0 py-3.5 sm:flex-row sm:items-center sm:gap-6";
 
 /** Subscription summary returned by `GET /v1/billing`. */
@@ -199,6 +199,24 @@ function SelectField({ id, label, value, options, onValueChange }: { id: string;
   );
 }
 
+
+/**
+ * Live status dot for an integration row.
+ *
+ * Colour carries the state, so the buttons below do not have to repeat it:
+ * emerald = connected and syncing cleanly, amber = connected but the provider
+ * needs attention (expired grant, re-auth), muted = not connected. A dot rather
+ * than a filled pill because the provider logo already anchors the row.
+ */
+function ProviderStatusDot({ state }: { state: "connected" | "attention" | "disconnected" }) {
+  if (state === "disconnected") return null;
+  return (
+    <span
+      aria-hidden="true"
+      className={`mt-1.5 size-2 shrink-0 rounded-full ${state === "connected" ? "bg-success" : "bg-warning"}`}
+    />
+  );
+}
 
 function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: (value: AccentColor) => void }) {
   const selected = ACCENT_COLORS.find((color) => color.id === value) ?? ACCENT_COLORS[0];
@@ -694,12 +712,20 @@ export function SettingsPage() {
 
           <Section label="Integrations">
             {duplicateEmails.length > 0 ? (
-              <div className="-mx-1 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
-                <p className="m-0 text-[12px] font-medium leading-4 text-amber-900 dark:text-amber-100">
-                  {duplicateEmails.length} duplicate {duplicateEmails.length === 1 ? "email was" : "emails were"} already imported and were not added again.
-                </p>
+              /* An alert, not a toast: duplicates were dropped, so this stays
+                 until the user reviews them or leaves the page. */
+              <Alert status="warning" className="mb-2">
+                <AlertIndicator>
+                  <Warning size={16} weight="fill" />
+                </AlertIndicator>
+                <AlertContent>
+                  <AlertTitle>
+                    {duplicateEmails.length} duplicate {duplicateEmails.length === 1 ? "email was" : "emails were"} skipped
+                  </AlertTitle>
+                  <AlertDescription>Already imported, so they were not added again.</AlertDescription>
+                </AlertContent>
                 <Button variant="secondary" size="small" onClick={() => setDuplicatesOpen(true)}>Review duplicates</Button>
-              </div>
+              </Alert>
             ) : null}
             {PROVIDER_ROWS.map((row) => {
               const status = providers[row.id]?.status ?? "disconnected";
@@ -707,17 +733,22 @@ export function SettingsPage() {
               const busy = connectingProvider === row.id;
               const sync = syncState[row.id];
               const isEmail = EMAIL_PROVIDER_IDS.has(row.id);
+              // `live` is the provider's own signal that the connection still
+              // works; connected-but-not-live is the re-auth case.
+              const needsAttention = connected && providers[row.id]?.live === false;
               const description = !connected
                 ? row.description
-                : !isEmail
-                  ? "Connected"
+                : needsAttention
+                  ? "Connected, but the connection needs attention — reconnect to resume syncing"
+                  : !isEmail
+                    ? "Connected"
                   : sync?.busy
                     ? "Syncing inbox for statements, receipts, and bank alerts…"
                     : sync?.summary ?? "Connected — sync to import statements, receipts, and bank alerts";
               return (
                 <Row
                   key={row.id}
-                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><span><span className="block">{row.name}</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{description}</span></span></span>}
+                  label={<span className="flex items-start gap-2.5"><BrandLogo domain={row.domain} /><ProviderStatusDot state={connected ? (needsAttention ? "attention" : "connected") : "disconnected"} /><span><span className="block">{row.name}</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{description}</span></span></span>}
                 >
                   {connected ? (
                     <div className="flex w-full flex-wrap justify-end gap-2">
@@ -726,10 +757,15 @@ export function SettingsPage() {
                           {sync?.busy ? "Syncing…" : <><CloudArrowDown /> Sync</>}
                         </Button>
                       ) : null}
-                      <Button variant="secondary" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
+                      {/* Disconnect is reversible and sits next to a working
+                          action, so it gets the soft destructive treatment
+                          rather than a filled red. */}
+                      <Button variant="destructive-outline" size="small" onClick={() => void disconnectProvider(row.id)}><X /> Disconnect</Button>
                     </div>
                   ) : (
-                    <Button variant="secondary" size="small" disabled={busy} onClick={() => void connectProvider(row.id)}>
+                    /* Connect is the one action this row offers, so it is the
+                       brand-outlined CTA rather than another neutral chip. */
+                    <Button variant="brand" size="small" disabled={busy} onClick={() => void connectProvider(row.id)}>
                       {busy ? "Connecting…" : (<><LinkSimple /> Connect</>)}
                     </Button>
                   )}

@@ -25,7 +25,7 @@ const COUNTRIES = [
 ];
 
 const controlClass =
-  "h-9 w-full rounded-lg border border-input bg-card px-3 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring dark:border-[#2d2d31] dark:bg-[#232327]";
+  "h-9 w-full rounded-lg border border-input bg-card px-3 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring border-line bg-muted";
 
 type Step = 1 | 2;
 
@@ -405,7 +405,7 @@ function OnboardingFlow() {
               <button
                 type="button"
                 onClick={goBack}
-                className="mb-3 inline-flex w-fit items-center gap-1.5 text-[12px] text-[#6b6d72] transition-colors hover:text-[#1c1d20] dark:text-[#a2a3a8] dark:hover:text-white"
+                className="mb-3 inline-flex w-fit items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground dark:text-muted-foreground dark:hover:text-white"
               >
                 <ArrowLeft size={14} /> Back
               </button>

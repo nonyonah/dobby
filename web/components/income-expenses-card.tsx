@@ -27,13 +27,13 @@ export function IncomeExpensesCard() {
   const net = income - expenses;
   const data = useMemo(
     () => [
-      { k: "Income", v: income, fill: "#1b4332" },
-      { k: "Expenses", v: expenses, fill: "#ef233c" }
+      { k: "Income", v: income, fill: "var(--color-success)" },
+      { k: "Expenses", v: expenses, fill: "var(--color-danger)" }
     ],
     [income, expenses]
   );
   const config = useMemo(
-    () => ({ v: { label: "Amount", color: "#4a55c9" } }) satisfies ChartConfig,
+    () => ({ v: { label: "Amount", color: "var(--color-accent)" } }) satisfies ChartConfig,
     []
   );
 
@@ -67,7 +67,7 @@ export function IncomeExpensesCard() {
         </div>
       </div>
       <div className="mt-2">
-        <span className="inline-flex items-center rounded-full border-transparent bg-[#1b4332] px-2 py-0.5 text-[12px] font-semibold text-white">
+        <span className="inline-flex items-center rounded-full border-transparent bg-success px-2 py-0.5 text-[12px] font-semibold text-white">
           +{formatUSD(net)} saved
         </span>
       </div>

@@ -34,7 +34,7 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
   const [catFilter, setCatFilter] = useState("all");
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   const config = useMemo(
-    () => ({ v: { label: title, color: "#4a55c9" } }) satisfies ChartConfig,
+    () => ({ v: { label: title, color: "var(--color-accent)" } }) satisfies ChartConfig,
     [title]
   );
   const visible = catFilter === "all" ? items : items.filter((item) => item.id === catFilter);

@@ -23,7 +23,7 @@ interface BudgetBoardProps {
   onSelect: (id: string) => void;
 }
 
-const chartConfig = { value: { label: "Spent", color: "#4a55c9" } } satisfies ChartConfig;
+const chartConfig = { value: { label: "Spent", color: "var(--color-accent)" } } satisfies ChartConfig;
 
 export function BudgetBoard({ budgets, categories, selectedId, onSelect }: BudgetBoardProps) {
   const [openRegular, setOpenRegular] = useState(true);
@@ -63,7 +63,7 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
         type="button"
         onClick={() => onSelect(c.id)}
         aria-current={selected ? "true" : undefined}
-        className={`grid w-full cursor-pointer grid-cols-[1.5rem_minmax(0,9rem)_5rem_minmax(0,1fr)_5rem_2.5rem] items-center gap-3 rounded-[10px] px-3 py-2 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-[#4a55c9] ${
+        className={`grid w-full cursor-pointer grid-cols-[1.5rem_minmax(0,9rem)_5rem_minmax(0,1fr)_5rem_2.5rem] items-center gap-3 rounded-[10px] px-3 py-2 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
           selected ? "bg-accent/30" : "hover:bg-secondary"
         }`}
       >

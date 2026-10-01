@@ -82,7 +82,7 @@ function cutoff(filter: DateFilter): string {
 function SortIcon({ dir, active }: { dir: SortDir; active: boolean }) {
   const Icon = dir === "asc" ? SortUpIcon : SortDownIcon;
   return (
-    <span className={active ? "text-[#4a55c9] dark:text-[#9aa1f0]" : "text-[#c4c2bc] dark:text-[#55565c]"}>
+    <span className={active ? "text-accent" : "text-muted-foreground"}>
       <Icon />
     </span>
   );
@@ -105,18 +105,18 @@ function MenuRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-[7px] text-left outline-none transition-colors hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-[#4a55c9]"
+      className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-[7px] text-left outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-accent"
     >
-      <span className="shrink-0 text-[#55565c] dark:text-[#a2a3a8]">
+      <span className="shrink-0 text-muted-foreground">
         <Icon />
       </span>
-      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#1c1d20] dark:text-[#eceef0]">
+      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-foreground">
         {label}
       </span>
       {value ? (
-        <span className="max-w-28 truncate text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{value}</span>
+        <span className="max-w-28 truncate text-[12px] text-muted-foreground">{value}</span>
       ) : null}
-      <span aria-hidden="true" className="inline-flex shrink-0 -rotate-90 text-[#8a8b91] dark:text-[#a2a3a8]">
+      <span aria-hidden="true" className="inline-flex shrink-0 -rotate-90 text-muted-foreground">
         <CaretDownIcon />
       </span>
     </button>
@@ -138,18 +138,18 @@ function MenuOption({
       role="menuitemradio"
       aria-checked={selected}
       onClick={onClick}
-    className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-[7px] text-left text-[12px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-[#4a55c9] ${
+    className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-[7px] text-left text-[12px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
       selected
-        ? "bg-black/[0.06] dark:bg-[#18181A]"
-        : "hover:bg-[#f1efeb] dark:hover:bg-white/[0.06]"
+        ? "bg-black/[0.06] bg-card"
+        : "hover:bg-muted"
     }`}
   >
     <span className="flex size-4 shrink-0 items-center">
       {selected ? (
-        <CheckIcon className="text-[#4a55c9] dark:text-[#c7cbf5]" />
+        <CheckIcon className="text-accent" />
       ) : null}
     </span>
-    <span className="min-w-0 flex-1 truncate font-medium text-[#1c1d20] dark:text-[#eceef0]">
+    <span className="min-w-0 flex-1 truncate font-medium text-foreground">
       {label}
     </span>
     </button>
@@ -329,13 +329,13 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
           options={monthOptions.map((option) => ({ value: option.value, label: option.label }))}
         />
         <div className="relative w-44">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[#8a8b91] dark:text-[#a2a3a8]" />
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search…"
             aria-label="Search transactions"
-            className="h-8 border-[#e9e7e2] dark:border-[#2d2d31] bg-white dark:bg-[#232327] pr-10 pl-8 text-[12px] focus-visible:border-[#e0ddd7] focus-visible:ring-0"
+            className="h-8 border-line bg-card pr-10 pl-8 text-[12px] focus-visible:border-line focus-visible:ring-0"
           />
           <Popover open={filterOpen} onOpenChange={(open) => { setFilterOpen(open); if (!open) setMenu(null); }}>
             <PopoverTrigger
@@ -344,13 +344,13 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   type="button"
                   aria-label={`Filters${pills.length > 0 ? `, ${pills.length} active` : ""}`}
                   title="Filters"
-                  className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-[#8a8b91] dark:text-[#a2a3a8] outline-none transition-colors hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]"
+                  className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   <FilterIcon />
                   {pills.length > 0 ? (
                     <span
                       aria-hidden="true"
-                      className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-[#4a55c9] text-[10px] font-semibold text-white"
+                      className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-white"
                     >
                       {pills.length}
                     </span>
@@ -361,22 +361,22 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             <PopoverContent align="end" className="w-64 p-1.5">
               {menu === null ? (
                 <div role="menu" aria-label="Transaction filters">
-                  <p className="m-0 px-2 pt-1 pb-0.5 text-[12px] font-semibold text-[#8a8b91] dark:text-[#a2a3a8]">Filter by</p>
+                  <p className="m-0 px-2 pt-1 pb-0.5 text-[12px] font-semibold text-muted-foreground">Filter by</p>
                   <MenuRow icon={TagIcon} label="Category" value={categories.length === 1 ? optionName(categories[0]) : categories.length > 1 ? `${categories.length} selected` : undefined} onClick={() => setMenu("category")} />
                   <MenuRow icon={CalendarIcon} label="Date" value={dateRange !== "all" ? DATE_LABEL[dateRange] : undefined} onClick={() => setMenu("date")} />
                   <MenuRow icon={CalendarIcon} label="Recurring" value={recurringOnly ? "Detected" : undefined} onClick={() => setRecurringOnly((current) => !current)} />
                   <MenuRow icon={ReceiptIcon} label="Tax status" value={tax !== "all" ? (tax === "taxable" ? "Taxable" : "Non-taxable") : undefined} onClick={() => setMenu("tax")} />
                   <MenuRow icon={UploadIcon} label="Source" value={source !== "all" ? SOURCE_LABEL[source] : undefined} onClick={() => setMenu("source")} />
-                  <div className="my-1 border-t border-[#f1efeb] dark:border-[#26262a]" />
-                  <p className="m-0 px-2 pt-1 pb-0.5 text-[12px] font-semibold text-[#8a8b91] dark:text-[#a2a3a8]">Sort by</p>
+                  <div className="my-1 border-t border-line" />
+                  <p className="m-0 px-2 pt-1 pb-0.5 text-[12px] font-semibold text-muted-foreground">Sort by</p>
                   <MenuRow icon={CalendarIcon} label="Date" value={sortKey === "date" ? (sortDir === "asc" ? "Oldest" : "Newest") : undefined} onClick={() => { toggleSort("date"); }} />
                   <MenuRow icon={DollarIcon} label="Amount" value={sortKey === "amount" ? (sortDir === "asc" ? "Lowest" : "Highest") : undefined} onClick={() => { toggleSort("amount"); }} />
-                  <div className="my-1 border-t border-[#f1efeb] dark:border-[#26262a]" />
+                  <div className="my-1 border-t border-line" />
                   <button
                     type="button"
                     onClick={resetAll}
                     disabled={pills.length === 0}
-                    className="w-full cursor-pointer rounded-md px-2 py-[7px] text-left text-[12px] text-[#8a8b91] dark:text-[#a2a3a8] outline-none transition-colors hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8a8b91]"
+                    className="w-full cursor-pointer rounded-md px-2 py-[7px] text-left text-[12px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   >
                     Reset all
                   </button>
@@ -387,7 +387,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                     type="button"
                     onClick={() => setMenu(null)}
                     aria-label="Back to filters"
-                    className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-[7px] text-left text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8] outline-none transition-colors hover:bg-[#f1efeb] dark:hover:bg-white/[0.06] hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]"
+                    className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-[7px] text-left text-[12px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     <span aria-hidden="true" className="inline-flex rotate-90">
                       <CaretDownIcon />
@@ -443,7 +443,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5" aria-live="polite">
           {pills.length === 0 ? (
-            <span className="text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">All transactions</span>
+            <span className="text-[12px] text-muted-foreground">All transactions</span>
           ) : (
             <>
               {pills.map((p) => (
@@ -452,7 +452,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   type="button"
                   onClick={p.clear}
                   aria-label={`Clear filter: ${p.label}`}
-                  className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-full border border-[#C7D2FE] bg-[#E0E7FF] pr-1.5 pl-2.5 text-[12px] font-semibold text-[#4338CA] outline-none transition-colors hover:bg-[#C7D2FE] focus-visible:outline-2 focus-visible:outline-[#4a55c9] dark:border-[#4a55c9] dark:bg-[#23264a] dark:text-[#c7cbf5] dark:hover:bg-[#2e3370]"
+                  className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-full border border-accent bg-accent-soft pr-1.5 pl-2.5 text-[12px] font-semibold text-accent-600 outline-none transition-colors hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   {p.label}
                   <CloseSmallIcon />
@@ -466,12 +466,12 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
           )}
         </div>
         <p className="mono m-0 text-[12px] tabular-nums" aria-live="polite">
-          <span className="text-[#8a8b91] dark:text-[#a2a3a8]">Spent </span>
-          <span className="font-semibold text-[#1c1d20] dark:text-[#eceef0]">{formatUSD(totals.spent)}</span>
-          <span className="text-[#8a8b91] dark:text-[#a2a3a8]"> · Income </span>
-          <span className="font-semibold text-[#35754e] dark:text-[#4cc38a]">{formatUSD(totals.income)}</span>
-          <span className="text-[#8a8b91] dark:text-[#a2a3a8]"> · Net </span>
-          <span className={`font-semibold ${totals.net >= 0 ? "text-[#35754e] dark:text-[#4cc38a]" : "text-[#b0402f] dark:text-[#e0684f]"}`}>
+          <span className="text-muted-foreground">Spent </span>
+          <span className="font-semibold text-foreground">{formatUSD(totals.spent)}</span>
+          <span className="text-muted-foreground"> · Income </span>
+          <span className="font-semibold text-success">{formatUSD(totals.income)}</span>
+          <span className="text-muted-foreground"> · Net </span>
+          <span className={`font-semibold ${totals.net >= 0 ? "text-success" : "text-danger"}`}>
             {totals.net >= 0 ? "+" : "−"}{formatUSD(Math.abs(totals.net))}
           </span>
         </p>
@@ -484,17 +484,17 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             <HeroTable.Content aria-label="Ledger transactions">
           <HeroTable.Header>
             <HeroTable.Column className="w-10 px-3 py-2">
-              <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all transactions on this page" className="block size-4 accent-[#4a55c9]" />
+              <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all transactions on this page" className="block size-4 accent-accent" />
             </HeroTable.Column>
-            <HeroTable.Column id="name" isRowHeader allowsSorting className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
-              <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} /></button>
+            <HeroTable.Column id="name" isRowHeader allowsSorting className="px-3 py-2 text-[12px] font-medium text-muted-foreground">
+              <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent">Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} /></button>
             </HeroTable.Column>
-            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Category</HeroTable.Column>
-            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Tax</HeroTable.Column>
-            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">Source</HeroTable.Column>
+            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Category</HeroTable.Column>
+            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Tax</HeroTable.Column>
+            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Source</HeroTable.Column>
 
-            <HeroTable.Column id="amount" allowsSorting className="px-3 py-2 text-right text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">
-              <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-[#1c1d20] focus-visible:outline-2 focus-visible:outline-[#4a55c9]">Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} /></button>
+            <HeroTable.Column id="amount" allowsSorting className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground">
+              <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent">Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} /></button>
             </HeroTable.Column>
           </HeroTable.Header>
           <HeroTable.Body>
@@ -510,22 +510,22 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                 <Fragment key={t.id}>
                   {showDay ? (
                     <HeroTable.Row id={`${t.id}-date`} className="border-b border-line bg-background hover:bg-background">
-                      <HeroTable.Cell colSpan={6} className="px-3 py-1.5 text-[12px] font-medium text-[#8a8b91] dark:text-[#a2a3a8]">{day}</HeroTable.Cell>
+                      <HeroTable.Cell colSpan={6} className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">{day}</HeroTable.Cell>
                     </HeroTable.Row>
                   ) : null}
-                  <HeroTable.Row id={t.id} onAction={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-[#f1efeb] dark:border-[#26262a] hover:bg-secondary ${selected ? "bg-[#eceefb]/60 dark:bg-[#23264a]/60 hover:bg-[#eceefb] dark:hover:bg-[#23264a]" : ""}`}>
-                    <HeroTable.Cell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-[#4a55c9]" /></HeroTable.Cell>
-                    <HeroTable.Cell className="max-w-56 px-3 py-2.5"><span className="block truncate font-medium text-[#1c1d20] dark:text-[#eceef0]">{t.name}</span><span className="block truncate text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-[#4a55c9] dark:text-[#9aa1f0]">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</HeroTable.Cell>
+                  <HeroTable.Row id={t.id} onAction={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-line hover:bg-secondary ${selected ? "bg-accent-soft/60 hover:bg-accent-soft" : ""}`}>
+                    <HeroTable.Cell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-accent" /></HeroTable.Cell>
+                    <HeroTable.Cell className="max-w-56 px-3 py-2.5"><span className="block truncate font-medium text-foreground">{t.name}</span><span className="block truncate text-[12px] text-muted-foreground">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-accent">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</HeroTable.Cell>
                     <HeroTable.Cell className="px-3 py-2.5"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} /></HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-[#a2d2ff] text-white" : "border-transparent bg-[#cdb4db] text-white"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-[#f1efeb] dark:bg-[#26262a] text-[#55565c] dark:text-[#a2a3a8]"><SIcon /></span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-accent text-white" : "border-transparent bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
+                    <HeroTable.Cell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"><SIcon /></span></HeroTable.Cell>
 
-                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
+                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-success" : "text-danger"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
                   </HeroTable.Row>
                 </Fragment>
               );
             })}
-            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[12px] font-medium text-[#1c1d20] dark:text-[#eceef0]">No transactions match</p><p className="m-0 mt-1 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Your search and filters are excluding everything. Widen the date range, clear a filter, or import a statement to add more.</p><button type="button" onClick={resetAll} className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Clear search and filters</button></HeroTable.Cell></HeroTable.Row> : null}
+            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[12px] font-medium text-foreground">No transactions match</p><p className="m-0 mt-1 text-[12px] text-muted-foreground">Your search and filters are excluding everything. Widen the date range, clear a filter, or import a statement to add more.</p><button type="button" onClick={resetAll} className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Clear search and filters</button></HeroTable.Cell></HeroTable.Row> : null}
           </HeroTable.Body>
             </HeroTable.Content>
           </HeroTable.ScrollContainer>
@@ -534,7 +534,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
 
       {/* Pagination */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="m-0 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">
+        <p className="m-0 text-[12px] text-muted-foreground">
           Showing {from}–{to} of {filtered.length}
         </p>
         <div className="flex items-center gap-2">
@@ -570,7 +570,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             role="toolbar"
             aria-label={`${checked.size} transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-full bg-[#17181c] py-2 pr-2 pl-4 text-white shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
+            <div className="flex items-center gap-2 rounded-full bg-card py-2 pr-2 pl-4 text-white shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
               <p className="m-0 text-[12px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>

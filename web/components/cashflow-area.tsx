@@ -14,8 +14,8 @@ export function CashflowArea({ range }: { range: DayRange }) {
   const config = useMemo(
     () =>
       ({
-        income: { label: "Money in", color: "#1b4332" },
-        expenses: { label: "Money out", color: "#ef233c" }
+        income: { label: "Money in", color: "var(--color-success)" },
+        expenses: { label: "Money out", color: "var(--color-danger)" }
       }) satisfies ChartConfig,
     []
   );
@@ -37,10 +37,10 @@ export function CashflowArea({ range }: { range: DayRange }) {
     <div>
       <div className="mb-1 flex flex-wrap items-center gap-4 text-[12px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-2 rounded-full bg-[#1b4332]" /> Money in
+          <span aria-hidden="true" className="size-2 rounded-full bg-success" /> Money in
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-2 rounded-full bg-[#ef233c]" /> Money out
+          <span aria-hidden="true" className="size-2 rounded-full bg-danger" /> Money out
         </span>
       </div>
       <ChartContainer config={config} className="aspect-auto h-[220px] w-full">

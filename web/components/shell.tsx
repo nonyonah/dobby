@@ -118,8 +118,8 @@ export function Shell({ title, active, children }: ShellProps) {
           <DropdownMenuLabel>Contact support</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <div className="px-2 py-1.5">
-            <p className="m-0 text-[13px] font-medium text-[#1c1d20] dark:text-[#eceef0]">support@riftlabs.io</p>
-            <p className="m-0 mt-0.5 text-[12px] text-[#8a8b91] dark:text-[#a2a3a8]">Typically replies within a day</p>
+            <p className="m-0 text-[13px] font-medium text-foreground">support@riftlabs.io</p>
+            <p className="m-0 mt-0.5 text-[12px] text-muted-foreground">Typically replies within a day</p>
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
