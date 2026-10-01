@@ -16,7 +16,7 @@ import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { TX_CATEGORIES, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
-import { getAppCurrency } from "@/lib/format";
+import { useAppCurrency } from "@/hooks/use-app-currency";
 
 export interface DialogCategoryOption {
   id: string;
@@ -46,6 +46,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * the named commit action right.
  */
 export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }: TxEditDialogProps) {
+  // Above the `if (!tx)` bail-out: the amount field is priced in the display
+  // currency, so it has to follow a preference change while the dialog is open.
+  const appCurrency = useAppCurrency();
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
@@ -81,7 +84,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
 
   if (!tx) return null;
 
-  const amountCurrency = getAppCurrency();
+  const amountCurrency = appCurrency;
   const amountSymbol = (() => {
     try {
       const parts = new Intl.NumberFormat("en-US", { style: "currency", currency: amountCurrency }).formatToParts(0);
@@ -101,7 +104,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       name: name.trim() || tx.name,
       amount: (tx.amount < 0 ? -1 : 1) * (Number.isFinite(parsed) ? parsed : Math.abs(tx.amount)),
       sourceAmount: amountChanged ? Math.abs(parsed) : tx.sourceAmount,
-      currency: amountChanged ? getAppCurrency() : tx.currency,
+      currency: amountChanged ? appCurrency : tx.currency,
       date: date || tx.date,
       category,
       categoryId: liveIds.has(category) ? category : tx.categoryId,

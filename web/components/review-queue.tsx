@@ -5,7 +5,8 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Table as HeroTable } from "@heroui/react";
 import { Button } from "./ui/button";
 import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "./ui/alert";
-import { formatCurrency, getAppCurrency } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
+import { useAppCurrency } from "@/hooks/use-app-currency";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import { PencilSimple, Sparkle } from "@phosphor-icons/react/dist/ssr";
 import { CardIcon, CheckIcon, CloseSmallIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
@@ -49,6 +50,9 @@ interface ReviewQueueProps {
 }
 
 export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, busy = false, focusId }: ReviewQueueProps) {
+  // Fallback for rows the API could not price, so an unpriced amount never wears
+  // a symbol the preference has moved away from.
+  const appCurrency = useAppCurrency();
   const busyLabel = typeof busy === "string" ? busy : "Approving…";
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, string>>({});
@@ -174,7 +178,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                         <span className="ml-2 text-[11px] text-[#8a8b91] dark:text-[#a2a3a8]">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
                       </HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-[#6b6d72] dark:text-[#a2a3a8]" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
-                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.displayCurrency ?? getAppCurrency())}</>}</HeroTable.Cell>
+                      <HeroTable.Cell className={`mono px-2 py-3 text-right font-medium tabular-nums ${row.needsManualReview ? "text-muted-foreground" : row.amount >= 0 ? "text-[#1b4332]" : "text-[#ef233c]"}`}>{row.needsManualReview ? "Not extracted" : <>{row.amount >= 0 ? "+" : "−"}{formatCurrency(Math.abs(row.amount), row.displayCurrency ?? appCurrency)}</>}</HeroTable.Cell>
                       <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><PencilSimple size={15} /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
                     </HeroTable.Row>;
                   })}

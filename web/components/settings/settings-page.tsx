@@ -13,7 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, THEME_STORAGE_KEY, announceThemeChange, applyAccentColor, applyTheme, isThemePreference, readStoredAccent, withoutTransitions, type AccentColor, type ThemePreference } from "@/lib/theme";
-import { readStoredCurrency, writeStoredCurrency } from "@/lib/format";
+import { readStoredCurrency, setAppCurrency, writeStoredCurrency } from "@/lib/format";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
@@ -604,6 +604,12 @@ export function SettingsPage() {
     window.localStorage.setItem(ACCENT_STORAGE_KEY, next);
   };
 
+  /** Theme, Accent and Currency all apply on change and commit on Save. */
+  const handleCurrencyChange = (next: string) => {
+    setCurrency(next);
+    setAppCurrency(next);
+  };
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -620,9 +626,10 @@ export function SettingsPage() {
         accentColor: ACCENT_COLORS.find((item) => item.id === accentColor)?.value,
       });
       try { window.localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* private mode */ }
-      writeStoredCurrency(currency);
       announceThemeChange();
-      window.dispatchEvent(new CustomEvent("dobby-currency-change", { detail: currency.toUpperCase() }));
+      // Theme, Accent and Currency already applied when they were picked, so all
+      // that is left is committing them to the account and re-reading it.
+      //
       // PlanProvider caches `/v1/me` for the session, and this page re-seeds its
       // form from that payload on mount. Without this the next visit to Settings
       // hydrated from the pre-save profile and put every control back.
@@ -655,7 +662,7 @@ export function SettingsPage() {
           <Section label="Profile">
             <Row label="Full name" description="The name shown on your Dobby workspace."><TextField id="full-name" label="Full name" value={fullName} onChange={setFullName} /></Row>
             <Row label="Email address" description="Used for account messages and notifications. Managed by your sign-in provider."><TextField id="profile-email" label="Email address" value={user?.primaryEmailAddress?.emailAddress ?? me?.email ?? ""} readOnly type="email" /></Row>
-            <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); if (next === "nigeria") setCurrency("ngn"); if (next === "united-states") setCurrency("usd"); }} options={COUNTRY_OPTIONS} /></Row>
+            <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); /* Applying straight away keeps Currency in step with Country instead of waiting for Save and leaving the two controls disagreeing. */ if (next === "nigeria") handleCurrencyChange("ngn"); if (next === "united-states") handleCurrencyChange("usd"); }} options={COUNTRY_OPTIONS} /></Row>
           </Section>
 
           <Section label="Connections">
@@ -750,7 +757,7 @@ export function SettingsPage() {
           <Section label="Preferences">
             <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => { const next = isThemePreference(value) ? value : "system"; setTheme(next); /* Apply straight away — waiting for Save left the control looking broken. */ try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* private mode: the save below still persists it */ } applyTheme(next); }} options={THEME_OPTIONS} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
-            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => setCurrency(value ?? "ngn")} options={CURRENCY_OPTIONS} /></Row>
+            <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => handleCurrencyChange(value ?? "ngn")} options={CURRENCY_OPTIONS} /></Row>
             <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={TAX_JURISDICTION_OPTIONS} onValueChange={(value) => {
               const next = value ?? "nigeria";
               setJurisdiction(next);

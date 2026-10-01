@@ -34,6 +34,24 @@ export function writeStoredCurrency(currency: string) {
   }
 }
 
+/** Announced whenever the display currency changes, including cross-tab. */
+export const CURRENCY_EVENT = "dobby-currency-change";
+
+/**
+ * Applies the display currency: persists it and tells mounted views to re-read.
+ *
+ * Theme and Accent have always applied the moment they are picked, because
+ * waiting for Save left those controls looking broken while the app carried on
+ * rendering the old colours. Currency went the other way and only took effect on
+ * save, so the three preferences behaved differently for no reason. Every one of
+ * them now applies on change and commits to the account on Save.
+ */
+export function setAppCurrency(currency: string) {
+  if (typeof window === "undefined") return;
+  writeStoredCurrency(currency);
+  window.dispatchEvent(new CustomEvent(CURRENCY_EVENT, { detail: currency.toUpperCase() }));
+}
+
 export function getAppCurrency(): string {
   return readStoredCurrency() ?? "NGN";
 }
