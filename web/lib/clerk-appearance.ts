@@ -4,8 +4,9 @@
  * Colors are deliberately absent so sign-in/sign-up keep Clerk's stock
  * palette. This file only reconciles shape and sizing with the app:
  *
- *  - anything you would tap or type into takes `6px`, which is `--radius-md`
- *    (the base-mira `rounded-md` the rest of the app uses), never a pill
+ *  - anything you would tap or type into takes `7.5px`, which is `--radius-md`
+ *    (the base-mira `rounded-md` the rest of the app uses — `calc(var(--radius) *
+ *    .75)` off coss's `0.625rem`), never a pill
  *  - field, button and card metrics mirror `components/ui/*` so a Clerk screen
  *    lines up with ours without inheriting our color scheme
  */
@@ -43,7 +44,7 @@ const clerkAppearance: ClerkAppearance = {
 
     /* Primary CTA — Input is h-8 / 13px, so the submit matches it. */
     formButtonPrimary: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
       height: "32px",
       minHeight: "32px",
       padding: "0 16px",
@@ -57,7 +58,7 @@ const clerkAppearance: ClerkAppearance = {
 
     /* "Use another method" / back links that render as buttons. */
     formButtonReset: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
       height: "32px",
       minHeight: "32px",
       padding: "0 16px",
@@ -69,7 +70,7 @@ const clerkAppearance: ClerkAppearance = {
 
     /* OAuth buttons — same block geometry as the primary. */
     socialButtonsBlockButton: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
       height: "32px",
       minHeight: "32px",
       fontSize: "13px",
@@ -78,13 +79,13 @@ const clerkAppearance: ClerkAppearance = {
       transition: "background-color 150ms, border-color 150ms",
     },
     socialButtonsIconButton: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
       transition: "background-color 150ms, border-color 150ms",
     },
 
     /* "Use another method" — a real button, so it takes the same shape. */
     alternativeMethodsBlockButton: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
       height: "32px",
       minHeight: "32px",
       padding: "0 16px",
@@ -105,7 +106,7 @@ const clerkAppearance: ClerkAppearance = {
 
     /* Field — mirrors components/ui/input.tsx metrics. */
     formFieldInput: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
       height: "32px",
       minHeight: "32px",
       fontSize: "13px",
@@ -126,9 +127,9 @@ const clerkAppearance: ClerkAppearance = {
       "&:hover": { textDecoration: "underline" },
     },
 
-    /* OTP cells are text inputs, so they take the same 6px as formFieldInput. */
+    /* OTP cells are text inputs, so they take the same 7.5px as formFieldInput. */
     otpCodeFieldInputContainer: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
       transition: "border-color 150ms",
     },
     otpCodeFieldInput: {
@@ -152,7 +153,7 @@ const clerkAppearance: ClerkAppearance = {
     alertText: { fontSize: "12px" },
 
     identityPreview: {
-      borderRadius: "6px",
+      borderRadius: "7.5px",
     },
     identityPreviewEditButton: {
       "&:hover": { textDecoration: "underline" },

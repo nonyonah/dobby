@@ -247,7 +247,7 @@ function ProviderStatusDot({ state }: { state: ProviderState }) {
   if (state === "disconnected") return null;
   const tone = {
     synced: "bg-success",
-    syncing: "bg-accent animate-pulse",
+    syncing: "bg-info animate-pulse",
     failed: "bg-danger",
     // Connected but nothing has synced yet: neutral, not claiming health.
     idle: "bg-muted-foreground",
@@ -1007,7 +1007,7 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Categories & rules">
-            <Row label="Categorization" description="Keep categorization consistent across new imports."><Link href="/settings/categories-rules" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-accent-600">Manage categories and rules <HugeiconsIcon icon={ArrowRightIcon} size={14}  /></Link></Row>
+            <Row label="Categorization" description="Keep categorization consistent across new imports."><Link href="/settings/categories-rules" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-primary">Manage categories and rules <HugeiconsIcon icon={ArrowRightIcon} size={14}  /></Link></Row>
           </Section>
 
           <Section label="Plan">
@@ -1026,7 +1026,7 @@ export function SettingsPage() {
                       {checkoutBusy ? "Opening checkout…" : "Renew Pro"}
                     </Button>
                   ) : null}
-                  <Link href="#plan" className="text-[13px] font-medium text-primary hover:text-accent-600">Plan details</Link>
+                  <Link href="#plan" className="text-[13px] font-medium text-primary hover:text-primary">Plan details</Link>
                 </div>
               </Alert>
             ) : null}

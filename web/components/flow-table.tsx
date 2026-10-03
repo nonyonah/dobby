@@ -1,10 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Table as HeroTable } from "@heroui/react";
 import { formatUSD } from "@/lib/format";
 import type { TxFull } from "@/lib/transactions";
 import { Button } from "./ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { TableShell } from "./ui/table-shell";
 
 interface FlowTableProps {
   title: string;
@@ -18,7 +26,7 @@ interface FlowTableProps {
 
 const PAGE_SIZE = 8;
 
-/** Paginated HeroUI v3 ledger used by the spending, income, and stablecoin insight tabs. */
+/** Paginated ledger used by the spending, income, and stablecoin insight tabs. */
 export function FlowTable({ title, rows, income = false, signed = false, typeLabel, filterLabel }: FlowTableProps) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -29,47 +37,47 @@ export function FlowTable({ title, rows, income = false, signed = false, typeLab
 
   return (
     <section aria-label={title}>
-      <HeroTable variant="primary" className="text-[13px]">
-        <HeroTable.ScrollContainer>
-          <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-3">
-            <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{title}</span>
-            <div className="flex items-center gap-1.5">
-              <span className="rounded-full border border-line bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{typeLabel}</span>
-              <span className="rounded-full border border-line bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{filterLabel}</span>
-            </div>
+      <TableShell className="text-[13px]">
+        <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-3">
+          <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{title}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full border border-line bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{typeLabel}</span>
+            <span className="rounded-full border border-line bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{filterLabel}</span>
           </div>
-          <HeroTable.Content aria-label={title}>
-            <HeroTable.Header>
-              <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Date</HeroTable.Column>
-              <HeroTable.Column id="transaction" isRowHeader className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Transaction</HeroTable.Column>
-              <HeroTable.Column className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground">Amount</HeroTable.Column>
-            </HeroTable.Header>
-            <HeroTable.Body>
-              {pageRows.map((transaction) => (
-                <HeroTable.Row key={transaction.id} id={transaction.id} className="border-b border-line hover:bg-secondary">
-                  <HeroTable.Cell className="whitespace-nowrap px-3 py-2.5 text-[12px] text-muted-foreground">
-                    {transaction.date.slice(5).replace("-", "/")}
-                  </HeroTable.Cell>
-                  <HeroTable.Cell className="max-w-56 truncate px-3 py-2.5 font-medium">
-                    {transaction.name}
-                  </HeroTable.Cell>
-                  <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${(signed ? transaction.amount >= 0 : income) ? "text-success-vivid" : ""}`}>
-                    {(signed ? transaction.amount >= 0 : income) ? "+" : "−"}{formatUSD(Math.abs(transaction.amount))}
-                  </HeroTable.Cell>
-                </HeroTable.Row>
-              ))}
-              {rows.length === 0 ? (
-                <HeroTable.Row id="empty">
-                  <HeroTable.Cell colSpan={3} className="px-3 py-10 text-center">
-                    <p className="m-0 text-[13px] font-medium">No transactions for this month</p>
-                    <p className="m-0 mt-1 text-[12px] text-muted-foreground">Try another month to see activity.</p>
-                  </HeroTable.Cell>
-                </HeroTable.Row>
-              ) : null}
-            </HeroTable.Body>
-          </HeroTable.Content>
-        </HeroTable.ScrollContainer>
-      </HeroTable>
+        </div>
+        <Table aria-label={title}>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent!">
+              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Date</TableHead>
+              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Transaction</TableHead>
+              <TableHead className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground">Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="bg-surface">
+            {pageRows.map((transaction) => (
+              <TableRow key={transaction.id} className="border-b border-line hover:bg-secondary!">
+                <TableCell className="px-3 py-2.5 text-[12px] text-muted-foreground">
+                  {transaction.date.slice(5).replace("-", "/")}
+                </TableCell>
+                <TableCell className="max-w-56 truncate px-3 py-2.5 font-medium">
+                  {transaction.name}
+                </TableCell>
+                <TableCell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${(signed ? transaction.amount >= 0 : income) ? "text-success-vivid" : ""}`}>
+                  {(signed ? transaction.amount >= 0 : income) ? "+" : "−"}{formatUSD(Math.abs(transaction.amount))}
+                </TableCell>
+              </TableRow>
+            ))}
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={3} className="whitespace-normal! px-3 py-10 text-center">
+                  <p className="m-0 text-[13px] font-medium">No transactions for this month</p>
+                  <p className="m-0 mt-1 text-[12px] text-muted-foreground">Try another month to see activity.</p>
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </TableShell>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <p className="m-0 text-[12px] text-muted-foreground">Showing {from}–{to} of {rows.length}</p>
         <div className="flex items-center gap-2">

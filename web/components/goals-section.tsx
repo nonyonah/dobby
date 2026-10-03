@@ -38,7 +38,7 @@ function statusLabel(status: GoalStatus) {
 }
 
 function StatusPill({ status }: { status: GoalStatus }) {
-  const tone = status === "active" ? "bg-accent-100 text-accent-600" : status === "ready" ? "bg-success text-white" : "bg-secondary text-muted-foreground";
+  const tone = status === "active" ? "bg-primary/10 text-primary" : status === "ready" ? "bg-success text-white" : "bg-secondary text-muted-foreground";
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{statusLabel(status)}</span>;
 }
 
@@ -219,7 +219,7 @@ export function GoalsSection() {
   const listRow = (goal: Goal) => {
     const goalProgress = Math.min(100, (goal.tracked / goal.target) * 100);
     const months = projection(goal);
-    return <button key={goal.id} type="button" onClick={() => setSelectedId(goal.id)} aria-current={selectedId === goal.id ? "true" : undefined} className={`grid w-full cursor-pointer grid-cols-[1.5rem_minmax(0,1fr)_5rem_minmax(0,1fr)_6.5rem] items-center gap-3 rounded-[10px] px-3 py-2 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${selectedId === goal.id ? "bg-accent-100/70" : "hover:bg-secondary"}`}>
+    return <button key={goal.id} type="button" onClick={() => setSelectedId(goal.id)} aria-current={selectedId === goal.id ? "true" : undefined} className={`grid w-full cursor-pointer grid-cols-[1.5rem_minmax(0,1fr)_5rem_minmax(0,1fr)_6.5rem] items-center gap-3 rounded-[10px] px-3 py-2 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${selectedId === goal.id ? "bg-primary/10" : "hover:bg-secondary"}`}>
       <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-lg bg-secondary text-[15px]">{goal.emoji}</span>
       <span className="min-w-0"><span className="block truncate text-[13px] font-medium">{goal.name}</span><span className="block truncate text-[11px] text-muted-foreground">{projection(goal) ? `${goal.source} · about ${projection(goal)} ${projection(goal) === 1 ? "month" : "months"} left` : goal.source}</span></span>
       <span className="mono text-right text-[12px] font-medium tabular-nums">{goalProgress.toFixed(0)}%</span>
@@ -246,7 +246,7 @@ export function GoalsSection() {
               cy="60"
               r="52"
               fill="none"
-              stroke="var(--accent)"
+              stroke="var(--brand)"
               strokeWidth="14"
               strokeLinecap="round"
               strokeDasharray={2 * Math.PI * 52}

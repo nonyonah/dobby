@@ -44,7 +44,7 @@ function Progress({ step }: { step: Step }) {
           <span
             key={index}
             className={cn("h-1 flex-1 rounded-full transition-colors", index <= step ? "" : "bg-line")}
-            style={index <= step ? { background: "var(--accent)" } : undefined}
+            style={index <= step ? { background: "var(--brand)" } : undefined}
           />
         ))}
       </div>

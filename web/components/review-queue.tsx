@@ -2,9 +2,23 @@
 
 import React, { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Table as HeroTable } from "@heroui/react";
 import { Button } from "./ui/button";
 import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "./ui/alert";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { TableShell } from "./ui/table-shell";
+import {
+  Toolbar,
+  ToolbarButton,
+  ToolbarGroup,
+  ToolbarSeparator,
+} from "./ui/toolbar";
 import { formatCurrency } from "@/lib/format";
 import { useAppCurrency } from "@/hooks/use-app-currency";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
@@ -134,7 +148,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
           <AlertTitle className="flex flex-wrap items-center gap-2">
             To review
             {rows.length > 0 ? (
-              <span className="rounded-full bg-accent-100 px-2 py-0.5 text-[11px] font-semibold text-accent-600 tabular-nums">
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
                 {rows.length}
               </span>
             ) : null}
@@ -159,74 +173,74 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
             <p className="m-0 mt-1 text-[12px] text-muted-foreground">Nothing is waiting on you. Import a statement or add a transaction by hand — anything Dobby isn’t sure about lands here for a quick yes or no.</p>
           </div>
         ) : (
-          <HeroTable variant="primary" className="text-[13px]">
-            <HeroTable.ScrollContainer>
-              <HeroTable.Content aria-label="Transactions waiting for approval">
-                <HeroTable.Header>
-                  <HeroTable.Column className="w-10 px-2 py-2"><input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(rows.map((row) => row.id)))} aria-label="Select all transactions to review" className="size-4 accent-accent" /></HeroTable.Column>
-                  <HeroTable.Column isRowHeader className="px-2 py-2 font-medium">Transaction</HeroTable.Column>
-                  <HeroTable.Column className="px-2 py-2 font-medium">AI suggestion</HeroTable.Column>
-                  <HeroTable.Column className="px-2 py-2 font-medium">Source</HeroTable.Column>
-                  <HeroTable.Column className="px-2 py-2 text-right font-medium">Amount</HeroTable.Column>
-                  <HeroTable.Column className="px-2 py-2 text-right font-medium">Action</HeroTable.Column>
-                </HeroTable.Header>
-                <HeroTable.Body>
-                  {rows.map((row) => {
-                    const { displayCurrency, sourceLabel } = currencyFacts(row);
-                    const meta = categoryMeta(row.category, row.categoryName);
-                    const SourceIcon = SOURCE_ICON[row.source];
-                    const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
-                    return <HeroTable.Row key={row.id} id={row.id} data-focused={focusId === row.id ? "true" : undefined} className={`border-b border-line last:border-0 ${focusId === row.id ? "bg-accent-100/40 ring-1 ring-inset ring-accent-600/30" : ""}`}>
-                      <HeroTable.Cell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-accent" /></HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-muted-foreground">{row.account} · {row.date.slice(5).replace("-", "/")}</span></HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3">
-                        {categories.length > 0 ? (
-                          <select
-                            aria-label={`Category for ${row.name}`}
-                            value={overrides[row.id] ?? suggestedId ?? ""}
-                            onChange={(event) => setOverride(row.id, event.target.value || suggestedId || null)}
-                            className="h-7 min-w-36 cursor-pointer appearance-none rounded-lg border border-line bg-card bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat px-2 pr-6 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 bg-muted"
-                            style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")" }}
-                          >
-                            {categories.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.emoji} {option.name}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <CategoryChip id={row.categoryId ?? row.category} name={row.categoryName} color={row.categoryColor} />
-                        )}
-                        <span className="ml-2 text-[11px] text-muted-foreground">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
-                      </HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3 text-right">
-                        {row.needsManualReview ? (
-                          <span className="mono text-[12px] text-muted-foreground">Not extracted</span>
-                        ) : (
-                          <span className="mono block tabular-nums">
-                            {/* The converted figure leads, but only ever next to the
-                                currency it was actually fetched in. Showing the
-                                converted number alone made a naira statement look
-                                like a dollar one, which is the whole reason a
-                                statement import exists. */}
-                            <span className={`block text-[13px] font-medium ${row.amount >= 0 ? "text-success" : "text-danger"}`}>
-                              {row.amount >= 0 ? "+" : "−"}
-                              {formatCurrency(Math.abs(row.amount), displayCurrency)}
-                            </span>
-                            {sourceLabel ? (
-                              <span className="block text-[11px] text-muted-foreground">{sourceLabel}</span>
-                            ) : null}
+          <TableShell className="text-[13px]">
+            <Table aria-label="Transactions waiting for approval">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent!">
+                  <TableHead className="w-10 px-2 py-2"><input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(rows.map((row) => row.id)))} aria-label="Select all transactions to review" className="size-4 accent-primary" /></TableHead>
+                  <TableHead className="px-2 py-2 font-medium">Transaction</TableHead>
+                  <TableHead className="px-2 py-2 font-medium">AI suggestion</TableHead>
+                  <TableHead className="px-2 py-2 font-medium">Source</TableHead>
+                  <TableHead className="px-2 py-2 text-right font-medium">Amount</TableHead>
+                  <TableHead className="px-2 py-2 text-right font-medium">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="bg-surface">
+                {rows.map((row) => {
+                  const { displayCurrency, sourceLabel } = currencyFacts(row);
+                  const meta = categoryMeta(row.category, row.categoryName);
+                  const SourceIcon = SOURCE_ICON[row.source];
+                  const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
+                  return <TableRow key={row.id} id={row.id} data-focused={focusId === row.id ? "true" : undefined} className={`border-b border-line last:border-0 ${focusId === row.id ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""}`}>
+                    <TableCell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-primary" /></TableCell>
+                    <TableCell className="px-2 py-3 leading-normal"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-muted-foreground">{row.account} · {row.date.slice(5).replace("-", "/")}</span></TableCell>
+                    <TableCell className="px-2 py-3">
+                      {categories.length > 0 ? (
+                        <select
+                          aria-label={`Category for ${row.name}`}
+                          value={overrides[row.id] ?? suggestedId ?? ""}
+                          onChange={(event) => setOverride(row.id, event.target.value || suggestedId || null)}
+                          className="h-7 min-w-36 cursor-pointer appearance-none rounded-lg border border-line bg-card bg-[length:14px] bg-[right_0.4rem_center] bg-no-repeat px-2 pr-6 text-[12px] text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 bg-muted"
+                          style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")" }}
+                        >
+                          {categories.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.emoji} {option.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <CategoryChip id={row.categoryId ?? row.category} name={row.categoryName} color={row.categoryColor} />
+                      )}
+                      <span className="ml-2 text-[11px] text-muted-foreground">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
+                    </TableCell>
+                    <TableCell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></TableCell>
+                    <TableCell className="px-2 py-3 text-right">
+                      {row.needsManualReview ? (
+                        <span className="mono text-[12px] text-muted-foreground">Not extracted</span>
+                      ) : (
+                        <span className="mono block tabular-nums">
+                          {/* The converted figure leads, but only ever next to the
+                              currency it was actually fetched in. Showing the
+                              converted number alone made a naira statement look
+                              like a dollar one, which is the whole reason a
+                              statement import exists. */}
+                          <span className={`block text-[13px] font-medium ${row.amount >= 0 ? "text-success" : "text-danger"}`}>
+                            {row.amount >= 0 ? "+" : "−"}
+                            {formatCurrency(Math.abs(row.amount), displayCurrency)}
                           </span>
-                        )}
-                      </HeroTable.Cell>
-                      <HeroTable.Cell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><HugeiconsIcon icon={EditIcon} size={15}  /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></HeroTable.Cell>
-                    </HeroTable.Row>;
-                  })}
-                </HeroTable.Body>
-              </HeroTable.Content>
-            </HeroTable.ScrollContainer>
-          </HeroTable>
+                          {sourceLabel ? (
+                            <span className="block text-[11px] text-muted-foreground">{sourceLabel}</span>
+                          ) : null}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="px-2 py-3"><div className="flex justify-end gap-1">{!row.needsManualReview ? <><Button variant="ghost" size="icon-sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.name}`} title="Edit before approving"><HugeiconsIcon icon={EditIcon} size={15}  /></Button><Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([row.id])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button></> : null}<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => onDecline([row.id])}><CloseSmallIcon /> Decline</Button></div></TableCell>
+                  </TableRow>;
+                })}
+              </TableBody>
+            </Table>
+          </TableShell>
         )}
       </div>
       <AnimatePresence>
@@ -237,28 +251,24 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 12, x: "-50%" }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="fixed bottom-6 left-1/2 z-40"
-            role="toolbar"
-            aria-label={`${checked.size} review transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-md bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
-              <p className="m-0 text-[13px] font-medium whitespace-nowrap" aria-live="polite">
+            {/* coss Toolbar owns the `role="toolbar"`; the wrapper only
+                carries the entrance motion and the fixed anchor. */}
+            <Toolbar
+              aria-label={`${checked.size} review transactions selected`}
+              className="items-center rounded-[50px] border-line px-3 py-1 shadow-[0_16px_48px_rgb(23_24_28/0.3)] dark:shadow-[0_16px_48px_rgb(0_0_0/0.55)]"
+            >
+              <p className="m-0 px-2 text-[13px] font-medium whitespace-nowrap text-foreground" aria-live="polite">
                 {checked.size} selected
               </p>
-              <Button variant="ghost" size="small" onClick={() => { onDecline([...checked]); setChecked(new Set()); }} className="rounded-md text-white hover:bg-white/10 hover:text-white">
-                <CloseSmallIcon /> Decline
-              </Button>
-              <Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([...checked])} className="rounded-md">
-                <CheckIcon /> {busy ? busyLabel : "Approve"}
-              </Button>
-              <button
-                type="button"
-                onClick={() => setChecked(new Set())}
-                aria-label="Clear selection"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-md text-white/70 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
-              >
-                <CloseSmallIcon />
-              </button>
-            </div>
+              <ToolbarSeparator />
+              <ToolbarGroup>
+                <ToolbarButton render={<Button variant="ghost" size="small" className="text-destructive hover:text-destructive" onClick={() => { onDecline([...checked]); setChecked(new Set()); }}><CloseSmallIcon /> Decline</Button>} />
+                <ToolbarButton render={<Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([...checked])}><CheckIcon /> {busy ? busyLabel : "Approve"}</Button>} />
+              </ToolbarGroup>
+              <ToolbarSeparator />
+              <ToolbarButton render={<Button variant="ghost" size="icon" aria-label="Clear selection" onClick={() => setChecked(new Set())}><CloseSmallIcon /></Button>} />
+            </Toolbar>
           </motion.div>
         ) : null}
       </AnimatePresence>

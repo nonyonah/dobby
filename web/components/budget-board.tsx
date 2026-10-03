@@ -23,7 +23,7 @@ interface BudgetBoardProps {
   onSelect: (id: string) => void;
 }
 
-const chartConfig = { value: { label: "Spent", color: "var(--color-accent)" } } satisfies ChartConfig;
+const chartConfig = { value: { label: "Spent", color: "var(--color-brand)" } } satisfies ChartConfig;
 
 export function BudgetBoard({ budgets, categories, selectedId, onSelect }: BudgetBoardProps) {
   const [openRegular, setOpenRegular] = useState(true);
@@ -63,8 +63,8 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
         type="button"
         onClick={() => onSelect(c.id)}
         aria-current={selected ? "true" : undefined}
-        className={`grid w-full cursor-pointer grid-cols-[1.5rem_minmax(0,9rem)_5rem_minmax(0,1fr)_5rem_2.5rem] items-center gap-3 rounded-[10px] px-3 py-2 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
-          selected ? "bg-accent/30" : "hover:bg-secondary"
+        className={`grid w-full cursor-pointer grid-cols-[1.5rem_minmax(0,9rem)_5rem_minmax(0,1fr)_5rem_2.5rem] items-center gap-3 rounded-[10px] px-3 py-2 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
+          selected ? "bg-primary/15" : "hover:bg-secondary"
         }`}
       >
         <span aria-hidden="true" className="text-center text-[15px]">
@@ -90,7 +90,7 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
         </span>
         <span className="flex justify-end">
           {def?.type === "percent" && !isExcluded ? (
-            <span className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[11px] font-semibold text-accent-foreground tabular-nums">
+            <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
               {def.value}%
             </span>
           ) : null}

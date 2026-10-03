@@ -33,7 +33,7 @@ export function IncomeExpensesCard() {
     [income, expenses]
   );
   const config = useMemo(
-    () => ({ v: { label: "Amount", color: "var(--color-accent)" } }) satisfies ChartConfig,
+    () => ({ v: { label: "Amount", color: "var(--color-brand)" } }) satisfies ChartConfig,
     []
   );
 

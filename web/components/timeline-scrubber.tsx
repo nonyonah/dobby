@@ -264,7 +264,7 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
             </div>
             <div
               ref={overlayRef}
-              className="absolute top-1 bottom-1 rounded-md border border-accent bg-accent/10 transition-[left,width] duration-150 ease-out"
+              className="absolute top-1 bottom-1 rounded-md border border-primary/40 bg-primary/10 transition-[left,width] duration-150 ease-out"
               style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
             >
               <span data-handle="body" className="absolute inset-0 cursor-grab active:cursor-grabbing" />
@@ -278,7 +278,7 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
                   if (e.key === "ArrowLeft") nudge("from", -1, e.shiftKey);
                   if (e.key === "ArrowRight") nudge("from", 1, e.shiftKey);
                 }}
-                className="absolute top-1 bottom-1 -left-[3px] w-[5px] cursor-ew-resize rounded-full bg-accent outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+                className="absolute top-1 bottom-1 -left-[3px] w-[5px] cursor-ew-resize rounded-full bg-primary outline-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
               />
               <span
                 data-handle="right"
@@ -290,7 +290,7 @@ export function MonthScrubber({ range, onChange }: ScrubberProps) {
                   if (e.key === "ArrowLeft") nudge("to", -1, e.shiftKey);
                   if (e.key === "ArrowRight") nudge("to", 1, e.shiftKey);
                 }}
-                className="absolute top-1 bottom-1 -right-[3px] w-[5px] cursor-ew-resize rounded-full bg-accent outline-none focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+                className="absolute top-1 bottom-1 -right-[3px] w-[5px] cursor-ew-resize rounded-full bg-primary outline-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
               />
             </div>
           </div>

@@ -9,7 +9,21 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "./ui/popover";
-import { Table as HeroTable } from "@heroui/react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import { TableShell } from "./ui/table-shell";
+import {
+  Toolbar,
+  ToolbarButton,
+  ToolbarGroup,
+  ToolbarSeparator,
+} from "./ui/toolbar";
 import { Button } from "./ui/button";
 import { ConfirmButton } from "./confirm-button";
 import {
@@ -82,7 +96,7 @@ function cutoff(filter: DateFilter): string {
 function SortIcon({ dir, active }: { dir: SortDir; active: boolean }) {
   const Icon = dir === "asc" ? SortUpIcon : SortDownIcon;
   return (
-    <span className={active ? "text-accent" : "text-muted-foreground"}>
+    <span className={active ? "text-primary" : "text-muted-foreground"}>
       <Icon />
     </span>
   );
@@ -105,7 +119,7 @@ function MenuRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-[7px] text-left outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-accent"
+      className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-[7px] text-left outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
     >
       <span className="shrink-0 text-muted-foreground">
         <Icon />
@@ -138,7 +152,7 @@ function MenuOption({
       role="menuitemradio"
       aria-checked={selected}
       onClick={onClick}
-    className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-[7px] text-left text-[12px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
+    className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-[7px] text-left text-[12px] outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
       selected
         ? "bg-black/[0.06] bg-card"
         : "hover:bg-muted"
@@ -146,7 +160,7 @@ function MenuOption({
   >
     <span className="flex size-4 shrink-0 items-center">
       {selected ? (
-        <CheckIcon className="text-accent" />
+        <CheckIcon className="text-primary" />
       ) : null}
     </span>
     <span className="min-w-0 flex-1 truncate font-medium text-foreground">
@@ -344,13 +358,13 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   type="button"
                   aria-label={`Filters${pills.length > 0 ? `, ${pills.length} active` : ""}`}
                   title="Filters"
-                  className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
+                  className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 >
                   <FilterIcon />
                   {pills.length > 0 ? (
                     <span
                       aria-hidden="true"
-                      className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-white"
+                      className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground"
                     >
                       {pills.length}
                     </span>
@@ -376,7 +390,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                     type="button"
                     onClick={resetAll}
                     disabled={pills.length === 0}
-                    className="w-full cursor-pointer rounded-md px-2 py-[7px] text-left text-[12px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                    className="w-full cursor-pointer rounded-md px-2 py-[7px] text-left text-[12px] text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                   >
                     Reset all
                   </button>
@@ -387,7 +401,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                     type="button"
                     onClick={() => setMenu(null)}
                     aria-label="Back to filters"
-                    className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-[7px] text-left text-[12px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
+                    className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-[7px] text-left text-[12px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                   >
                     <span aria-hidden="true" className="inline-flex rotate-90">
                       <CaretDownIcon />
@@ -452,7 +466,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   type="button"
                   onClick={p.clear}
                   aria-label={`Clear filter: ${p.label}`}
-                  className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-md border border-accent bg-accent-soft pr-1.5 pl-2.5 text-[12px] font-semibold text-accent-600 outline-none transition-colors hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-accent"
+                  className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-md border border-primary/30 bg-primary/10 pr-1.5 pl-2.5 text-[12px] font-semibold text-primary outline-none transition-colors hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-ring"
                 >
                   {p.label}
                   <CloseSmallIcon />
@@ -479,57 +493,55 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
 
       {/* Table */}
       <div className="mt-3">
-        <HeroTable variant="primary" className="text-[11px]">
-          <HeroTable.ScrollContainer>
-            <HeroTable.Content aria-label="Ledger transactions">
-          <HeroTable.Header>
-            <HeroTable.Column className="w-10 px-3 py-2">
-              <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all transactions on this page" className="block size-4 accent-accent" />
-            </HeroTable.Column>
-            <HeroTable.Column id="name" isRowHeader allowsSorting className="px-3 py-2 text-[12px] font-medium text-muted-foreground">
-              <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent">Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} /></button>
-            </HeroTable.Column>
-            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Category</HeroTable.Column>
-            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Tax</HeroTable.Column>
-            <HeroTable.Column className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Source</HeroTable.Column>
+        <TableShell className="text-[11px]">
+          <Table aria-label="Ledger transactions">
+            <TableHeader>
+              <TableHead className="w-10 px-3 py-2">
+                <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="Select all transactions on this page" className="block size-4 accent-primary" />
+              </TableHead>
+              <TableHead id="name" className="px-3 py-2 text-[12px] font-medium text-muted-foreground">
+                <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} /></button>
+              </TableHead>
+              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Category</TableHead>
+              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Tax</TableHead>
+              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Source</TableHead>
 
-            <HeroTable.Column id="amount" allowsSorting className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground">
-              <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent">Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} /></button>
-            </HeroTable.Column>
-          </HeroTable.Header>
-          <HeroTable.Body>
-            {slice.map((t, index) => {
-              const meta = categoryMeta(t.categoryId ?? t.category, t.categoryName);
-              const SIcon = SOURCE_ICON[t.source];
-              const income = t.amount >= 0;
-              const selected = t.id === selectedId;
-              const day = dayLabel(t.date);
-              const previousDay = index > 0 ? dayLabel(slice[index - 1].date) : null;
-              const showDay = sortKey === "date" && day !== previousDay;
-              return (
-                <Fragment key={t.id}>
-                  {showDay ? (
-                    <HeroTable.Row id={`${t.id}-date`} className="border-b border-line bg-background hover:bg-background">
-                      <HeroTable.Cell colSpan={6} className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">{day}</HeroTable.Cell>
-                    </HeroTable.Row>
-                  ) : null}
-                  <HeroTable.Row id={t.id} onAction={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-line hover:bg-secondary ${selected ? "bg-accent-soft/60 hover:bg-accent-soft" : ""}`}>
-                    <HeroTable.Cell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-accent" /></HeroTable.Cell>
-                    <HeroTable.Cell className="max-w-56 px-3 py-2.5"><span className="block truncate font-medium text-foreground">{t.name}</span><span className="block truncate text-[12px] text-muted-foreground">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-accent">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} /></HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-accent text-white" : "border-transparent bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></HeroTable.Cell>
-                    <HeroTable.Cell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"><SIcon /></span></HeroTable.Cell>
+              <TableHead id="amount" className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground">
+                <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} /></button>
+              </TableHead>
+            </TableHeader>
+            <TableBody className="bg-surface">
+              {slice.map((t, index) => {
+                const meta = categoryMeta(t.categoryId ?? t.category, t.categoryName);
+                const SIcon = SOURCE_ICON[t.source];
+                const income = t.amount >= 0;
+                const selected = t.id === selectedId;
+                const day = dayLabel(t.date);
+                const previousDay = index > 0 ? dayLabel(slice[index - 1].date) : null;
+                const showDay = sortKey === "date" && day !== previousDay;
+                return (
+                  <Fragment key={t.id}>
+                    {showDay ? (
+                      <TableRow id={`${t.id}-date`} className="border-b border-line bg-background hover:bg-background!">
+                        <TableCell colSpan={6} className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground">{day}</TableCell>
+                      </TableRow>
+                    ) : null}
+                    <TableRow id={t.id} onClick={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-line hover:bg-secondary! ${selected ? "bg-primary/10 hover:bg-primary/15!" : ""}`}>
+                      <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-primary" /></TableCell>
+                      <TableCell className="max-w-56 px-3 py-2.5 leading-normal"><span className="block truncate font-medium text-foreground">{t.name}</span><span className="block truncate text-[12px] text-muted-foreground">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</TableCell>
+                      <TableCell className="px-3 py-2.5"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} /></TableCell>
+                      <TableCell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-primary text-primary-foreground" : "border-transparent bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></TableCell>
+                      <TableCell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"><SIcon /></span></TableCell>
 
-                    <HeroTable.Cell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-success" : "text-danger"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</HeroTable.Cell>
-                  </HeroTable.Row>
-                </Fragment>
-              );
-            })}
-            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[12px] font-medium text-foreground">No transactions match</p><p className="m-0 mt-1 text-[12px] text-muted-foreground">Your search and filters are excluding everything. Widen the date range, clear a filter, or import a statement to add more.</p><button type="button" onClick={resetAll} className="mt-2.5 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Clear search and filters</button></HeroTable.Cell></HeroTable.Row> : null}
-          </HeroTable.Body>
-            </HeroTable.Content>
-          </HeroTable.ScrollContainer>
-        </HeroTable>
+                      <TableCell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-success" : "text-danger"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</TableCell>
+                    </TableRow>
+                  </Fragment>
+                );
+              })}
+              {slice.length === 0 ? <TableRow id="empty"><TableCell colSpan={6} className="whitespace-normal! px-3 py-10 text-center"><p className="m-0 text-[12px] font-medium text-foreground">No transactions match</p><p className="m-0 mt-1 text-[12px] text-muted-foreground">Your search and filters are excluding everything. Widen the date range, clear a filter, or import a statement to add more.</p><button type="button" onClick={resetAll} className="mt-2.5 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Clear search and filters</button></TableCell></TableRow> : null}
+            </TableBody>
+          </Table>
+        </TableShell>
       </div>
 
       {/* Pagination */}
@@ -567,33 +579,24 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 12, x: "-50%" }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="fixed bottom-6 left-1/2 z-40"
-            role="toolbar"
-            aria-label={`${checked.size} transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-md bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
-              <p className="m-0 text-[12px] font-medium whitespace-nowrap" aria-live="polite">
+            {/* coss Toolbar owns the `role="toolbar"`; the wrapper only
+                carries the entrance motion and the fixed anchor. */}
+            <Toolbar
+              aria-label={`${checked.size} transactions selected`}
+              className="items-center rounded-[50px] border-line px-3 py-1 shadow-[0_16px_48px_rgb(23_24_28/0.3)] dark:shadow-[0_16px_48px_rgb(0_0_0/0.55)]"
+            >
+              <p className="m-0 px-2 text-[12px] font-medium whitespace-nowrap text-foreground" aria-live="polite">
                 {checked.size} selected
               </p>
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={() => downloadTransactions(rows.filter((t) => checked.has(t.id)))}
-                className="rounded-md"
-              >
-                Export
-              </Button>
-              <ConfirmButton onConfirm={() => onDelete([...checked])}>
-                Delete
-              </ConfirmButton>
-              <button
-                type="button"
-                onClick={() => setChecked(new Set())}
-                aria-label="Clear selection"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-md text-white/70 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
-              >
-                <CloseSmallIcon />
-              </button>
-            </div>
+              <ToolbarSeparator />
+              <ToolbarGroup>
+                <ToolbarButton render={<Button variant="secondary" size="small" onClick={() => downloadTransactions(rows.filter((t) => checked.has(t.id)))}>Export</Button>} />
+                <ToolbarButton render={<ConfirmButton onConfirm={() => onDelete([...checked])}>Delete</ConfirmButton>} />
+              </ToolbarGroup>
+              <ToolbarSeparator />
+              <ToolbarButton render={<Button variant="ghost" size="icon" aria-label="Clear selection" onClick={() => setChecked(new Set())}><CloseSmallIcon /></Button>} />
+            </Toolbar>
           </motion.div>
         ) : null}
       </AnimatePresence>

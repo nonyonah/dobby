@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "@heroui/styles";
 
 /*
  * Dark mode is driven by a `.dark` class on <html>, not by the OS media
@@ -10,24 +9,6 @@
  * first-time visitor still gets the system theme without a flash.
  */
 @custom-variant dark (&:where(.dark, .dark *));
-
-/*
- * HeroUI paints muted *text* with `text-muted`, but this theme's `--color-muted`
- * is the muted **background** token that `bg-muted` uses. So HeroUI's alert
- * descriptions and table column headers were rendering in a surface colour —
- * `--paper-100` on white in light, `#1f1f22` on `#1A1A1B` in dark, both
- * effectively invisible, and neither adapting.
- *
- * The token cannot simply be redefined: `bg-muted` is used across the app for
- * real surfaces. So the text role is remapped at the slots HeroUI paints, leaving
- * the background role alone.
- */
-.alert .text-muted,
-.alert__description,
-.table-root .text-muted,
-.table__column {
-  color: var(--muted-foreground);
-}
 
 :root {
   /* Tells the browser which palette to draw the parts CSS cannot reach: the
@@ -48,22 +29,21 @@
   --line: #e3e5e8;
   --text: #232528;
   --text-muted: #6b6d72;
-  --accent: #411880;
-  --accent-600: #3c1676;
-  --accent-100: #ddd5e8;
-  /* Money in / success is emerald, money out / danger is rose. The steps are
-     chosen for contrast, not for matching Tailwind's defaults: emerald-700 and
-     rose-600 are the darkest steps that still clear 4.5:1 as body text on white
-     *and* carry white label text at 5.47:1 / 4.70:1. Everything else in the
-     light block derives from these three. */
-  --green: #047857;
-  --green-100: #ecfdf5;
-  --green-vivid: #047857;
+  --brand: #411880;
+  --brand-600: #3c1676;
+  --brand-100: #ddd5e8;
+  /* Money in / success is emerald, money out / danger is rose.
+     success + warning are coss-owned, so both take coss's raw Tailwind steps
+     (emerald-500 / amber-500) rather than the hand-picked contrast-safe steps
+     that used to live here. rose/danger stays ours. */
+  --green: oklch(69.6% 0.17 162.48);
+  --green-100: oklch(97.9% 0.021 166.113);
+  --green-vivid: oklch(69.6% 0.17 162.48);
   --red: #e11d48;
   --red-100: #fff1f2;
   --red-vivid: #e11d48;
-  --warning: #b45309;
-  --warning-100: #fffbeb;
+  --warning: oklch(76.9% 0.188 70.08);
+  --warning-100: oklch(98.7% 0.022 95.277);
   --faint: #8a8b91;
   --input-border: #d7dade;
   --input-border-soft: #e8eaed;
@@ -81,16 +61,39 @@
   --secondary-foreground: var(--text);
   --muted: var(--paper-100);
   --muted-foreground: var(--text-muted);
-  --accent-token: var(--accent-100);
-  --accent-token-foreground: var(--accent-600);
+  --brand-token: var(--brand-100);
+  --brand-token-foreground: var(--brand-600);
   /* Bright red for irreversible actions (log out, cancel subscription): the
      muted --red is too quiet to read as a destructive confirm. */
   --destructive: var(--red-vivid);
   --destructive-foreground: #ffffff;
-  --border: var(--line);
+  --border: rgb(0 0 0 / 0.08);
   --border-strong: var(--input-border);
   --input: var(--input-border);
-  --ring: var(--primary);
+  /* Focus rings ride the neutral primary, never the purple brand. coss ships a
+     mid-grey here (oklch(70.8% 0 none)) which only reaches 2.58:1 on white —
+     under the 3:1 a focus indicator needs — so the ring is re-pointed at the
+     primary the same way 1e74652 pointed --focus/--field-border-focus/--ring's
+     siblings at it. Held at 55% rather than opaque: a solid #232528 (light) /
+     #e5e6e8 (dark) 2px outline reads as a hard bar around focused controls,
+     dialog close buttons and toast actions. The 55% blend composites to ~3.6:1
+     on white and ~5:1 on the dark surface, so it stays a legible focus
+     indicator while looking like a soft halo instead. */
+  --ring: color-mix(in srgb, var(--primary) 55%, transparent);
+  --focus: var(--ring);
+  /* coss base radius. This :root block is declared after Tailwind's theme, so
+     it wins the cascade on `--radius` and every `rounded-*` step derives from
+     it. The explicit xl/2xl/3xl steps stay put so `rounded-xl` and friends
+     keep the coss values rather than re-deriving from a scaled base. */
+  --radius: 0.625rem;
+  /* coss heads Dialog/AlertDialog titles with var(--font-heading). Declared in
+     :root as well as @theme — Tailwind tree-shakes unused @theme variables, so
+     a raw var() in a coss component would otherwise find nothing. Inter. */
+  --font-heading: var(--font-sans);
+  /* coss code-block surfaces, used by the Command and code particles. */
+  --code: #ffffff;
+  --code-foreground: var(--text);
+  --code-highlight: rgb(0 0 0 / 0.04);
 
   /* HeroUI surface tokens — keep native HeroUI components on Dobby's palette. */
   --surface: #ffffff;
@@ -115,24 +118,31 @@
   --separator: var(--line);
   --separator-secondary: var(--line);
   --separator-tertiary: var(--line);
-  --focus: var(--primary);
-  --accent-foreground: #ffffff;
-  --accent-hover: var(--accent-600);
-  --accent-soft: var(--accent-100);
-  --accent-soft-foreground: var(--accent-600);
-  --success-foreground: #ffffff;
+  --focus: var(--ring);
+  --brand-foreground: #ffffff;
+  --brand-hover: var(--brand-600);
+  --brand-soft: var(--brand-100);
+  --brand-soft-foreground: var(--brand-600);
+  --success-foreground: oklch(50.8% 0.118 165.612);
   --success-hover: var(--green);
   --success-soft: var(--green-100);
-  --success-soft-foreground: var(--green);
-  --warning-foreground: var(--text);
+  --success-soft-foreground: var(--success-foreground);
+  --warning-foreground: oklch(55.5% 0.163 48.998);
   --warning-hover: var(--warning);
   --warning-soft: var(--warning-100);
-  --warning-soft-foreground: var(--warning);
+  --warning-soft-foreground: var(--warning-foreground);
   --danger: var(--red);
   --danger-foreground: #ffffff;
   --danger-hover: var(--red);
   --danger-soft: var(--red-100);
   --danger-soft-foreground: var(--red);
+  /* coss status tone we don't carry natively. coss paints it as `bg-info/8`
+     with `text-info-foreground`, so the foreground is the dark blue that reads
+     on that tint — not the white used on Rift's solid statuses. */
+  --info: #3b82f6;
+  --info-foreground: #1d4ed8;
+  --info-soft: #eff6ff;
+  --info-soft-foreground: #1d4ed8;
   --backdrop: rgb(0 0 0 / 0.45);
 
   /* beUI status extensions */
@@ -140,7 +150,7 @@
   /* shadcn sidebar tokens, mapped to Rift values */
   --sidebar-background: transparent;
   --sidebar-foreground: #55565c;
-  --sidebar-primary: var(--accent);
+  --sidebar-primary: var(--brand);
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: rgb(0 0 0 / 0.06);
   --sidebar-accent-foreground: var(--text);
@@ -162,9 +172,9 @@
   --color-paper-100: var(--paper-100);
   --color-paper-200: var(--paper-200);
   --color-line: var(--line);
-  --color-accent: var(--accent-token);
-  --color-accent-600: var(--accent-600);
-  --color-accent-100: var(--accent-100);
+  --color-brand: var(--brand-token);
+  --color-brand-600: var(--brand-600);
+  --color-brand-100: var(--brand-100);
   --color-faint: var(--faint);
   --color-input-soft: var(--input-border-soft);
   --color-success: var(--success);
@@ -175,14 +185,22 @@
   --color-danger: var(--destructive);
   --color-danger-soft: var(--danger-soft);
   --color-danger-vivid: var(--red-vivid);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-info-soft-foreground: var(--info-soft-foreground);
 
   --font-sans: var(--font-inter);
   --font-mono: var(--font-inter);
+  /* coss heads Dialog/AlertDialog titles and <h*> with this; we keep Inter. */
+  --font-heading: var(--font-sans);
 
   /* beUI motion easings */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* coss Skeleton shimmer; the keyframes live at the end of this file. */
+  --animate-skeleton: skeleton 2s -1s infinite linear;
 
   /* shadcn / beUI semantic colors */
   --color-background: var(--background);
@@ -197,8 +215,8 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent-token);
-  --color-accent-foreground: var(--accent-token-foreground);
+  --color-brand: var(--brand-token);
+  --color-brand-foreground: var(--brand-token-foreground);
   --color-destructive: var(--destructive);
   /* Was referenced by the destructive button but never defined, so its label
      inherited instead of rendering white. */
@@ -214,7 +232,7 @@
      one of those utilities resolved to nothing: alerts had no background at all
      (`bg-surface`), table headers and row hairlines lost their fill and separators
      (`bg-surface-secondary`, `border-separator`), and the accent title/indicator
-     inherited the surrounding colour (`text-accent-soft-foreground`). Aliasing
+     inherited the surrounding colour (`text-brand-soft-foreground`). Aliasing
      them here — onto the app's existing per-mode variables — makes HeroUI's
      styles adapt to light and dark without restating either one. */
   --color-surface: var(--card);
@@ -224,8 +242,8 @@
   --color-default: var(--line);
   /* The accent pair the app already uses for a tinted chip: a mode-aware tint
      with a foreground chosen to stay readable on it in both themes. */
-  --color-accent-soft: var(--accent-token);
-  --color-accent-soft-foreground: var(--accent-token-foreground);
+  --color-brand-soft: var(--brand-token);
+  --color-brand-soft-foreground: var(--brand-token-foreground);
   --color-success-soft-foreground: var(--success);
   --color-warning-soft-foreground: var(--warning);
   --color-danger-soft-foreground: var(--danger);
@@ -250,6 +268,74 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success-foreground: var(--success-foreground);
+  --animate-toast-success-odd: toast-success-odd 0.32s cubic-bezier(0.5, 1, 0.89, 1);
+  --animate-toast-success-even: toast-success-even 0.32s cubic-bezier(0.5, 1, 0.89, 1);
+  --animate-toast-error-odd: toast-error-odd 0.28s cubic-bezier(0.5, 1, 0.89, 1);
+  --animate-toast-error-even: toast-error-even 0.28s cubic-bezier(0.5, 1, 0.89, 1);
+  @keyframes toast-success-odd {
+  0% {
+    scale: 1;
+    }
+  30% {
+    scale: 1.025;
+    }
+  60% {
+    scale: 0.99;
+    }
+  100% {
+    scale: 1;
+    }
+  }
+  @keyframes toast-error-odd {
+  0% {
+    translate: 0 0;
+    }
+  25% {
+    translate: -3px 0;
+    }
+  50% {
+    translate: 3px 0;
+    }
+  75% {
+    translate: -3px 0;
+    }
+  100% {
+    translate: 0 0;
+    }
+  }
+  @keyframes toast-success-even {
+  0% {
+    scale: 1;
+    }
+  30% {
+    scale: 1.025;
+    }
+  60% {
+    scale: 0.99;
+    }
+  100% {
+    scale: 1;
+    }
+  }
+  @keyframes toast-error-even {
+  0% {
+    translate: 0 0;
+    }
+  25% {
+    translate: -3px 0;
+    }
+  50% {
+    translate: 3px 0;
+    }
+  75% {
+    translate: -3px 0;
+    }
+  100% {
+    translate: 0 0;
+    }
+  }
 }
 
 .dark {
@@ -272,25 +358,28 @@
   --secondary-foreground: #e5e6e8;
   --muted: #1f1f22;
   --muted-foreground: #a2a3a8;
-  /* Dark mode needs its own money steps: the light emerald-700/rose-600 only
-     reach 3.39:1 on this background, so they are lifted to the 400s here. */
-  --green: #34d399;
-  --green-100: #022c22;
-  --green-vivid: #34d399;
+  /* coss keeps success/warning on the same 500 steps in dark mode and only
+     lifts the foregrounds to the 400s. The red money-out steps stay ours. */
+  --green: oklch(69.6% 0.17 162.48);
+  --green-100: oklch(26.2% 0.051 172.552);
+  --green-vivid: oklch(69.6% 0.17 162.48);
   --red: #fb7185;
   --red-100: #4c0519;
   --red-vivid: #e11d48;
-  --warning: #fbbf24;
-  --warning-100: #3b2c12;
-  --accent-token: #120724;
-  --accent-token-foreground: #a77cff;
+  --warning: oklch(76.9% 0.188 70.08);
+  --warning-100: oklch(27.9% 0.077 45.635);
+  --brand-token: #120724;
+  --brand-token-foreground: #a77cff;
   --destructive: #e11d48;
   --destructive-foreground: #ffffff;
   --line: #252529;
-  --border: #252529;
+  --border: rgb(255 255 255 / 0.06);
   --border-strong: #303036;
   --input: #252529;
-  --ring: var(--primary);
+  /* Same story as the light block: primary, not coss's oklch(55.6% 0 none),
+     and held at the same 55% so the ring reads equally soft on both themes. */
+  --ring: color-mix(in srgb, var(--primary) 55%, transparent);
+  --focus: var(--ring);
   /* HeroUI dark surfaces. Cards intentionally stay #1A1A1B. */
   --surface: #1A1A1B;
   --surface-foreground: #e5e6e8;
@@ -314,24 +403,31 @@
   --separator: #252529;
   --separator-secondary: #252529;
   --separator-tertiary: #252529;
-  --focus: var(--primary);
-  --accent-foreground: #ffffff;
-  --accent-hover: #9d68f6;
-  --accent-soft: #120724;
-  --accent-soft-foreground: #a77cff;
-  --success-foreground: #07130b;
-  --success-hover: #6ee7b7;
-  --success-soft: #022c22;
-  --success-soft-foreground: #6ee7b7;
-  --warning-foreground: #17130a;
-  --warning-hover: #fcd34d;
-  --warning-soft: #3b2c12;
-  --warning-soft-foreground: #fde68a;
+  --focus: var(--ring);
+  --brand-foreground: #ffffff;
+  --brand-hover: #9d68f6;
+  --brand-soft: #120724;
+  --brand-soft-foreground: #a77cff;
+  --success-foreground: oklch(76.5% 0.177 163.223);
+  --success-hover: oklch(76.5% 0.177 163.223);
+  --success-soft: oklch(26.2% 0.051 172.552);
+  --success-soft-foreground: oklch(76.5% 0.177 163.223);
+  --warning-foreground: oklch(82.8% 0.189 84.429);
+  --warning-hover: oklch(82.8% 0.189 84.429);
+  --warning-soft: oklch(27.9% 0.077 45.635);
+  --warning-soft-foreground: oklch(82.8% 0.189 84.429);
   --danger: #fb7185;
   --danger-foreground: #ffffff;
   --danger-hover: #fda4af;
   --danger-soft: #4c0519;
   --danger-soft-foreground: #fda4af;
+  --code: color-mix(in srgb, var(--background) 98%, #ffffff);
+  --code-foreground: var(--text);
+  --code-highlight: rgb(255 255 255 / 0.04);
+  --info: #3b82f6;
+  --info-foreground: #60a5fa;
+  --info-soft: #172554;
+  --info-soft-foreground: #60a5fa;
   --backdrop: rgb(0 0 0 / 0.65);
   --sidebar-background: transparent;
   --sidebar-foreground: #8a8b91;
@@ -342,31 +438,94 @@
   --chart-grid: #26262a;
   --chart-cursor: #26262a;
   --chart-tick: #8a8b91;
+  --success: var(--color-emerald-500);
 }
 
 body {
   background: var(--paper-000);
   color: var(--text);
-  font-family: var(--font-sans-flex), "Google Sans Flex", Inter, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 400;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
+/* One focus treatment for the whole app, and it is the neutral primary: the
+   `focus-visible:outline-2 outline-ring` utilities already emit this exactly,
+   so the fallback rule matches them instead of drawing a second, purple halo
+   over every element that has no focus utility of its own. */
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
-/* Overlay containers take focus on open — never ring the whole surface. */
+/* Overlay containers take focus on open — never ring the whole surface. The
+   slot names follow the components they came from: sheet/drawer keep theirs,
+   the coss Dialog renders `dialog-popup` (this used to be `dialog-content`,
+   which stopped matching the day Dialog moved to coss), and the Base UI toast
+   roots take focus when the viewport is entered. */
 [data-slot="drawer-popup"]:focus,
 [data-slot="drawer-popup"]:focus-visible,
 [data-slot="sheet-content"]:focus,
 [data-slot="sheet-content"]:focus-visible,
-[data-slot="dialog-content"]:focus,
-[data-slot="dialog-content"]:focus-visible {
+[data-slot="dialog-popup"]:focus,
+  [data-slot="dialog-popup"]:focus-visible,
+[data-slot="toast-viewport"]:focus,
+  [data-slot="toast-viewport"]:focus-visible,
+[data-slot="toast-popup"]:focus,
+  [data-slot="toast-popup"]:focus-visible {
   outline: none;
+}
+
+/* Tailwind v4's preflight dropped the `border-color` it used to hand every
+   element, so a bare `border` falls back to currentColor. coss writes exactly
+   that — the Dialog popup's border, its footer's divider, the default Alert's
+   border, the toast card — which rendered each one as a solid near-black (light)
+   / near-white (dark) 1px line. Restore the color the theme already carries;
+   every `border-*` colour utility still wins from the utilities layer. */
+@layer base {
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: var(--color-border);
+  }
+}
+
+/* coss's Dialog pads each named section (header p-6, panel p-6, footer px-6)
+   but leaves the popup itself bare, so the raw content our dialogs put between
+   header and footer sat flush against the edge. Inset those direct children
+   here rather than at 55 call sites: named sections already carry their own
+   padding, the close button keeps its corner because it is absolutely
+   positioned, `p-0` popups (the command palette) opt out, and a child's own
+   padding utility still wins because utilities sit above this layer. */
+@layer components {
+  [data-slot="dialog-popup"]:not(.p-0)
+    > :not(.absolute):not([data-slot="dialog-header"]):not([data-slot="dialog-footer"]):not([data-slot="dialog-panel"]) {
+    padding-inline: calc(var(--spacing) * 6);
+    padding-block-end: calc(var(--spacing) * 6);
+  }
+}
+
+/* HeroUI's primary table drew a 16px hairline at the end of every column header
+   but the last one, which is what kept the header row from reading as a single
+   undifferentiated bar. coss `TableHead` ships no equivalent, so the rule lives
+   on the shell slot instead of being pasted into each `TableHead` call site. */
+[data-slot="table-shell"] thead th {
+  position: relative;
+}
+[data-slot="table-shell"] thead th:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  width: 1px;
+  height: calc(var(--spacing) * 4);
+  translate: 0 -50%;
+  border-radius: calc(var(--radius) * 0.5);
+  background-color: var(--separator);
+  pointer-events: none;
 }
 
 /* Shared Rift Labs primitives. Embedded modules use the same flat surface and outline everywhere. */
@@ -378,7 +537,7 @@ body {
 }
 
 .mono {
-  font-family: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 @layer utilities {
@@ -393,6 +552,13 @@ body {
   }
   .scrollbar-hide {
     scrollbar-width: none;
+  }
+}
+
+/* coss Skeleton shimmer — pairs with --animate-skeleton in @theme. */
+@keyframes skeleton {
+  to {
+    background-position: -200% 0;
   }
 }
 

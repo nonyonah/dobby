@@ -86,7 +86,7 @@ export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
           <span
             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-medium ${
               tx.taxable
-                ? "border-transparent bg-accent text-white"
+                ? "border-transparent bg-primary text-primary-foreground"
                 : "border-transparent bg-secondary text-secondary-foreground"
             }`}
           >
@@ -107,7 +107,7 @@ export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
                 <button
                   type="button"
                   onClick={() => onToggleBudget({ ...tx, kind: "EXPENSE" })}
-                  className="cursor-pointer rounded-md text-[13px] font-medium text-accent outline-none hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                  className="cursor-pointer rounded-md text-[13px] font-medium text-primary outline-none hover:underline focus-visible:outline-2 focus-visible:outline-ring"
                 >
                   Treat as regular spending
                 </button>
@@ -118,7 +118,7 @@ export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
                 <button
                   type="button"
                   onClick={() => onToggleBudget({ ...tx, kind: "TRANSFER" })}
-                  className="cursor-pointer rounded-md text-[13px] font-medium text-accent outline-none hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                  className="cursor-pointer rounded-md text-[13px] font-medium text-primary outline-none hover:underline focus-visible:outline-2 focus-visible:outline-ring"
                 >
                   Exclude from budgets
                 </button>

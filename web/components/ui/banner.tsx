@@ -9,7 +9,7 @@ import { CheckCircleIcon, FileIcon, WalletIcon } from "@/components/icons";
  * The one banner treatment, used by every banner in the product: the to-review
  * prompt, the trial/upgrade prompt, and anything added later.
  *
- * The surface is a light tint of the brand colour — `--accent-100` in light,
+ * The surface is a light tint of the brand colour — `--brand-100` in light,
  * its dark-aware equivalent in dark — rather than a raw brand wash, so it reads
  * as a prompt sitting on the page instead of a slab of colour. The icon is
  * chosen per banner from `tone`, so the mark always matches what the banner is
@@ -20,11 +20,11 @@ export type BannerTone = "review" | "upgrade" | "info" | "done" | "wallet";
 const TONE: Record<BannerTone, { icon: (props: { className?: string }) => React.ReactNode; surface: string; mark: string }> = {
   // Lighter version of the brand colour: the accent tint, which is derived
   // light- or dark-aware and already follows the chosen accent.
-  review: { icon: (p: { className?: string }) => <HugeiconsIcon icon={SparklesIcon} strokeWidth={2} size={16} className={p.className}  />, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
-  upgrade: { icon: (p: { className?: string }) => <HugeiconsIcon icon={ClockIcon} strokeWidth={2} size={16} className={p.className}  />, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
-  info: { icon: FileIcon, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
+  review: { icon: (p: { className?: string }) => <HugeiconsIcon icon={SparklesIcon} strokeWidth={2} size={16} className={p.className}  />, surface: "border-brand-600/20 bg-brand-soft", mark: "bg-brand-100 text-brand-600" },
+  upgrade: { icon: (p: { className?: string }) => <HugeiconsIcon icon={ClockIcon} strokeWidth={2} size={16} className={p.className}  />, surface: "border-brand-600/20 bg-brand-soft", mark: "bg-brand-100 text-brand-600" },
+  info: { icon: FileIcon, surface: "border-brand-600/20 bg-brand-soft", mark: "bg-brand-100 text-brand-600" },
   done: { icon: CheckCircleIcon, surface: "border-success/30 bg-success-soft", mark: "bg-success-soft text-success" },
-  wallet: { icon: WalletIcon, surface: "border-accent-600/20 bg-accent-soft", mark: "bg-accent-100 text-accent-600" },
+  wallet: { icon: WalletIcon, surface: "border-brand-600/20 bg-brand-soft", mark: "bg-brand-100 text-brand-600" },
 };
 
 export interface BannerProps {
@@ -50,7 +50,7 @@ export function Banner({ tone, title, count, description, actions, className }: 
           <p className="m-0 flex flex-wrap items-center gap-2 text-[13px] font-semibold text-foreground">
             {title}
             {typeof count === "number" && count > 0 ? (
-              <span className="rounded-full bg-accent-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-accent-600">
+              <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand-600">
                 {count}
               </span>
             ) : null}

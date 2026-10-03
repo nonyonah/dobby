@@ -71,7 +71,7 @@ export function NetWorthSection({ className = "" }: { className?: string }) {
           <div className="rounded-lg bg-muted px-3 py-4 text-center" role="status">
             <p className="m-0 text-[13px] font-medium">No wallets connected yet</p>
             <p className="m-0 mt-1 text-[12px] text-muted-foreground">Your net worth already counts bank and card balances — connecting a Base or Solana wallet adds your stablecoin holdings on top.</p>
-            <Link href="/settings" className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Connect a wallet</Link>
+            <Link href="/settings" className="mt-2.5 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Connect a wallet</Link>
           </div>
         ) : (
           <>

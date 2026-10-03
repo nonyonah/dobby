@@ -232,7 +232,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
                 if (item.id.startsWith("wallet-")) {
                   // Each wallet carries the colour chosen for it in Settings;
                   // fall back to the global accent only if it has none.
-                  return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ background: item.color ?? "var(--accent)" }} />;
+                  return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full" style={{ background: item.color ?? "var(--brand)" }} />;
                 }
                 if (item.id === "connect-wallet") return <WalletIcon />;
                 return <BookmarkIcon />;

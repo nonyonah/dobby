@@ -239,7 +239,7 @@ export function TaxSettingsForm({ onSaved }: { onSaved?: () => void }) {
               key={option.value}
               type="button"
               onClick={() => void classifyAll(option.value)}
-              className="h-8 cursor-pointer rounded-md border border-line bg-card px-3 text-[12px] font-medium transition-colors hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:outline-none"
+              className="h-8 cursor-pointer rounded-md border border-line bg-card px-3 text-[12px] font-medium transition-colors hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:outline-none"
             >
               {option.label}
             </button>
@@ -274,10 +274,12 @@ export function TaxSettingsDialog({ onSaved }: { onSaved?: () => void }) {
   const [open, setOpen] = React.useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="icon-sm" aria-label="Tax settings" title="Tax settings">
-          <HugeiconsIcon icon={SettingsIcon} strokeWidth={2}  />
-        </Button>
+      <DialogTrigger
+        render={
+          <Button variant="outline" size="icon-sm" aria-label="Tax settings" title="Tax settings" />
+        }
+      >
+        <HugeiconsIcon icon={SettingsIcon} strokeWidth={2} />
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -287,7 +289,7 @@ export function TaxSettingsDialog({ onSaved }: { onSaved?: () => void }) {
             anything.
           </DialogDescription>
         </DialogHeader>
-        <div className="max-h-[70vh] overflow-y-auto pr-1">
+        <div className="max-h-[70vh] overflow-y-auto">
           <TaxSettingsForm
             onSaved={() => {
               onSaved?.();

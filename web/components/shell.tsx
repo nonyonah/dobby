@@ -87,15 +87,22 @@ export function Shell({ title, active, children }: ShellProps) {
       open={!collapsed}
       onOpenChange={handleOpenChange}
       style={{ "--sidebar-width": "248px" } as CSSProperties}
-      className="min-h-screen bg-background"
+      className="h-dvh overflow-hidden bg-background"
     >
       <AppSidebar active={active} peek={peek} onPeekChange={setPeek} onCreate={setQuickCreate} />
 
-      <div className={`min-w-0 flex-1 ${collapsed ? "p-2" : "py-2 pr-2 pl-0 md:pl-1"}`}>
-        <main className="min-h-[calc(100vh-16px)] rounded-xl border border-line bg-background shadow-none">
+      {/* The shell is a fixed viewport: the rail, the column and the frame all
+          hold their height, and only the pane under the top bar scrolls. The
+          window itself never gains a scrollbar, so the sticky top bar, the
+          floating support button and the selection toolbar all keep their
+          relationship to the viewport instead of drifting with the page. */}
+      <div className={`min-h-0 min-w-0 flex-1 overflow-hidden ${collapsed ? "p-2" : "py-2 pr-2 pl-0 md:pl-1"}`}>
+        <main className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-background shadow-none">
           <TopBar title={title} />
           <TrialExpiredBanner />
-          {children}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {children}
+          </div>
         </main>
       </div>
 

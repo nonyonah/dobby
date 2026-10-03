@@ -3,7 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { Inter } from "next/font/google";
 import { ThemeSync } from "@/components/theme-sync";
-import { Toaster } from "@/components/ui/toast";
+import { AnchoredToastProvider, ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
 const inter = Inter({
@@ -39,7 +39,22 @@ export default function RootLayout({
         />
       </head>
       <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
-        <body className="min-h-full flex flex-col"><ThemeSync /><Toaster />{children}</body>
+        <body className="relative min-h-full flex flex-col">
+          <ThemeSync />
+          {/* coss toasts are mounted by their providers rather than by a
+              separate <Toaster/>, so they wrap the app instead of sitting
+              beside it. Anchored goes inside plain: both declare a
+              `Toast.Provider` and only the outer one needs to own the page. */}
+          <ToastProvider>
+            <AnchoredToastProvider>
+              {/* Base UI needs its own stacking context so portaled overlays
+                  (Dialog, Popover, Select) always paint above page content.
+                  `position: relative` keeps backdrops covering the visual
+                  viewport on iOS Safari 26+. */}
+              <div className="isolate relative flex min-h-full flex-col">{children}</div>
+            </AnchoredToastProvider>
+          </ToastProvider>
+        </body>
       </html>
     </ClerkProvider>
   );

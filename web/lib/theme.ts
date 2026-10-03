@@ -76,22 +76,22 @@ export function applyAccentColor(accent: AccentColor) {
   // carry the brand-neutral color in globals.css, and the picker only drives
   // the decorative accent. Setting them here would win over the stylesheet and
   // pull buttons and focus rings back onto the accent.
-  set("--accent", color);
+  set("--brand", color);
   set("--sidebar-primary", color);
-  set("--accent-foreground", "#ffffff");
+  set("--brand-foreground", "#ffffff");
 
   // Derived shades: interactive hover + tinted surfaces.
   const hover = dark ? lighten(color, 0.14) : darken(color, 0.2);
   const tint = dark ? darken(color, 0.72) : mix(color, "#ffffff", 0.82);
   const tintForeground = dark ? lighten(color, 0.35) : darken(color, 0.2);
 
-  set("--accent-600", dark ? lighten(color, 0.18) : darken(color, 0.2));
-  set("--accent-100", tint);
-  set("--accent-hover", hover);
-  set("--accent-soft", tint);
-  set("--accent-soft-foreground", tintForeground);
-  set("--accent-token", tint);
-  set("--accent-token-foreground", tintForeground);
+  set("--brand-600", dark ? lighten(color, 0.18) : darken(color, 0.2));
+  set("--brand-100", tint);
+  set("--brand-hover", hover);
+  set("--brand-soft", tint);
+  set("--brand-soft-foreground", tintForeground);
+  set("--brand-token", tint);
+  set("--brand-token-foreground", tintForeground);
 }
 
 /* ---------------------------------------------------------------- theme */

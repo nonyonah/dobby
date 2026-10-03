@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
-import { useDialogSurface } from "./dialog-surface";
 import { cn } from "cn";
 
 type PopoverProps = {
@@ -22,11 +21,8 @@ function PopoverTrigger({ render, children, className, ...props }: { render?: Re
 }
 
 function PopoverContent({ className, align = "center", side = "bottom", sideOffset = 4, children, ...props }: { className?: string; align?: "start" | "center" | "end"; side?: "top" | "bottom" | "left" | "right"; sideOffset?: number; children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
-  // Same reason as ui/select: inside a dialog, portal into the dialog content
-  // so Radix's modal body pointer-events and outside-click guard don't fire.
-  const dialogSurface = useDialogSurface();
   return (
-    <PopoverPrimitive.Portal container={dialogSurface ?? undefined}>
+    <PopoverPrimitive.Portal>
       <PopoverPrimitive.Positioner align={align} side={side} sideOffset={sideOffset} className="z-50 outline-none">
         <PopoverPrimitive.Popup className={cn("z-50 flex max-h-[calc(100dvh-3rem)] w-72 flex-col gap-4 overflow-y-auto rounded-lg border border-line bg-card p-2.5 text-xs text-popover-foreground shadow-sm outline-none", className)} {...props}>{children}</PopoverPrimitive.Popup>
       </PopoverPrimitive.Positioner>

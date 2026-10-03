@@ -51,7 +51,7 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-3 rounded-[10px] border border-line px-3 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-accent"
+      className="flex w-full cursor-pointer items-center gap-3 rounded-[10px] border border-line px-3 py-2.5 text-left outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
     >
       <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
         {icon}

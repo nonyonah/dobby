@@ -18,7 +18,7 @@ export function TopBar({ title }: { title: string }) {
   const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
-      <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-2 rounded-t-xl border-b border-line bg-background px-4">
+      <header className="z-30 flex h-12 shrink-0 items-center gap-2 rounded-t-xl border-b border-line bg-background px-4">
         <SidebarTrigger className="shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <h1 className="m-0 truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground">
