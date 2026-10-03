@@ -33,16 +33,23 @@
   --brand-600: #3c1676;
   --brand-100: #ddd5e8;
   /* Money in / success is emerald, money out / danger is rose.
-     success + warning are coss-owned, so both take coss's raw Tailwind steps
-     (emerald-500 / amber-500) rather than the hand-picked contrast-safe steps
-     that used to live here. rose/danger stays ours. */
+     success + warning are coss-owned: coss's raw emerald-500 stays here as
+     --green / --green-vivid for the bright fills, but the semantic --success
+     and --warning take the contrast-safe steps, because those two carry text.
+     emerald-500 and amber-500 measure 2.46:1 and 2.15:1 against white (2.26:1
+     and 1.97:1 against paper-100), so `text-success` / `text-warning` — money
+     in every table, status pills everywhere — failed the 4.5:1 text minimum in
+     light mode. The safe steps are 5.37:1 and 5.05:1 on white and still clear
+     4.5:1 on their own -soft grounds, so they work as text and as a fill
+     behind white. Dark mode keeps the raw coss steps, which read bright on a
+     dark ground. rose/danger stays ours. */
   --green: oklch(69.6% 0.17 162.48);
   --green-100: oklch(97.9% 0.021 166.113);
   --green-vivid: oklch(69.6% 0.17 162.48);
   --red: #e11d48;
   --red-100: #fff1f2;
   --red-vivid: #e11d48;
-  --warning: oklch(76.9% 0.188 70.08);
+  --warning: oklch(55.5% 0.163 48.998);
   --warning-100: oklch(98.7% 0.022 95.277);
   --faint: #8a8b91;
   --input-border: #d7dade;
@@ -145,8 +152,9 @@
   --info-soft-foreground: #1d4ed8;
   --backdrop: rgb(0 0 0 / 0.45);
 
-  /* beUI status extensions */
-  --success: var(--green);
+  /* beUI status extensions. --success follows --success-foreground rather than
+     --green: see the note up top on why the raw emerald-500 can't carry text. */
+  --success: var(--success-foreground);
   /* shadcn sidebar tokens, mapped to Rift values */
   --sidebar-background: transparent;
   --sidebar-foreground: #55565c;
