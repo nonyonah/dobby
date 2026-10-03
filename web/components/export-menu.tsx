@@ -55,7 +55,7 @@ export function ExportMenu({ rows, filename }: ExportMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Export data"
-        className="inline-flex h-7 items-center gap-1.5 rounded-[50px] bg-primary px-[10px] text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+        className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-[10px] text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
       >
         <HugeiconsIcon icon={DownloadIcon} strokeWidth={2} size={14} aria-hidden="true"  />
         Export

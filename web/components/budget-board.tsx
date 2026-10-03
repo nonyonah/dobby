@@ -123,7 +123,7 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
               <span className="mono text-[16px] font-semibold">{budgetProgress.toFixed(0)}%</span>
               <span className="text-[10px] text-muted-foreground">used</span>
             </div>
-            <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Budget chart settings" title="Budget chart settings" className="absolute right-0 bottom-0 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line bg-card text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><SettingsIcon /></button>
+            <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Budget chart settings" title="Budget chart settings" className="absolute right-0 bottom-0 flex size-8 cursor-pointer items-center justify-center rounded-md border border-line bg-card text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><SettingsIcon /></button>
           </div>
           <div className="text-center">
             <p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatUSD(summaryBudget)}</p>

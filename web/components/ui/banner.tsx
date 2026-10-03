@@ -41,7 +41,7 @@ export interface BannerProps {
 export function Banner({ tone, title, count, description, actions, className }: BannerProps) {
   const { icon: Icon, surface, mark } = TONE[tone];
   return (
-    <div className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-[50px] border px-4 py-3", surface, className)}>
+    <div className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-3 rounded-md border px-4 py-3", surface, className)}>
       <div className="flex min-w-0 items-start gap-3">
         <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", mark)} aria-hidden="true">
           <Icon className="size-4" />

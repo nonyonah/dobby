@@ -61,7 +61,7 @@ export function EmojiPicker({ onSelect, onClose }: { onSelect: (result: PickerRe
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Search emojis…"
           aria-label="Search emojis"
-          className="h-8 w-full rounded-[50px] border border-line bg-secondary px-2.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring"
+          className="h-8 w-full rounded-md border border-line bg-secondary px-2.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring"
           autoFocus
         />
       </div>

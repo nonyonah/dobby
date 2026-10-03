@@ -54,7 +54,7 @@ export function ColorSelect({ value, onChange, label, className, options: option
           aria-label={label}
           value={selected}
           onChange={(event) => onChange(event.target.value)}
-          className="h-8 w-full cursor-pointer appearance-none rounded-[50px] border border-line bg-card py-0 pr-8 pl-9 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 bg-[length:16px] bg-[right_0.5rem_center] bg-no-repeat dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]"
+          className="h-8 w-full cursor-pointer appearance-none rounded-md border border-line bg-card py-0 pr-8 pl-9 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 bg-[length:16px] bg-[right_0.5rem_center] bg-no-repeat dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]"
           style={{ backgroundImage: CHEVRON }}
         >
           {hideAuto ? null : <option value="">Automatic</option>}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { clerkAppearance } from "@/lib/clerk-appearance";
 import { Inter } from "next/font/google";
 import { ThemeSync } from "@/components/theme-sync";
 import { Toaster } from "@/components/ui/toast";
@@ -24,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider appearance={clerkAppearance}>
       <head>
         {/*
           Sets the theme class before first paint. React hydration happens well

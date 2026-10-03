@@ -108,7 +108,7 @@ export function Shell({ title, active, children }: ShellProps) {
               type="button"
               aria-label="Contact support"
               title="Contact support"
-              className="fixed right-4 bottom-4 z-40 flex size-10 cursor-pointer items-center justify-center rounded-full border border-line dark:border-border bg-card text-sidebar-foreground shadow-[0_8px_24px_rgb(23_24_28/0.16)] transition-colors outline-none hover:bg-secondary dark:hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+              className="fixed right-4 bottom-4 z-40 flex size-10 cursor-pointer items-center justify-center rounded-md border border-line dark:border-border bg-card text-sidebar-foreground shadow-[0_8px_24px_rgb(23_24_28/0.16)] transition-colors outline-none hover:bg-secondary dark:hover:bg-white/6 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
             >
               <QuestionIcon />
             </button>

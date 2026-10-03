@@ -254,7 +254,7 @@ export function GoalsSection() {
             />
           </svg>
           <div className="flex size-23 flex-col items-center justify-center rounded-full bg-card text-center"><span className="mono text-[16px] font-semibold">{progress.toFixed(0)}%</span><span className="text-[10px] text-muted-foreground">on pace</span></div>
-          <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Goal chart settings" title="Goal chart settings" className="absolute right-0 bottom-0 flex size-8 cursor-pointer items-center justify-center rounded-full border border-line bg-card text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><SettingsIcon /></button>
+          <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Goal chart settings" title="Goal chart settings" className="absolute right-0 bottom-0 flex size-8 cursor-pointer items-center justify-center rounded-md border border-line bg-card text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><SettingsIcon /></button>
         </div>
         <div className="text-center"><p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatUSD(chartRight)}</p><p className="m-0 text-[12px] text-muted-foreground">{comparisonLabel}</p></div>
       </div>

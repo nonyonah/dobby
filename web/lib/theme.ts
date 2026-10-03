@@ -57,7 +57,9 @@ const lighten = (hex: string, amount: number) => mix(hex, "#ffffff", amount);
 
 /**
  * Applies an accent everywhere the palette references it: base, hover,
- * soft/tint surfaces and their foregrounds, focus/ring, and sidebar tokens.
+ * soft/tint surfaces and their foregrounds, and the sidebar brand token.
+ * Focus rings are intentionally not touched — they carry the brand-neutral
+ * color and must stay put no matter which accent is picked.
  * Shades are derived from the picked color so hover never falls back to the
  * brand teal (the `:root` statics) and dark mode gets dark-safe tints.
  */
@@ -69,13 +71,13 @@ export function applyAccentColor(accent: AccentColor) {
   const set = (name: string, value: string) => root.style.setProperty(name, value);
 
   // Base tokens — always the accent itself.
+  // `--primary` and the focus tokens (`--ring`, `--focus`,
+  // `--field-border-focus`, `--sidebar-ring`) are deliberately absent: those
+  // carry the brand-neutral color in globals.css, and the picker only drives
+  // the decorative accent. Setting them here would win over the stylesheet and
+  // pull buttons and focus rings back onto the accent.
   set("--accent", color);
-  set("--primary", color);
-  set("--ring", color);
-  set("--focus", color);
   set("--sidebar-primary", color);
-  set("--sidebar-ring", color);
-  set("--field-border-focus", color);
   set("--accent-foreground", "#ffffff");
 
   // Derived shades: interactive hover + tinted surfaces.

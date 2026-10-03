@@ -240,21 +240,21 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
             role="toolbar"
             aria-label={`${checked.size} review transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-full bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
+            <div className="flex items-center gap-2 rounded-md bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
               <p className="m-0 text-[13px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>
-              <Button variant="ghost" size="small" onClick={() => { onDecline([...checked]); setChecked(new Set()); }} className="rounded-full text-white hover:bg-white/10 hover:text-white">
+              <Button variant="ghost" size="small" onClick={() => { onDecline([...checked]); setChecked(new Set()); }} className="rounded-md text-white hover:bg-white/10 hover:text-white">
                 <CloseSmallIcon /> Decline
               </Button>
-              <Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([...checked])} className="rounded-full">
+              <Button variant="secondary" size="small" disabled={busy !== false} onClick={() => approve([...checked])} className="rounded-md">
                 <CheckIcon /> {busy ? busyLabel : "Approve"}
               </Button>
               <button
                 type="button"
                 onClick={() => setChecked(new Set())}
                 aria-label="Clear selection"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-full text-white/70 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
+                className="flex size-8 cursor-pointer items-center justify-center rounded-md text-white/70 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
               >
                 <CloseSmallIcon />
               </button>

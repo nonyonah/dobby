@@ -46,7 +46,7 @@
   --paper-100: #f4f5f6;
   --paper-200: #e8eaed;
   --line: #e3e5e8;
-  --text: #1c1d20;
+  --text: #232528;
   --text-muted: #6b6d72;
   --accent: #411880;
   --accent-600: #3c1676;
@@ -75,7 +75,7 @@
   --card-foreground: var(--text);
   --popover: #ffffff;
   --popover-foreground: var(--text);
-  --primary: var(--accent);
+  --primary: #232528;
   --primary-foreground: #ffffff;
   --secondary: var(--paper-100);
   --secondary-foreground: var(--text);
@@ -90,7 +90,7 @@
   --border: var(--line);
   --border-strong: var(--input-border);
   --input: var(--input-border);
-  --ring: var(--accent);
+  --ring: var(--primary);
 
   /* HeroUI surface tokens — keep native HeroUI components on Dobby's palette. */
   --surface: #ffffff;
@@ -111,11 +111,11 @@
   --field-placeholder: var(--text-muted);
   --field-border: var(--line);
   --field-border-hover: var(--input-border);
-  --field-border-focus: var(--accent);
+  --field-border-focus: var(--primary);
   --separator: var(--line);
   --separator-secondary: var(--line);
   --separator-tertiary: var(--line);
-  --focus: var(--accent);
+  --focus: var(--primary);
   --accent-foreground: #ffffff;
   --accent-hover: var(--accent-600);
   --accent-soft: var(--accent-100);
@@ -145,7 +145,7 @@
   --sidebar-accent: rgb(0 0 0 / 0.06);
   --sidebar-accent-foreground: var(--text);
   --sidebar-border: var(--line);
-  --sidebar-ring: var(--accent);
+  --sidebar-ring: var(--primary);
 
   /* chart element tokens (recharts reads these so plots follow the theme) */
   --chart-grid: #e9e7e2;
@@ -258,18 +258,18 @@
   --paper-000: #121213;
   --paper-100: #1c1c1f;
   --paper-200: #252529;
-  --text: #eceef0;
+  --text: #e5e6e8;
   --text-muted: #a2a3a8;
   --background: #121213;
-  --foreground: #eceef0;
+  --foreground: #e5e6e8;
   --card: #1A1A1B;
-  --card-foreground: #eceef0;
+  --card-foreground: #e5e6e8;
   --popover: #1a1a1d;
-  --popover-foreground: #eceef0;
-  --primary: #634297;
-  --primary-foreground: #ffffff;
+  --popover-foreground: #e5e6e8;
+  --primary: #e5e6e8;
+  --primary-foreground: #232528;
   --secondary: #26262a;
-  --secondary-foreground: #eceef0;
+  --secondary-foreground: #e5e6e8;
   --muted: #1f1f22;
   --muted-foreground: #a2a3a8;
   /* Dark mode needs its own money steps: the light emerald-700/rose-600 only
@@ -290,31 +290,31 @@
   --border: #252529;
   --border-strong: #303036;
   --input: #252529;
-  --ring: #a77cff;
+  --ring: var(--primary);
   /* HeroUI dark surfaces. Cards intentionally stay #1A1A1B. */
   --surface: #1A1A1B;
-  --surface-foreground: #eceef0;
+  --surface-foreground: #e5e6e8;
   --surface-hover: #1A1A1B;
   --surface-secondary: #1c1c1f;
-  --surface-secondary-foreground: #eceef0;
+  --surface-secondary-foreground: #e5e6e8;
   --surface-tertiary: #252529;
-  --surface-tertiary-foreground: #eceef0;
+  --surface-tertiary-foreground: #e5e6e8;
   --dropdown-background: #2c2d2f;
   --overlay: #1A1A1B;
-  --overlay-foreground: #eceef0;
+  --overlay-foreground: #e5e6e8;
   --default: #1c1c1f;
-  --default-foreground: #eceef0;
+  --default-foreground: #e5e6e8;
   --default-hover: #252529;
   --field-background: #1A1A1B;
-  --field-foreground: #eceef0;
+  --field-foreground: #e5e6e8;
   --field-placeholder: #a2a3a8;
   --field-border: #252529;
   --field-border-hover: #303036;
-  --field-border-focus: #a77cff;
+  --field-border-focus: var(--primary);
   --separator: #252529;
   --separator-secondary: #252529;
   --separator-tertiary: #252529;
-  --focus: #a77cff;
+  --focus: var(--primary);
   --accent-foreground: #ffffff;
   --accent-hover: #9d68f6;
   --accent-soft: #120724;
@@ -338,7 +338,7 @@
   --sidebar-accent: #18181a;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #252529;
-  --sidebar-ring: #a77cff;
+  --sidebar-ring: var(--primary);
   --chart-grid: #26262a;
   --chart-cursor: #26262a;
   --chart-tick: #8a8b91;

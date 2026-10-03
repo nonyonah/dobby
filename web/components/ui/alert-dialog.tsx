@@ -63,7 +63,7 @@ function AlertDialogAction({ className, onClick, children, variant = "primary", 
     <button
       type="button"
       className={cn(
-        "inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium outline-none focus-visible:outline-2 focus-visible:outline-ring",
+        "inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-xs font-medium outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
         variant === "destructive"
           ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
           : "bg-primary text-primary-foreground hover:opacity-90",
@@ -85,7 +85,7 @@ function AlertDialogCancel({ className, onClick, children, ...props }: AlertActi
   return (
     <button
       type="button"
-      className={cn("inline-flex h-8 items-center justify-center rounded-md border border-line bg-transparent px-3 text-xs font-medium text-foreground outline-none hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring", className)}
+      className={cn("inline-flex h-8 cursor-pointer items-center justify-center rounded-md border border-line bg-transparent px-3 text-xs font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2", className)}
       {...props}
       onClick={(event) => {
         onClick?.(event);

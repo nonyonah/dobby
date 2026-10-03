@@ -486,7 +486,7 @@ export default function InsightsPage() {
                     return (
                       <li key={item.key} className="flex items-center gap-2 border-b border-line py-1.5 text-[13px] last:border-b-0">
                         <span className={`min-w-0 flex-1 truncate font-medium ${ready ? "text-success" : "text-warning"}`}>{label}</span>
-                        <button type="button" onClick={() => toggleChecklist(item.key, item.status)} className={`inline-flex shrink-0 cursor-pointer items-center rounded-full border px-2 py-0.5 text-[12px] font-medium ${
+                        <button type="button" onClick={() => toggleChecklist(item.key, item.status)} className={`inline-flex shrink-0 cursor-pointer items-center rounded-md border px-2 py-0.5 text-[12px] font-medium ${
                             ready
                               ? "border-success/40 bg-success-soft text-success"
                               : "border-warning/40 bg-warning-soft text-warning"

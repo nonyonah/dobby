@@ -452,7 +452,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   type="button"
                   onClick={p.clear}
                   aria-label={`Clear filter: ${p.label}`}
-                  className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-full border border-accent bg-accent-soft pr-1.5 pl-2.5 text-[12px] font-semibold text-accent-600 outline-none transition-colors hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-accent"
+                  className="inline-flex h-[26px] cursor-pointer items-center gap-1 rounded-md border border-accent bg-accent-soft pr-1.5 pl-2.5 text-[12px] font-semibold text-accent-600 outline-none transition-colors hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-accent"
                 >
                   {p.label}
                   <CloseSmallIcon />
@@ -525,7 +525,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                 </Fragment>
               );
             })}
-            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[12px] font-medium text-foreground">No transactions match</p><p className="m-0 mt-1 text-[12px] text-muted-foreground">Your search and filters are excluding everything. Widen the date range, clear a filter, or import a statement to add more.</p><button type="button" onClick={resetAll} className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Clear search and filters</button></HeroTable.Cell></HeroTable.Row> : null}
+            {slice.length === 0 ? <HeroTable.Row id="empty"><HeroTable.Cell colSpan={6} className="px-3 py-10 text-center"><p className="m-0 text-[12px] font-medium text-foreground">No transactions match</p><p className="m-0 mt-1 text-[12px] text-muted-foreground">Your search and filters are excluding everything. Widen the date range, clear a filter, or import a statement to add more.</p><button type="button" onClick={resetAll} className="mt-2.5 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2">Clear search and filters</button></HeroTable.Cell></HeroTable.Row> : null}
           </HeroTable.Body>
             </HeroTable.Content>
           </HeroTable.ScrollContainer>
@@ -570,7 +570,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
             role="toolbar"
             aria-label={`${checked.size} transactions selected`}
           >
-            <div className="flex items-center gap-2 rounded-full bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
+            <div className="flex items-center gap-2 rounded-md bg-foreground py-2 pr-2 pl-4 text-background shadow-[0_16px_48px_rgba(23,24,28,0.3)]">
               <p className="m-0 text-[12px] font-medium whitespace-nowrap" aria-live="polite">
                 {checked.size} selected
               </p>
@@ -578,7 +578,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                 variant="secondary"
                 size="small"
                 onClick={() => downloadTransactions(rows.filter((t) => checked.has(t.id)))}
-                className="rounded-full"
+                className="rounded-md"
               >
                 Export
               </Button>
@@ -589,7 +589,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                 type="button"
                 onClick={() => setChecked(new Set())}
                 aria-label="Clear selection"
-                className="flex size-8 cursor-pointer items-center justify-center rounded-full text-white/70 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
+                className="flex size-8 cursor-pointer items-center justify-center rounded-md text-white/70 outline-none transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
               >
                 <CloseSmallIcon />
               </button>

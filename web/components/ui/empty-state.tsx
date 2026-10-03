@@ -39,7 +39,7 @@ export function EmptyState({ title, suggestion, action, icon, compact = false, c
         action.href ? (
           <Link
             href={action.href}
-            className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            className="mt-2.5 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
             {action.label}
           </Link>
@@ -47,7 +47,7 @@ export function EmptyState({ title, suggestion, action, icon, compact = false, c
           <button
             type="button"
             onClick={action.onClick}
-            className="mt-2.5 inline-flex items-center rounded-full bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            className="mt-2.5 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
             {action.label}
           </button>

@@ -29,7 +29,7 @@ import { WalletConnectModal } from "./wallet-connect-modal";
 // Shadow-as-border: a transparent ring reads as a 1px edge without a hard
 // border colour. Dark mode swaps to a single white ring, because layered black
 // depth shadows disappear against a dark surface and the inputs lose their edge.
-const controlClass = "h-8 w-full rounded-[50px] border-line bg-card px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] transition-shadow duration-150 ease-out focus-visible:border-line focus-visible:ring-0 dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
+const controlClass = "h-8 w-full rounded-md border-line bg-card px-2.5 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] transition-shadow duration-150 ease-out focus-visible:border-line focus-visible:ring-0 dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
 // Fills its container rather than shrinking to the widest option. A `w-fit`
 // select left a visible gap against the edge of the 220px column every Row
 // reserves, which read as a half-empty button.
@@ -93,10 +93,10 @@ function RowPlaceholder({ labelWidth = 92 }: { labelWidth?: number }) {
   return (
     <div className={rowClass} aria-hidden="true">
       <div className="min-w-0 flex-1">
-        <span className="block h-[13px] rounded-[50px] bg-muted" style={{ width: labelWidth }} />
+        <span className="block h-[13px] rounded-md bg-muted" style={{ width: labelWidth }} />
       </div>
       <div className="flex w-full shrink-0 justify-start sm:w-[220px] sm:justify-end">
-        <span className="block h-7 w-[132px] rounded-[50px] bg-muted" />
+        <span className="block h-7 w-[132px] rounded-md bg-muted" />
       </div>
     </div>
   );
@@ -925,7 +925,7 @@ export function SettingsPage() {
                   type="button"
                   onClick={() => setDismissedDuplicates(duplicateEmails.length)}
                   aria-label="Dismiss duplicate email notice"
-                  className="-mr-1 shrink-0 rounded-full p-1 text-muted-foreground outline-none transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                  className="-mr-1 shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 >
                   <HugeiconsIcon icon={CancelIcon} strokeWidth={2} size={12}  />
                 </button>

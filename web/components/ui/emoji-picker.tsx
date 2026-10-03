@@ -84,7 +84,7 @@ export function EmojiPickerField({ value, onChange, label, className }: EmojiPic
           place();
           setOpen(true);
         }}
-        className="flex size-9 items-center justify-center rounded-[50px] border border-line bg-card text-xl transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex size-9 items-center justify-center rounded-md border border-line bg-card text-xl transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring"
       >
         {value || "🙂"}
       </button>

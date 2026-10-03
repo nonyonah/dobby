@@ -46,7 +46,7 @@ export function Segmented<T extends string>({ options, value, onValueChange, lab
             disabled={option.disabled}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              "inline-flex h-7 items-center gap-1.5 rounded-[50px] px-3 text-[12px] font-medium whitespace-nowrap outline-none transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
+              "inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium whitespace-nowrap outline-none transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
               selected
                 ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                 : "text-muted-foreground hover:text-foreground",

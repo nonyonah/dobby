@@ -50,7 +50,7 @@ const INCOME_SOURCES = [
 ];
 
 const numberControl =
-  "h-8 w-full rounded-[50px] border border-line bg-card px-3 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-8 w-full rounded-md border border-line bg-card px-3 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * The deductions form did not exist at all, which made every statutory relief in
@@ -239,7 +239,7 @@ export function TaxSettingsForm({ onSaved }: { onSaved?: () => void }) {
               key={option.value}
               type="button"
               onClick={() => void classifyAll(option.value)}
-              className="h-8 cursor-pointer rounded-[50px] border border-line bg-card px-3 text-[12px] font-medium transition-colors hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:outline-none"
+              className="h-8 cursor-pointer rounded-md border border-line bg-card px-3 text-[12px] font-medium transition-colors hover:bg-accent-soft focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:outline-none"
             >
               {option.label}
             </button>
@@ -251,7 +251,7 @@ export function TaxSettingsForm({ onSaved }: { onSaved?: () => void }) {
         type="button"
         onClick={() => void save()}
         disabled={saving}
-        className="h-9 w-full cursor-pointer rounded-[50px] bg-primary px-4 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        className="h-9 w-full cursor-pointer rounded-md bg-primary px-4 text-[13px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         {saving ? "Saving…" : "Save tax settings"}
       </button>
