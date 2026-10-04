@@ -10,7 +10,8 @@ shadcn/ui primitives on Base UI, Recharts, Phosphor icons, and Motion.
 
 | Route | Page |
 |---|---|
-| `/` | Dashboard — income vs expenses, budget snapshot, recent transactions, tax insights, needs-attention queue |
+| `/` | Landing — hero, features, pricing and footer (public; signs-in users redirect to `/app`) |
+| `/app` | Dashboard — income vs expenses, budget snapshot, recent transactions, tax insights, needs-attention queue |
 | `/transactions` | Searchable, sortable, filterable transaction table with bulk export/delete, detail drawer, and edit/import flows |
 | `/budget` | Per-category budgets (fixed or % of income) with progress tracking, donut summary, and a detail drawer (monthly bars, tracked-source split, transactions) |
 | `/insights` | Overview (net income, expenses, cash balance, AI summaries, cash-flow chart) and Tax (deductions, position, checklist, Q&A) tabs with a custom date-range picker |

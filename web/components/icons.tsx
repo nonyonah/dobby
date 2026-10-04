@@ -4,6 +4,7 @@ import {
   ArrowDown01Icon,
   ArrowUp01Icon,
   ArrowUpDownIcon,
+  ArrowRight02Icon,
   BankIcon,
   BarChartIcon,
   BellIcon as BellGlyph,
@@ -104,6 +105,10 @@ export function TrendUpIcon({ className }: IconProps) {
 
 export function TrendDownIcon({ className }: IconProps) {
   return <P icon={TrendingDownIcon} size={12} className={className} />
+}
+
+export function ArrowRightIcon({ className }: IconProps) {
+  return <P icon={ArrowRight02Icon} size={14} className={className} />
 }
 
 export function CaretDownIcon({ className }: IconProps) {
