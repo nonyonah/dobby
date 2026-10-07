@@ -51,7 +51,7 @@ export function LandingNav() {
         </nav>
         <Link
           href="/sign-up"
-          className="inline-flex items-center rounded-[10px] bg-primary px-3.5 py-2 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+          className="inline-flex items-center rounded-[50px] bg-primary px-3.5 py-2 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
         >
           Get started
         </Link>

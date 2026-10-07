@@ -499,6 +499,10 @@ body {
   ::backdrop {
     border-color: var(--color-border);
   }
+
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 /* Every tappable control is a 50px pill: buttons (including dropdown and
