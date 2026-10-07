@@ -27,7 +27,7 @@ const CHEVRON =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")";
 
 export const selectControlClass =
-  "h-8 w-full rounded-md border border-line bg-card px-2.5 pr-8 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 appearance-none cursor-pointer bg-[length:16px] bg-[right_0.5rem_center] bg-no-repeat dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
+  "h-8 w-full rounded-[50px] border border-line bg-card px-2.5 pr-8 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] outline-none transition-shadow duration-150 ease-out focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50 appearance-none cursor-pointer bg-[length:16px] bg-[right_0.5rem_center] bg-no-repeat dark:shadow-[0_0_0_1px_rgb(255_255_255/0.08)]";
 
 export interface NativeSelectOption {
   value: string;

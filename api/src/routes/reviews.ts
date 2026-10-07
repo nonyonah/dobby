@@ -3,9 +3,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { convertCurrencyAmount, getConversionFactors } from "../providers/frankfurter.js";
-import { assertPro } from "../middleware/plan.js";
+import { getConversionFactors } from "../providers/frankfurter.js";
 import { settleImportsFor } from "../imports/pipeline.js";
+import { runExclusive } from "../lib/user-mutex.js";
 
 export const reviewsRouter = Router();
 reviewsRouter.use(requireAuth);
@@ -147,11 +147,11 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
 }
 
 reviewsRouter.post("/approve-many", async (req, res) => {
-  await assertPro(req.auth?.userId, "Approving reviewed transactions");
   const input = z
     .object({ items: z.array(z.object({ id: z.string().min(1), categoryId: z.string().trim().min(1).max(80).nullable().optional() })).min(1).max(200) })
     .parse(req.body);
-  const results = await approveReviewItems(req.auth!.userId, input.items);
+  const ownerClerkId = req.auth!.userId;
+  const results = await runExclusive(`reviews-approve:${ownerClerkId}`, () => approveReviewItems(ownerClerkId, input.items));
   const approved = results.filter((result) => result.ok && !result.duplicate).map((result) => result.id);
   const duplicates = results.filter((result) => result.ok && result.duplicate).map((result) => result.id);
   const failed = results.filter((result) => !result.ok);
@@ -159,10 +159,11 @@ reviewsRouter.post("/approve-many", async (req, res) => {
 });
 
 reviewsRouter.post("/:id/approve", async (req, res) => {
-  await assertPro(req.auth?.userId, "Approving reviewed transactions");
   const ownerClerkId = req.auth!.userId;
   const override = z.object({ categoryId: z.string().trim().min(1).max(80).nullable().optional() }).parse(req.body);
-  const [result] = await approveReviewItems(ownerClerkId, [{ id: req.params.id, categoryId: override.categoryId }]);
+  const [result] = await runExclusive(`reviews-approve:${ownerClerkId}`, () =>
+    approveReviewItems(ownerClerkId, [{ id: req.params.id, categoryId: override.categoryId }]),
+  );
   if (!result || !result.ok) {
     const code = result && !result.ok ? result.code : "REVIEW_ITEM_NOT_FOUND";
     const message = result && !result.ok ? result.message : "Review item was not found.";
@@ -178,7 +179,6 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
 });
 
 reviewsRouter.post("/:id/reject", async (req, res) => {
-  await assertPro(req.auth?.userId, "Resolving reviewed transactions");
   // Read the parent first: updateMany below returns a count, not the row, and
   // the import has to be settled once this is the last pending item in it.
   const target = await prisma.transactionReviewItem.findFirst({

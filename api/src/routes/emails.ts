@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { assertPro } from "../middleware/plan.js";
 import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
+import { runExclusive } from "../lib/user-mutex.js";
 import { refreshProviderStatus } from "./integrations.js";
 import { runEmailSync } from "../emails/sync.js";
 import { notifyEmailSyncComplete } from "../lib/mailer.js";
@@ -45,19 +46,21 @@ emailsRouter.post("/sync", async (req, res) => {
     );
   }
 
-  const running = await prisma.emailSyncJob.findFirst({
-    where: { ownerClerkId, provider: input.provider, status: "processing" },
-    select: { id: true, updatedAt: true },
-    orderBy: { createdAt: "desc" },
+  const job = await runExclusive(`email-sync:${ownerClerkId}:${input.provider}`, async () => {
+    const running = await prisma.emailSyncJob.findFirst({
+      where: { ownerClerkId, provider: input.provider, status: "processing" },
+      select: { id: true, updatedAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+    // Only treat a recently-heartbeated job as in-flight; a crashed run would
+    // otherwise block forever. saveJob bumps updatedAt on every message, so a
+    // long but live sync never looks stale.
+    if (running && Date.now() - running.updatedAt.getTime() < 15 * 60_000) {
+      throw new AppError(409, "An email sync is already running for this account.", "EMAIL_SYNC_IN_PROGRESS");
+    }
+    return prisma.emailSyncJob.create({ data: { ownerClerkId, provider: input.provider } });
   });
-  // Only treat a recently-heartbeated job as in-flight; a crashed run would
-  // otherwise block forever. saveJob bumps updatedAt on every message, so a
-  // long but live sync never looks stale.
-  if (running && Date.now() - running.updatedAt.getTime() < 15 * 60_000) {
-    throw new AppError(409, "An email sync is already running for this account.", "EMAIL_SYNC_IN_PROGRESS");
-  }
 
-  const job = await prisma.emailSyncJob.create({ data: { ownerClerkId, provider: input.provider } });
   res.status(202).json({ data: { jobId: job.id } });
 
   void runEmailSync(ownerClerkId, input.provider, job.id, {

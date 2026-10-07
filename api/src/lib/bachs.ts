@@ -114,7 +114,7 @@ export async function createPortalSession(customerId: string): Promise<{ id: str
  * One-time crypto checkout (USDT etc.): pure pricing instead of a recurring
  * product, because subscription checkouts reject non-card methods. The hosted
  * overlay renders the wallet address + QR; fulfillment below grants a
- * 30/365-day term exactly like a Flutterwave purchase.
+ * 30/365-day term.
  */
 export async function createCryptoCheckout(input: {
   email: string;

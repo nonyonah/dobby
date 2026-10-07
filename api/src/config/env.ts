@@ -43,8 +43,10 @@ const envSchema = z.object({
   BACHS_WEBHOOK_SECRET: optionalString,
   BACHS_PRO_PRODUCT_ID: optionalString,
   BACHS_PRO_YEARLY_PRODUCT_ID: optionalString,
-  FLUTTERWAVE_SECRET_KEY: optionalString,
-  FLUTTERWAVE_SECRET_HASH: optionalString,
+  // Error monitoring. Unset means Sentry is not initialised at all, so the API
+  // runs identically without a DSN. Everything sent is scrubbed in lib/sentry.ts.
+  SENTRY_DSN: optionalString,
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
 });
 
 const parsed = envSchema.safeParse(process.env);

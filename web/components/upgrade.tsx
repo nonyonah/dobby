@@ -16,34 +16,34 @@ export type BillingInterval = "month" | "year";
 
 /** One priced way to buy Pro. The option travels whole from picker to payment — never re-inferred. */
 export type BillingOption = {
-  provider: "bachs" | "flutterwave";
+  provider: "bachs";
   interval: BillingInterval;
-  /** Card = Bachs subscription; crypto/Flutterwave = one-time terms. */
-  method: "card" | "crypto" | "flutterwave";
+  /** Card = Bachs subscription; crypto = one-time terms. */
+  method: "card" | "crypto";
   amount: number;
   currency: string;
   label: string;
+  /** Fixed = a raw-amount checkout; local = Bachs resolves per-country pricing. */
+  pricing: "fixed" | "local";
 };
 
 const FALLBACK_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", method: "card", amount: 5, currency: "USD", label: "$5/mo" },
-  { provider: "bachs", interval: "month", method: "crypto", amount: 5, currency: "USD", label: "$5/mo · Crypto" },
-  { provider: "bachs", interval: "year", method: "card", amount: 50, currency: "USD", label: "$50/yr" },
-  { provider: "bachs", interval: "year", method: "crypto", amount: 50, currency: "USD", label: "$50/yr · Crypto" },
+  { provider: "bachs", interval: "month", method: "card", amount: 3, currency: "USD", label: "$3/mo", pricing: "local" },
+  { provider: "bachs", interval: "month", method: "crypto", amount: 3, currency: "USD", label: "$3/mo · Crypto", pricing: "fixed" },
+  { provider: "bachs", interval: "year", method: "card", amount: 32.4, currency: "USD", label: "$32.40/yr", pricing: "local" },
+  { provider: "bachs", interval: "year", method: "crypto", amount: 32.4, currency: "USD", label: "$32.40/yr · Crypto", pricing: "fixed" },
 ];
 
 const optionKey = (option: BillingOption) => `${option.provider}:${option.interval}:${option.method}`;
 
-function pillPrice(options: BillingOption[], region: "NG" | "US" | null, interval: BillingInterval): string {
-  const primary =
-    options.find((item) => item.interval === interval && (region === "NG" ? item.provider === "flutterwave" : item.method === "card")) ??
-    options.find((item) => item.interval === interval);
+function pillPrice(options: BillingOption[], interval: BillingInterval): string {
+  const primary = options.find((item) => item.interval === interval && item.method === "card") ?? options.find((item) => item.interval === interval);
   if (!primary) return "";
   try {
     const formatted = new Intl.NumberFormat(primary.currency === "NGN" ? "en-NG" : "en-US", {
       style: "currency",
       currency: primary.currency,
-      maximumFractionDigits: 0,
+      maximumFractionDigits: primary.amount % 1 === 0 ? 0 : 2,
     }).format(primary.amount);
     return `${formatted}/${interval === "month" ? "mo" : "yr"}`;
   } catch {
@@ -52,14 +52,16 @@ function pillPrice(options: BillingOption[], region: "NG" | "US" | null, interva
 }
 
 function methodCopy(option: BillingOption): { title: string; sub: string } {
-  if (option.method === "card") return { title: "Card", sub: "Recurring subscription · 7-day free trial" };
-  if (option.method === "crypto") {
+  if (option.method === "card") {
     return {
-      title: "Crypto",
-      sub: `One-time USDT payment · ${option.interval === "month" ? "30 days" : "12 months"} of Pro, no auto-renew`,
+      title: "Card",
+      sub: "Recurring subscription · 7-day free trial · billed in your local currency",
     };
   }
-  return { title: "Flutterwave", sub: "Card, bank transfer or USSD · one-time, no auto-renew" };
+  return {
+    title: "Crypto",
+    sub: `One-time USDT payment · ${option.interval === "month" ? "30 days" : "12 months"} of Pro, no auto-renew`,
+  };
 }
 
 type UpgradeContextValue = {
@@ -69,10 +71,9 @@ type UpgradeContextValue = {
   startCheckout: (option: BillingOption) => void;
   /** True while a checkout is being prepared or is on screen. */
   busy: boolean;
-  /** Region-aware prices; USD Bachs until the options load. */
+  /** USD anchor prices; Bachs resolves the customer's currency at checkout. */
   options: BillingOption[];
-  region: "NG" | "US" | null;
-  /** Drop the cached options so the next open re-reads the region. */
+  /** Drop the cached options so the next open re-reads pricing. */
   refreshOptions: () => void;
 };
 
@@ -81,23 +82,22 @@ const UpgradeContext = createContext<UpgradeContextValue>({
   startCheckout: () => {},
   busy: false,
   options: FALLBACK_OPTIONS,
-  region: null,
   refreshOptions: () => {},
 });
 
 /**
  * Owns checkout creation so every upgrade control shares one request path and
  * one busy flag. Upgrade buttons open the picker dialog; the dialog hands one
- * explicit option to `startCheckout`. Bachs card/crypto open as an in-page
- * overlay (no public return address needed); Flutterwave redirects to its
- * hosted page and verifies on return. Webhooks fulfill in all cases.
+ * explicit option to `startCheckout`. Both card and crypto open as an in-page
+ * Bachs overlay (no public return address needed); webhooks fulfil in all
+ * cases. Per-country pricing is Bachs' job: the hosted checkout resolves the
+ * customer's currency from their location, so no region logic lives here.
  */
 export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
   const { refresh: refreshPlan } = usePlan();
   const [busy, setBusy] = useState(false);
   const [options, setOptions] = useState<BillingOption[]>(FALLBACK_OPTIONS);
-  const [region, setRegion] = useState<"NG" | "US" | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogInterval, setDialogInterval] = useState<BillingInterval>("month");
   const optionsRef = useRef<BillingOption[] | null>(null);
@@ -106,17 +106,16 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const methodRef = useRef<"card" | "crypto">("card");
   const checkoutRef = useRef<string | null>(null);
 
-  // Region-aware prices (NG → Flutterwave NGN + crypto, otherwise Bachs),
-  // loaded once; USD Bachs labels render until then so nothing flashes empty.
+  // Prices loaded once; USD anchor labels render until then so nothing flashes
+  // empty. Bachs swaps in the customer's currency when the checkout opens.
   const ensureOptions = useCallback(async () => {
     if (optionsRef.current) return optionsRef.current;
     try {
-      const response = await api.get<{ data: { region: "NG" | "US"; options: BillingOption[] } }>("/v1/billing/options");
+      const response = await api.get<{ data: { options: BillingOption[] } }>("/v1/billing/options");
       if (response.data.options.length > 0) {
         optionsRef.current = response.data.options;
         setOptions(response.data.options);
       }
-      setRegion(response.data.region);
     } catch {
       // Offline or logged out — keep the USD fallback labels.
     }
@@ -227,9 +226,9 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const openCheckout = useCallback(
     (preset: BillingInterval = "month") => {
       if (busy) return;
-      // The region can change at any time (Country setting), so never serve
-      // a stale matrix: drop the cache and reload as the dialog opens. The
-      // dialog renders fallback prices until the fresh rows land.
+      // Prices can change (Country setting, catalog edits), so never serve a
+      // stale matrix: drop the cache and reload as the dialog opens. The dialog
+      // renders fallback prices until the fresh rows land.
       optionsRef.current = null;
       setDialogInterval(preset);
       setDialogOpen(true);
@@ -253,15 +252,6 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
       setDialogOpen(false);
       void (async () => {
         try {
-          if (option.provider === "flutterwave") {
-            // One-time NGN term: Flutterwave hosts the whole page, so leave
-            // the app; the return URL verifies and the webhook fulfills.
-            const response = await api.post<{ data: { link: string } }>("/v1/billing/flutterwave/checkout", {
-              interval: option.interval,
-            });
-            window.location.assign(response.data.link);
-            return;
-          }
           const response = await api.post<{ data: { url: string; checkoutId?: string } }>("/v1/billing/checkout", {
             interval: option.interval,
             ...(option.method === "crypto" ? { method: "crypto" as const } : {}),
@@ -284,7 +274,7 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <UpgradeContext.Provider value={{ openCheckout, startCheckout, busy, options, region, refreshOptions }}>
+    <UpgradeContext.Provider value={{ openCheckout, startCheckout, busy, options, refreshOptions }}>
       {children}
       {dialogOpen ? (
         <CheckoutDialog preset={dialogInterval} onClose={() => setDialogOpen(false)} />
@@ -299,7 +289,7 @@ export function useUpgrade() {
 
 /** Plan picker: cadence pills, then one row per payment method. Mounts fresh per open. */
 function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose: () => void }) {
-  const { options, region, busy, startCheckout } = useUpgrade();
+  const { options, busy, startCheckout } = useUpgrade();
   const [interval, setInterval] = useState<BillingInterval>(preset);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const rows = options.filter((option) => option.interval === interval);
@@ -311,9 +301,7 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
         <DialogHeader>
           <DialogTitle>Upgrade to Dobby Pro</DialogTitle>
           <DialogDescription>
-            {region === "NG"
-              ? "Billed in naira via Flutterwave, or once in crypto (USD)."
-              : "Billed in USD via Bachs — card subscription or one-time crypto."}
+            Billed in your local currency via Bachs — card subscription or one-time crypto.
           </DialogDescription>
         </DialogHeader>
         <div className="flex gap-2" role="group" aria-label="Billing cadence">
@@ -329,7 +317,7 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
             >
               <span className="block text-[13px] font-semibold capitalize text-foreground">{cadence}ly</span>
               <span className="mono mt-0.5 block text-[12px] tabular-nums text-muted-foreground">
-                {pillPrice(options, region, cadence)}
+                {pillPrice(options, cadence)}
               </span>
             </button>
           ))}

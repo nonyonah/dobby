@@ -14,12 +14,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, THEME_STORAGE_KEY, announceThemeChange, applyAccentColor, applyTheme, isThemePreference, readStoredAccent, withoutTransitions, type AccentColor, type ThemePreference } from "@/lib/theme";
+import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, readStoredAccent, withoutTransitions, type AccentColor } from "@/lib/theme";
 import { readStoredCurrency, setAppCurrency, writeStoredCurrency } from "@/lib/format";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES } from "@/lib/features";
-import { BILLING_COUNTRIES, COUNTRY_OPTIONS, CURRENCIES, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS, THEME_OPTIONS } from "@/lib/countries";
+import { BILLING_COUNTRIES, COUNTRY_OPTIONS, CURRENCIES, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS } from "@/lib/countries";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { deriveBillingNotice } from "@/lib/billing-notice";
 import { usePlan } from "@/components/plan-provider";
@@ -396,7 +396,6 @@ export function SettingsPage() {
   const [accentColor, setAccentColor] = useState<AccentColor>(DEFAULT_ACCENT);
   const [country, setCountry] = useState("nigeria");
   const [currency, setCurrency] = useState("ngn");
-  const [theme, setTheme] = useState<ThemePreference>("system");
   const [jurisdiction, setJurisdiction] = useState("nigeria");
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
@@ -513,7 +512,6 @@ export function SettingsPage() {
       setCurrency(asOption(seeded) ?? "ngn");
       writeStoredCurrency(seeded);
     }
-    if (isThemePreference(profile.theme)) setTheme(profile.theme);
     if (profile.taxJurisdiction && TAX_JURISDICTIONS.some((entry) => entry.value === profile.taxJurisdiction)) setJurisdiction(profile.taxJurisdiction);
     // An accent stored on the account wins, but hex values written before a
     // brand change no longer match any swatch, so fall back to this device's
@@ -693,32 +691,6 @@ export function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isSignedIn]);
 
-  // Flutterwave returns here after payment (?payment=flutterwave&transaction_id=…&tx_ref=…):
-  // verify server-side, then clean the URL so a refresh never re-verifies.
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("payment") !== "flutterwave") return;
-    const transactionId = params.get("transaction_id") ?? undefined;
-    const txRef = params.get("tx_ref") ?? undefined;
-    window.history.replaceState(null, "", window.location.pathname);
-    void (async () => {
-      try {
-        const response = await api.post<{ data: { granted?: boolean; already?: boolean } }>("/v1/billing/flutterwave/verify", {
-          ...(transactionId ? { transactionId: Number(transactionId) || transactionId } : {}),
-          ...(txRef ? { txRef } : {}),
-        });
-        if (response.data.granted) {
-          refreshPlan();
-          toast.success(response.data.already ? "Dobby Pro is already active on this payment." : "Payment confirmed — Dobby Pro is active.");
-        }
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Could not confirm the payment.");
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, isSignedIn]);
-
   const refreshProviders = async () => {
     try {
       const providerResponse = await api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations");
@@ -813,7 +785,7 @@ export function SettingsPage() {
     window.localStorage.setItem(ACCENT_STORAGE_KEY, next);
   };
 
-  /** Theme, Accent and Currency all apply on change and commit on Save. */
+  /** Accent and Currency apply on change and commit on Save. */
   const handleCurrencyChange = (next: string) => {
     setCurrency(next);
     setAppCurrency(next);
@@ -830,13 +802,10 @@ export function SettingsPage() {
         ...(nameParts[0] ? { firstName: nameParts[0], lastName: nameParts.slice(1).join(" ") } : {}),
         country: country === "nigeria" ? "NG" : country === "united-states" ? "US" : null,
         currency: currency.toUpperCase(),
-        theme,
         taxJurisdiction: jurisdiction,
         accentColor: ACCENT_COLORS.find((item) => item.id === accentColor)?.value,
       });
-      try { window.localStorage.setItem(THEME_STORAGE_KEY, theme); } catch { /* private mode */ }
-      announceThemeChange();
-      // Theme, Accent and Currency already applied when they were picked, so all
+      // Accent and Currency already applied when they were picked, so all
       // that is left is committing them to the account and re-reading it.
       //
       // PlanProvider caches `/v1/me` for the session, and this page re-seeds its
@@ -987,14 +956,12 @@ export function SettingsPage() {
                 lands means showing a default the user may not have chosen. */}
             {planLoading ? (
               <>
-                <RowPlaceholder labelWidth={72} />
                 <RowPlaceholder labelWidth={86} />
                 <RowPlaceholder labelWidth={64} />
                 <RowPlaceholder labelWidth={104} />
               </>
             ) : (
               <>
-            <Row label="Theme"><SelectField id="theme" label="Theme" value={theme} onValueChange={(value) => { const next = isThemePreference(value) ? value : "system"; setTheme(next); /* Apply straight away — waiting for Save left the control looking broken. */ try { window.localStorage.setItem(THEME_STORAGE_KEY, next); } catch { /* private mode: the save below still persists it */ } applyTheme(next); }} options={THEME_OPTIONS} /></Row>
             <Row label="Accent color"><AccentColorPicker value={accentColor} onChange={handleAccentChange} /></Row>
             <Row label="Currency"><SelectField id="currency" label="Currency" value={currency} onValueChange={(value) => handleCurrencyChange(value ?? "ngn")} options={CURRENCY_OPTIONS} /></Row>
             <Row label="Tax jurisdiction" description="Planning only. Dobby does not prepare or file returns."><SelectField id="jurisdiction" label="Tax jurisdiction" value={jurisdiction} options={TAX_JURISDICTION_OPTIONS} onValueChange={(value) => {

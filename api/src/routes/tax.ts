@@ -1,11 +1,14 @@
-import { IncomeSource, Prisma, TaxChecklistStatus, TaxCountry } from "@prisma/client";
+import { IncomeSource, Prisma, TaxChecklistStatus, TaxCountry, TransactionType } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+import { assertPro } from "../middleware/plan.js";
 import { prisma } from "../lib/prisma.js";
+import { utcTimestamp } from "../lib/sql.js";
+import { runExclusive } from "../lib/user-mutex.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getTaxRules, taxCountryForJurisdiction } from "../tax/registry.js";
 import { generateGatewaySummary } from "../providers/ai-gateway.js";
-import { convertCurrencyAmount } from "../providers/frankfurter.js";
+import { getConversionFactors } from "../providers/frankfurter.js";
 
 export const taxRouter = Router();
 taxRouter.use(requireAuth);
@@ -26,35 +29,68 @@ async function taxCountryFor(ownerClerkId: string): Promise<TaxCountry> {
   return taxCountryForJurisdiction(profile?.taxJurisdiction);
 }
 
-async function ensureTaxProfile(ownerClerkId: string) {
-  const country = await taxCountryFor(ownerClerkId);
-  const profile = await prisma.taxProfile.upsert({
+async function loadTaxProfile(ownerClerkId: string, country: TaxCountry) {
+  return prisma.taxProfile.findUnique({
     where: { ownerClerkId },
-    create: { ownerClerkId, country, taxYear: currentYear() },
-    update: { country },
+    include: { checklistItems: { where: { country }, orderBy: { createdAt: "asc" } } },
   });
-  const rules = getTaxRules(profile.country);
-  // Each jurisdiction has its own checklist, so switching does not delete the
-  // previous country's rows — the user researching a second country must not
-  // lose their progress on the first. Rows for other countries are simply not
-  // returned.
+}
+
+async function seedChecklist(taxProfileId: string, country: TaxCountry) {
+  const rules = getTaxRules(country);
   const keys = rules.checklist.map((item) => item.key);
   await prisma.taxChecklistItem.createMany({
-    data: rules.checklist.map((item) => ({ taxProfileId: profile.id, country, key: item.key, label: item.label })),
+    data: rules.checklist.map((item) => ({ taxProfileId, country, key: item.key, label: item.label })),
     skipDuplicates: true,
   });
-  // The module's list is the source of truth, so anything else is pruned. This
-  // is not a migration clean-up: older rows accumulated every country's keys
-  // into one list (the previous delete-on-switch was a no-op, because Settings
-  // writes TaxProfile.country before this ran), so a profile can still be
-  // carrying a union of checklists. Enforcing the invariant on every read means
-  // a stale or renamed key cannot survive to be shown to the user.
   await prisma.taxChecklistItem.deleteMany({
-    where: { taxProfileId: profile.id, country, key: { notIn: keys } },
+    where: { taxProfileId, country, key: { notIn: keys } },
   });
-  return prisma.taxProfile.findUniqueOrThrow({
-    where: { id: profile.id },
-    include: { checklistItems: { where: { country }, orderBy: { createdAt: "asc" } } },
+}
+
+/**
+ * Ensure the TaxProfile exists and its checklist matches the jurisdiction.
+ * Concurrent GETs for the same user are serialized so createMany/deleteMany
+ * cannot race. Read-only paths skip write work when the profile is already
+ * seeded for the current country.
+ */
+async function ensureTaxProfile(ownerClerkId: string, options: { forceSeed?: boolean } = {}) {
+  return runExclusive(`tax-profile:${ownerClerkId}`, async () => {
+    const country = await taxCountryFor(ownerClerkId);
+    let profile = await loadTaxProfile(ownerClerkId, country);
+
+    if (!profile) {
+      await prisma.taxProfile.upsert({
+        where: { ownerClerkId },
+        create: { ownerClerkId, country, taxYear: currentYear() },
+        update: { country },
+      });
+      profile = await loadTaxProfile(ownerClerkId, country);
+    } else if (profile.country !== country) {
+      await prisma.taxProfile.update({ where: { id: profile.id }, data: { country } });
+      profile = await loadTaxProfile(ownerClerkId, country);
+    }
+
+    if (!profile) {
+      throw new Error("Tax profile missing after ensure");
+    }
+
+    const expectedKeys = getTaxRules(country).checklist.map((item) => item.key);
+    const existingKeys = new Set(profile.checklistItems.map((item) => item.key));
+    const needsSeed =
+      options.forceSeed ||
+      expectedKeys.length !== existingKeys.size ||
+      expectedKeys.some((key) => !existingKeys.has(key));
+
+    if (needsSeed) {
+      await seedChecklist(profile.id, country);
+      profile = await loadTaxProfile(ownerClerkId, country);
+    }
+
+    if (!profile) {
+      throw new Error("Tax profile missing after seed");
+    }
+    return profile;
   });
 }
 
@@ -77,28 +113,66 @@ function resolvedInputs(profile: { country: TaxCountry; residencyStatus: string 
   return answers;
 }
 
+/**
+ * One row per (type, currency, taxable, source, asset, incomeSource) group for
+ * the period, summing the amounts in the database.
+ *
+ * The tax modules only ever *sum* a transaction's type, amount, taxable flag and
+ * income source — they never need an individual row — so the grouping is
+ * loss-free. Postgres sums the exact decimals, so the only difference from
+ * loading every row is that a year of history arrives as a few dozen groups
+ * rather than a few thousand objects.
+ */
+type TaxAggRow = {
+  type: string;
+  currency: string;
+  is_taxable: boolean;
+  source: string | null;
+  asset_symbol: string | null;
+  income_source: string | null;
+  total: Prisma.Decimal;
+};
+
 async function calculate(ownerClerkId: string) {
   const profile = await ensureTaxProfile(ownerClerkId);
   const rules = getTaxRules(profile.country);
   // Each module owns its own period, because not every tax year is the calendar
   // year — South Africa's runs 1 March to the end of February.
   const period = rules.periodFor(profile.taxYear);
-  const transactions = await prisma.transaction.findMany({
-    where: { ownerClerkId, occurredAt: { gte: period.start, lt: period.end } },
-    select: { type: true, amount: true, currency: true, isTaxable: true, source: true, assetSymbol: true, incomeSource: true },
-  });
+  const groups = await prisma.$queryRaw<TaxAggRow[]>`
+    SELECT
+      t.type::text AS type,
+      t.currency,
+      t."isTaxable" AS is_taxable,
+      t.source,
+      t."assetSymbol" AS asset_symbol,
+      t."incomeSource"::text AS income_source,
+      SUM(t.amount) AS total
+    FROM "Transaction" t
+    WHERE t."ownerClerkId" = ${ownerClerkId}
+      AND t."occurredAt" >= ${utcTimestamp(period.start)}
+      AND t."occurredAt" < ${utcTimestamp(period.end)}
+    GROUP BY 1, 2, 3, 4, 5, 6
+  `;
   const taxableWalletAssets = new Set(["USDC", "CNGN", "ETH"]);
   const taxCurrency = rules.currency;
-  const normalizedTransactions = await Promise.all(transactions.map(async (item) => {
-    let amount = Number(item.amount);
-    try { amount = await convertCurrencyAmount(amount, item.currency ?? "USD", taxCurrency); } catch { /* Preserve the stored amount if no rate is available. */ }
+  const factors = await getConversionFactors(
+    groups.map((group) => group.currency ?? "USD"),
+    taxCurrency,
+  );
+  const normalizedTransactions = groups.map((group) => {
+    const amount = Number(group.total) * (factors.get((group.currency ?? "USD").toUpperCase()) ?? 1);
     return {
-      type: item.type,
+      type: group.type as TransactionType,
       amount,
-      isTaxable: item.isTaxable || (item.source === "wallet" && Boolean(item.assetSymbol) && taxableWalletAssets.has(item.assetSymbol!.toUpperCase())),
-      incomeSource: item.incomeSource,
+      isTaxable:
+        group.is_taxable ||
+        (group.source === "wallet" &&
+          Boolean(group.asset_symbol) &&
+          taxableWalletAssets.has(group.asset_symbol!.toUpperCase())),
+      incomeSource: group.income_source as IncomeSource | null,
     };
-  }));
+  });
   const result = rules.calculate({
     taxYear: profile.taxYear,
     transactions: normalizedTransactions,
@@ -138,6 +212,7 @@ taxRouter.get("/rules", async (req, res) => {
 });
 
 taxRouter.patch("/profile", async (req, res) => {
+  await assertPro(req.auth?.userId, "Tax profile");
   const input = z.object({
     country: countrySchema.optional(),
     deductions: deductionsSchema.optional(),
@@ -159,10 +234,11 @@ taxRouter.patch("/profile", async (req, res) => {
   });
   // Checklist seeding and pruning both live in ensureTaxProfile, so there is one
   // path that can keep a country's list correct rather than two that can drift.
-  res.json({ data: await ensureTaxProfile(req.auth!.userId) });
+  res.json({ data: await ensureTaxProfile(req.auth!.userId, { forceSeed: true }) });
 });
 
 taxRouter.get("/estimate", async (req, res) => {
+  await assertPro(req.auth?.userId, "Tax estimates");
   const { result } = await calculate(req.auth!.userId);
   res.json({ data: result });
 });
@@ -175,6 +251,7 @@ taxRouter.get("/estimate", async (req, res) => {
  * user adopting this after the fact.
  */
 taxRouter.patch("/income-source", async (req, res) => {
+  await assertPro(req.auth?.userId, "Tax income sources");
   const input = z.object({
     incomeSource: z.nativeEnum(IncomeSource).nullable(),
     transactionIds: z.array(z.string().min(1)).max(500).optional(),
@@ -192,20 +269,24 @@ taxRouter.patch("/income-source", async (req, res) => {
 });
 
 taxRouter.get("/summary", async (req, res) => {
+  await assertPro(req.auth?.userId, "Tax summary");
   const { profile, result } = await calculate(req.auth!.userId);
   const summary = await generateGatewaySummary(`Summarize this informational tax estimate for the user in 3 short bullet points. Country: ${result.country}. Currency: ${result.currency}. Tax period: ${result.taxYearLabel}. Taxable income: ${result.taxableIncome}. Estimated tax owed: ${result.estimatedTaxOwed}. Components: ${JSON.stringify(result.components)}. Deductions captured: ${JSON.stringify(profile.deductionsCaptured ?? {})}. Mention that the result is an estimate and should be verified with a qualified tax professional.`);
   res.json({ data: { ...result, summary } });
 });
 
 taxRouter.get("/checklist", async (req, res) => {
+  await assertPro(req.auth?.userId, "Tax checklist");
   const profile = await ensureTaxProfile(req.auth!.userId);
   res.json({ data: { country: profile.country, taxYear: profile.taxYear, items: profile.checklistItems } });
 });
 
 taxRouter.patch("/checklist/:key", async (req, res) => {
+  await assertPro(req.auth?.userId, "Tax checklist");
+  const key = z.string().trim().min(1).max(80).parse(req.params.key);
   const status = z.nativeEnum(TaxChecklistStatus).parse(req.body.status);
   const profile = await ensureTaxProfile(req.auth!.userId);
-  const item = await prisma.taxChecklistItem.updateMany({ where: { taxProfileId: profile.id, country: profile.country, key: req.params.key }, data: { status } });
+  const item = await prisma.taxChecklistItem.updateMany({ where: { taxProfileId: profile.id, country: profile.country, key }, data: { status } });
   if (!item.count) { res.status(404).json({ error: { code: "CHECKLIST_ITEM_NOT_FOUND", message: "Tax checklist item was not found." } }); return; }
-  res.json({ data: await prisma.taxChecklistItem.findFirst({ where: { taxProfileId: profile.id, country: profile.country, key: req.params.key } }) });
+  res.json({ data: await prisma.taxChecklistItem.findFirst({ where: { taxProfileId: profile.id, country: profile.country, key } }) });
 });

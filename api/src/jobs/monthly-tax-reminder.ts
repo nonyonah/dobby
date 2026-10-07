@@ -20,24 +20,24 @@ export async function runMonthlyTaxReminder(now = new Date()) {
     where: { owner: { plan: { in: [Plan.TRIAL, Plan.ACTIVE] } } },
     include: { owner: true, checklistItems: true },
   });
+  const monthMark = now.getMonth() + 1;
+  const candidates = profiles.filter((profile) => profile.owner.email && computeEffectivePlan(profile.owner) !== "EXPIRED");
+  if (candidates.length === 0) return { sent: 0 };
+
+  const alreadySent = await prisma.reminderLog.findMany({
+    where: {
+      kind: "monthly-tax",
+      daysBefore: monthMark,
+      ownerClerkId: { in: candidates.map((profile) => profile.ownerClerkId) },
+      taxYear: { in: [...new Set(candidates.map((profile) => profile.taxYear))] },
+    },
+    select: { ownerClerkId: true, taxYear: true },
+  });
+  const sentKeys = new Set(alreadySent.map((row) => `${row.ownerClerkId}:${row.taxYear}`));
+
   let sent = 0;
-  for (const profile of profiles) {
-    if (!profile.owner.email) continue;
-    if (computeEffectivePlan(profile.owner) === "EXPIRED") continue;
-    // One digest per profile per calendar month — a crash mid-loop never resends.
-    const monthMark = now.getMonth() + 1;
-    const already = await prisma.reminderLog.findUnique({
-      where: {
-        ownerClerkId_kind_taxYear_daysBefore: {
-          ownerClerkId: profile.ownerClerkId,
-          kind: "monthly-tax",
-          taxYear: profile.taxYear,
-          daysBefore: monthMark,
-        },
-      },
-      select: { id: true },
-    });
-    if (already) continue;
+  for (const profile of candidates) {
+    if (sentKeys.has(`${profile.ownerClerkId}:${profile.taxYear}`)) continue;
     const rules = getTaxRules(profile.country);
     // Checklists are per jurisdiction; only the active country's items are this
     // user's outstanding work.
@@ -45,7 +45,7 @@ export async function runMonthlyTaxReminder(now = new Date()) {
     const ready = items.filter((item) => item.status === "READY").length;
 
     const delivered = await sendMonthlyTaxNotification({
-      to: profile.owner.email,
+      to: profile.owner.email!,
       firstName: profile.owner.firstName,
       estimatedTaxOwed: Number(profile.estimatedTaxOwed ?? 0),
       currency: rules.currency,
@@ -63,7 +63,12 @@ export async function runMonthlyTaxReminder(now = new Date()) {
   return { sent };
 }
 
-/** Plain-language country name, matching the jurisdiction labels in the app. */
+/**
+ * Attributive jurisdiction label, matching the jurisdiction labels in the app.
+ * Every template slot reads as a noun phrase ("your ${jurisdictionLabel} Revenue
+ * Service"), so this must be an adjective or a bare country name — never a
+ * country name dropped in front of a noun ("your Nigeria Revenue Service").
+ */
 export function jurisdictionLabel(country: string): string {
   switch (country) {
     case "US":

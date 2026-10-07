@@ -40,7 +40,9 @@ function Button({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap outline-none select-none transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        // 50px pill — the app-wide control shape (see the control rule in
+        // globals.css, which also catches raw <button> call sites).
+        "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-[50px] font-medium whitespace-nowrap outline-none select-none transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         VARIANT_CLASSES[variant],
         (size === "default" || size === "small") && "h-7 px-[10px] text-[12px] [&_svg:not([class*='size-'])]:size-3",
         size === "icon" && "size-8 [&_svg:not([class*='size-'])]:size-3.5",

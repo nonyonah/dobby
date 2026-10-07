@@ -8,7 +8,7 @@ import { AppError } from "../middleware/errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 import { BACHS_USD_PRICES, billingConfigured, cancelProSubscription, createCryptoCheckout, createPortalSession, createProCheckout, getCheckoutSession, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
-import { FLUTTERWAVE_PRICES, createFlutterwavePayment, flutterwaveConfigured, flutterwaveWebhookValid, newTxRef, verifyFlutterwaveTransaction, type FlutterwaveInterval, type VerifiedFlutterwaveTransaction } from "../lib/flutterwave.js";
+import { grantProTermFromPayment } from "../lib/payment-grant.js";
 import { computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "../middleware/plan.js";
 
 const WEBHOOK_PATH = "/webhook";
@@ -188,7 +188,7 @@ billingRouter.get("/", async (req, res) => {
     },
   });
   const term = await prisma.payment.findFirst({
-    where: { ownerClerkId: req.auth!.userId, provider: { in: ["flutterwave", "bachs"] }, status: "paid" },
+    where: { ownerClerkId: req.auth!.userId, provider: "bachs", status: "paid" },
     orderBy: { paidAt: "desc" },
     select: { provider: true, plan: true, periodEndsAt: true, currency: true, amount: true },
   });
@@ -200,7 +200,7 @@ billingRouter.get("/", async (req, res) => {
       configured: billingConfigured(),
       planExpiresAt: user?.planExpiresAt ?? null,
       term: term
-        ? { provider: "flutterwave", plan: term.plan, periodEndsAt: term.periodEndsAt, amount: term.amount.toString(), currency: term.currency }
+        ? { provider: "bachs", plan: term.plan, periodEndsAt: term.periodEndsAt, amount: term.amount.toString(), currency: term.currency }
         : null,
       subscription: user?.bachsSubscriptionId
         ? {
@@ -215,15 +215,12 @@ billingRouter.get("/", async (req, res) => {
 });
 
 billingRouter.post("/checkout", async (req, res) => {
-  const requested = req.body?.interval;
-  if (requested !== undefined && requested !== "month" && requested !== "year") {
-    throw new AppError(400, 'interval must be "month" or "year".', "VALIDATION_ERROR");
-  }
-  const method = req.body?.method ?? "card";
-  if (method !== "card" && method !== "crypto") {
-    throw new AppError(400, 'method must be "card" or "crypto".', "VALIDATION_ERROR");
-  }
-  const interval: BillingInterval = requested ?? "month";
+  const input = z.object({
+    interval: z.enum(["month", "year"]).default("month"),
+    method: z.enum(["card", "crypto"]).default("card"),
+  }).parse(req.body ?? {});
+  const interval: BillingInterval = input.interval;
+  const method = input.method;
 
   const clerkId = req.auth!.userId;
   const user = await prisma.user.upsert({
@@ -336,152 +333,49 @@ billingRouter.post("/cancel", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Region-aware options + Flutterwave (NGN one-time Pro terms)
+// Pricing options (Bachs per-country pricing)
 // ---------------------------------------------------------------------------
 
-export type BillingRegion = "NG" | "US";
-
 export type BillingOption = {
-  provider: "bachs" | "flutterwave";
+  provider: "bachs";
   interval: BillingInterval;
-  /** Card = Bachs subscription; crypto/Flutterwave = one-time terms. */
-  method: "card" | "crypto" | "flutterwave";
+  /** Card = Bachs subscription; crypto = one-time terms. */
+  method: "card" | "crypto";
   amount: number;
   currency: string;
   label: string;
+  /** Whether this price is a fixed catalog price or resolves per customer. */
+  pricing: "fixed" | "local";
 };
 
-const USD_CARD_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", method: "card", amount: 5, currency: "USD", label: "$5/mo" },
-  { provider: "bachs", interval: "year", method: "card", amount: 50, currency: "USD", label: "$50/yr" },
+const CARD_OPTIONS: BillingOption[] = [
+  { provider: "bachs", interval: "month", method: "card", amount: 5, currency: "USD", label: "$5/mo", pricing: "local" },
+  { provider: "bachs", interval: "year", method: "card", amount: 50, currency: "USD", label: "$50/yr", pricing: "local" },
 ];
 
-const USD_CRYPTO_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", method: "crypto", amount: 5, currency: "USD", label: "$5/mo · Crypto" },
-  { provider: "bachs", interval: "year", method: "crypto", amount: 50, currency: "USD", label: "$50/yr · Crypto" },
+const CRYPTO_OPTIONS: BillingOption[] = [
+  { provider: "bachs", interval: "month", method: "crypto", amount: 5, currency: "USD", label: "$5/mo · Crypto", pricing: "fixed" },
+  { provider: "bachs", interval: "year", method: "crypto", amount: 50, currency: "USD", label: "$50/yr · Crypto", pricing: "fixed" },
 ];
 
-function ngnLabel(amount: number, interval: BillingInterval): string {
-  const formatted = new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(amount);
-  return `${formatted}/${interval === "month" ? "mo" : "yr"}`;
-}
-
-function flutterwaveOptions(): BillingOption[] {
-  return (Object.keys(FLUTTERWAVE_PRICES) as FlutterwaveInterval[]).map((interval) => ({
-    provider: "flutterwave",
-    interval,
-    method: "flutterwave",
-    amount: FLUTTERWAVE_PRICES[interval].amount,
-    currency: FLUTTERWAVE_PRICES[interval].currency,
-    label: ngnLabel(FLUTTERWAVE_PRICES[interval].amount, interval),
-  }));
-}
-
-/** The app bills in two regions: NGN (Nigeria) and USD (US). The universal
- * Country setting is authoritative; the tax profile is the fallback. */
-export async function billingRegionFor(clerkId: string): Promise<BillingRegion> {
-  const [profile, taxProfile] = await Promise.all([
-    prisma.profile.findUnique({ where: { clerkId }, select: { country: true } }),
-    prisma.taxProfile.findUnique({ where: { ownerClerkId: clerkId }, select: { country: true } }),
-  ]);
-  const explicit = profile?.country?.toUpperCase();
-  if (explicit === "US") return "US";
-  if (explicit === "NG") return "NG";
-  if (taxProfile?.country === "US") return "US";
-  return "NG";
-}
-
-billingRouter.get("/options", async (req, res) => {
-  const region = await billingRegionFor(req.auth!.userId);
-  const card = billingConfigured() ? USD_CARD_OPTIONS : [];
-  const crypto = billingConfigured() ? USD_CRYPTO_OPTIONS : [];
-  const wave = flutterwaveConfigured() ? flutterwaveOptions() : [];
-  // US bills by card subscription or crypto terms; Nigeria bills by
-  // Flutterwave or crypto terms. The other configured provider stays as a
-  // fallback so checkout never renders empty.
-  const primary = region === "NG" ? [...wave, ...crypto] : [...card, ...crypto];
-  const fallback = region === "NG" ? [...card, ...crypto] : [...wave, ...crypto];
-  const options = primary.length > 0 ? primary : fallback;
-  res.json({ data: { region, options } });
-});
-
-async function resolveBillingEmail(clerkId: string): Promise<{ email: string; name?: string }> {
-  const user = await prisma.user.findUnique({ where: { clerkId }, select: { email: true, firstName: true, lastName: true } });
-  let email = user?.email ?? null;
-  let firstName = user?.firstName ?? null;
-  let lastName = user?.lastName ?? null;
-  if (!email) {
-    try {
-      const clerkUser = await clerkClient.users.getUser(clerkId);
-      email = clerkUser.emailAddresses[0]?.emailAddress ?? null;
-      firstName = clerkUser.firstName ?? firstName;
-      lastName = clerkUser.lastName ?? lastName;
-      if (email) await prisma.user.update({ where: { clerkId }, data: { email, firstName, lastName } }).catch(() => undefined);
-    } catch (error) {
-      logger.warn({ clerkId, err: error }, "clerk user lookup failed");
-    }
-  }
-  if (!email) throw new AppError(400, "Add an email address to your account before upgrading.", "EMAIL_REQUIRED");
-  const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;
-  return { email, name };
-}
-
-billingRouter.post("/flutterwave/checkout", async (req, res) => {
-  const interval = z.object({ interval: z.enum(["month", "year"]).default("month") }).parse(req.body).interval;
-  if (!flutterwaveConfigured()) {
-    throw new AppError(503, "Card and transfer payments are not configured yet.", "FLUTTERWAVE_NOT_CONFIGURED");
-  }
-  const clerkId = req.auth!.userId;
-  const { email, name } = await resolveBillingEmail(clerkId);
-  const price = FLUTTERWAVE_PRICES[interval];
-  const txRef = newTxRef(clerkId);
-  await prisma.payment.create({
+billingRouter.get("/options", async (_req, res) => {
+  // Bachs resolves the customer's currency itself at checkout — a currency
+  // option set on the product wins, then adaptive conversion, then the USD
+  // primary — so there is no region logic here to get out of sync with the
+  // catalog. The USD amounts are anchors for the price pills; `pricing:
+  // "local"` tells the client the card rows may render in the customer's
+  // currency once the checkout opens. Crypto stays USD: it is a raw-amount
+  // checkout, not a catalog product, so adaptive pricing does not apply.
+  res.json({
     data: {
-      ownerClerkId: clerkId,
-      provider: "flutterwave",
-      txRef,
-      plan: interval,
-      amount: new Prisma.Decimal(price.amount),
-      currency: price.currency,
-      status: "pending",
+      region: null,
+      options: billingConfigured() ? [...CARD_OPTIONS, ...CRYPTO_OPTIONS] : [],
     },
   });
-  const redirectUrl = `${env.WEB_ORIGIN}/settings?payment=flutterwave`;
-  const payment = await createFlutterwavePayment({ interval, email, name, txRef, redirectUrl });
-  res.status(201).json({ data: { link: payment.link, txRef } });
 });
 
 /**
- * Fulfill a verified Flutterwave transaction: idempotent on txRef, strict on
- * amount/currency/ownership. Grants a 30/365-day Pro term.
- */
-async function fulfillFlutterwavePayment(ownerClerkId: string, verified: VerifiedFlutterwaveTransaction) {
-  if (verified.status !== "successful") {
-    throw new AppError(402, "The Flutterwave transaction was not successful.", "PAYMENT_NOT_SUCCESSFUL");
-  }
-  const payment = await prisma.payment.findUnique({ where: { txRef: verified.txRef } });
-  if (!payment) throw new AppError(404, "No matching payment request.", "PAYMENT_NOT_FOUND");
-  if (payment.ownerClerkId !== ownerClerkId) {
-    throw new AppError(403, "This payment belongs to a different account.", "PAYMENT_OWNER_MISMATCH");
-  }
-  if (payment.status === "paid") return { granted: true, already: true as const, periodEndsAt: payment.periodEndsAt };
-  const price = FLUTTERWAVE_PRICES[payment.plan as FlutterwaveInterval];
-  if (!price || verified.currency !== price.currency || verified.amount < price.amount) {
-    throw new AppError(402, "Paid amount does not match the plan price.", "PAYMENT_AMOUNT_MISMATCH");
-  }
-  const paidAt = new Date();
-  const periodEndsAt = new Date(paidAt.getTime() + price.days * 86_400_000);
-  await prisma.payment.update({
-    where: { txRef: verified.txRef },
-    data: { status: "paid", providerTxId: String(verified.id), paidAt, periodEndsAt },
-  });
-  await prisma.user.update({ where: { clerkId: ownerClerkId }, data: { plan: Plan.ACTIVE, planExpiresAt: periodEndsAt } });
-  logger.info({ clerkId: ownerClerkId, txRef: verified.txRef, plan: payment.plan }, "flutterwave term granted");
-  return { granted: true, already: false as const, periodEndsAt };
-}
-
-/**
- * Cancel a one-time Pro term (Flutterwave/crypto): there is nothing to
+ * Cancel a one-time Pro term (crypto): there is nothing to
  * unsubscribe from, so this forfeits the remaining days immediately. Bachs
  * subscriptions must use /cancel instead.
  */
@@ -507,62 +401,9 @@ billingRouter.post("/term/cancel", async (req, res) => {
   res.json({ data: { canceled: true } });
 });
 
-billingRouter.post("/flutterwave/verify", async (req, res) => {  const input = z.object({ transactionId: z.union([z.number(), z.string()]).optional(), txRef: z.string().min(1).optional() }).parse(req.body);
-  if (input.transactionId === undefined && !input.txRef) {
-    throw new AppError(400, "Provide transactionId or txRef.", "VALIDATION_ERROR");
-  }
-  const clerkId = req.auth!.userId;
-  let verified: VerifiedFlutterwaveTransaction;
-  if (input.transactionId !== undefined) {
-    verified = await verifyFlutterwaveTransaction(input.transactionId);
-  } else {
-    const payment = await prisma.payment.findUnique({ where: { txRef: input.txRef! } });
-    if (!payment || payment.ownerClerkId !== clerkId || !payment.providerTxId) {
-      throw new AppError(404, "No verifiable payment found for this reference.", "PAYMENT_NOT_FOUND");
-    }
-    verified = await verifyFlutterwaveTransaction(payment.providerTxId);
-  }
-  res.json({ data: await fulfillFlutterwavePayment(clerkId, verified) });
-});
-
-billingWebhookRouter.post("/flutterwave/webhook", async (req, res) => {
-  if (!flutterwaveWebhookValid(req.header("verif-hash") ?? undefined)) {
-    res.status(401).json({ error: { code: "INVALID_SIGNATURE", message: "Invalid webhook signature." } });
-    return;
-  }
-  const body = req.body as { event?: string; data?: { id?: number; tx_ref?: string; status?: string } };
-  // Successful and failed payments share charge.completed — only successful
-  // ones with a numeric id can grant anything.
-  if (body?.event !== "charge.completed" || body?.data?.status !== "successful" || typeof body?.data?.id !== "number") {
-    res.json({ data: { ignored: true } });
-    return;
-  }
-  try {
-    const verified = await verifyFlutterwaveTransaction(body.data.id);
-    const payment = await prisma.payment.findUnique({ where: { txRef: verified.txRef }, select: { ownerClerkId: true } });
-    if (!payment) {
-      logger.warn({ txRef: verified.txRef }, "flutterwave webhook has no matching payment");
-      res.json({ data: { ignored: true } });
-      return;
-    }
-    const result = await fulfillFlutterwavePayment(payment.ownerClerkId, verified);
-    res.json({ data: result });
-  } catch (error) {
-    // Business mismatches (unknown/failed/partial payment) must not retry;
-    // transport and database failures should (non-2xx retries the webhook).
-    if (error instanceof AppError && ["PAYMENT_NOT_SUCCESSFUL", "PAYMENT_NOT_FOUND", "PAYMENT_OWNER_MISMATCH", "PAYMENT_AMOUNT_MISMATCH"].includes(error.code)) {
-      logger.warn({ error: error.message }, "flutterwave webhook ignored");
-      res.json({ data: { ignored: true } });
-      return;
-    }
-    logger.error({ error: error instanceof Error ? error.message : String(error) }, "flutterwave webhook failed");
-    res.status(500).json({ error: { code: "WEBHOOK_FAILED", message: "Webhook processing failed." } });
-  }
-});
-
 /**
- * Fulfill a paid Bachs crypto checkout as a 30/365-day Pro term — the same
- * shape as a Flutterwave term. Idempotent on txRef; strict on amount.
+ * Fulfill a paid Bachs crypto checkout as a 30/365-day Pro term. Idempotent on
+ * txRef; strict on amount.
  */
 async function grantBachsTerm(ownerClerkId: string, txRef: string, providerTxId: string, amount: number, currency: string) {
   const payment = await prisma.payment.findUnique({ where: { txRef } });
@@ -576,13 +417,15 @@ async function grantBachsTerm(ownerClerkId: string, txRef: string, providerTxId:
   const days = payment.plan === "year" ? BACHS_USD_PRICES.year.days : BACHS_USD_PRICES.month.days;
   const paidAt = new Date();
   const periodEndsAt = new Date(paidAt.getTime() + days * 86_400_000);
-  await prisma.payment.update({
-    where: { txRef },
-    data: { status: "paid", providerTxId, paidAt, periodEndsAt },
+  const result = await grantProTermFromPayment({
+    txRef,
+    ownerClerkId,
+    providerTxId,
+    paidAt,
+    periodEndsAt,
   });
-  await prisma.user.update({ where: { clerkId: ownerClerkId }, data: { plan: Plan.ACTIVE, planExpiresAt: periodEndsAt } });
-  logger.info({ clerkId: ownerClerkId, txRef, plan: payment.plan }, "bachs crypto term granted");
-  return { granted: true, already: false as const, periodEndsAt };
+  if (!result.already) logger.info({ clerkId: ownerClerkId, txRef, plan: payment.plan }, "bachs crypto term granted");
+  return result;
 }
 
 /** Poll target for the overlay after a crypto checkout completes in-browser. */

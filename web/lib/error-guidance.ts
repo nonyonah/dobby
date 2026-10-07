@@ -80,8 +80,6 @@ function byCode(code: string | null, context: ErrorContext): ErrorGuidance | nul
       };
     case "PAYMENT_NOT_SUCCESSFUL":
     case "PAYMENT_DETAILS_MISSING":
-    case "FLUTTERWAVE_REQUEST_FAILED":
-    case "FLUTTERWAVE_NOT_CONFIGURED":
     case "BILLING_NOT_CONFIGURED":
     case "NO_TERM":
     case "PAYMENT_NOT_FOUND":

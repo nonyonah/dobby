@@ -75,26 +75,27 @@ async function conversionFactors(currencies: string[], target: string) {
  * still get meaningful flags instead of an empty result.
  */
 export async function computeProactiveFlags(ownerClerkId: string): Promise<ProactiveFlagResult> {
-  const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
-  const currency = profile?.currency?.toUpperCase() ?? "USD";
   const now = new Date();
-
-  const rows = await prisma.transaction.findMany({
-    where: { ownerClerkId, occurredAt: { gte: monthStart(now, -(TRAILING_MONTHS + RECURRING_WINDOW_MONTHS)), lt: now } },
-    select: {
-      id: true,
-      type: true,
-      amount: true,
-      currency: true,
-      occurredAt: true,
-      merchant: true,
-      description: true,
-      isTaxable: true,
-      category: { select: { id: true, name: true } },
-    },
-    orderBy: { occurredAt: "desc" },
-    take: 20_000,
-  });
+  const [profile, rows] = await Promise.all([
+    prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } }),
+    prisma.transaction.findMany({
+      where: { ownerClerkId, occurredAt: { gte: monthStart(now, -(TRAILING_MONTHS + RECURRING_WINDOW_MONTHS)), lt: now } },
+      select: {
+        id: true,
+        type: true,
+        amount: true,
+        currency: true,
+        occurredAt: true,
+        merchant: true,
+        description: true,
+        isTaxable: true,
+        category: { select: { id: true, name: true } },
+      },
+      orderBy: { occurredAt: "desc" },
+      take: 20_000,
+    }),
+  ]);
+  const currency = profile?.currency?.toUpperCase() ?? "USD";
 
   const latestExpense = rows.find((row) => row.type === TransactionType.EXPENSE);
   const factors = await conversionFactors(rows.map((row) => row.currency ?? "USD"), currency);

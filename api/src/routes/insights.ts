@@ -1,13 +1,11 @@
-import { TransactionType } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
-import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { assertPro } from "../middleware/plan.js";
 import { buildNetWorthSnapshot } from "../lib/net-worth.js";
 import { computeProactiveFlags } from "../lib/flags.js";
+import { buildInsightsSummary, buildMonthlyTotals } from "../lib/transaction-summary.js";
 import { generateGatewaySummary } from "../providers/ai-gateway.js";
-import { getConversionFactors } from "../providers/frankfurter.js";
 
 export const insightsRouter = Router();
 insightsRouter.use(requireAuth);
@@ -22,125 +20,14 @@ insightsRouter.get("/monthly-summary", async (req, res) => {
   const start = new Date(`${month}-01T00:00:00.000Z`);
   const end = new Date(start);
   end.setUTCMonth(end.getUTCMonth() + 1);
-  const transactions = await prisma.transaction.findMany({ where: { ownerClerkId: req.auth!.userId, occurredAt: { gte: start, lt: end } }, select: { type: true, amount: true, currency: true, description: true, category: { select: { name: true } } }, orderBy: { occurredAt: "asc" }, take: 10_000 });
-  const profile = await prisma.profile.findUnique({ where: { clerkId: req.auth!.userId }, select: { currency: true } });
-  const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
-  const factors = await getConversionFactors(transactions.map((transaction) => transaction.currency), activeCurrency);
-  let income = 0;
-  let expenses = 0;
-  const categories = new Map<string, number>();
-  for (const transaction of transactions) {
-    const amount = Number(transaction.amount) * (factors.get(transaction.currency.toUpperCase()) ?? 1);
-    if (transaction.type === TransactionType.INCOME) income += amount;
-    if (transaction.type === TransactionType.EXPENSE) {
-      expenses += amount;
-      const category = transaction.category?.name ?? "Uncategorized";
-      categories.set(category, (categories.get(category) ?? 0) + amount);
-    }
-  }
+  const { currency, income, expenses, categories } = await buildMonthlyTotals(req.auth!.userId, start, end);
   const summary = await generateGatewaySummary(`Write a concise monthly personal-finance summary for ${month} in 3-5 bullet points. Income: ${income}. Expenses: ${expenses}. Net: ${income - expenses}. Spending by category: ${JSON.stringify(Object.fromEntries(categories))}. Do not invent facts or give financial advice.`);
-  res.json({ data: { month, currency: activeCurrency, income, expenses, net: income - expenses, summary } });
+  res.json({ data: { month, currency, income, expenses, net: income - expenses, summary } });
 });
 
 insightsRouter.get("/summary", async (req, res) => {
   const { from, to } = rangeSchema.parse(req.query);
-  const ownerClerkId = req.auth!.userId;
-  const transactions = await prisma.transaction.findMany({
-    where: {
-      ownerClerkId,
-      ...(from || to ? { occurredAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
-    },
-    select: { type: true, amount: true, currency: true, occurredAt: true, category: { select: { id: true, name: true, color: true } }, source: true },
-    orderBy: { occurredAt: "asc" },
-    take: 50_000,
-  });
-
-  const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
-  const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
-  const conversionFactors = await getConversionFactors(transactions.map((transaction) => transaction.currency), activeCurrency);
-  // Uncategorized (explicit bucket or legacy null) is broken out separately
-  // and excluded from every income/expense total, consistently.
-  const uncategorizedIds = new Set(
-    (await prisma.category.findMany({ where: { ownerClerkId, name: { equals: "uncategorized", mode: "insensitive" } }, select: { id: true } })).map((row) => row.id),
-  );
-  let income = 0;
-  let expenses = 0;
-  let uncategorizedIncome = 0;
-  let uncategorizedExpenses = 0;
-  const byCategory = new Map<string, { categoryId: string | null; name: string; color: string | null; amount: number; count: number }>();
-  const bySource = new Map<string, { source: string; income: number; expenses: number; count: number }>();
-  const byMonth = new Map<string, { month: string; income: number; expenses: number; uncategorizedIncome: number; uncategorizedExpenses: number }>();
-  const byMonthCategory = new Map<string, { month: string; categoryId: string | null; name: string; color: string | null; amount: number; count: number }>();
-  const byMonthIncomeSource = new Map<string, { month: string; source: string; amount: number; count: number }>();
-
-  for (const transaction of transactions) {
-    const amount = Number(transaction.amount) * (conversionFactors.get(transaction.currency.toUpperCase()) ?? 1);
-    const month = transaction.occurredAt.toISOString().slice(0, 7);
-    const monthly = byMonth.get(month) ?? { month, income: 0, expenses: 0, uncategorizedIncome: 0, uncategorizedExpenses: 0 };
-    const source = transaction.source ?? "Unknown";
-    const sourceItem = bySource.get(source) ?? { source, income: 0, expenses: 0, count: 0 };
-    const uncategorized = !transaction.category || uncategorizedIds.has(transaction.category.id);
-
-    if (transaction.type === TransactionType.INCOME) {
-      if (uncategorized) {
-        uncategorizedIncome += amount;
-        monthly.uncategorizedIncome += amount;
-      } else {
-        income += amount;
-        monthly.income += amount;
-        sourceItem.income += amount;
-        const sourceKey = `${month}|${source}`;
-        const monthlySource = byMonthIncomeSource.get(sourceKey) ?? { month, source, amount: 0, count: 0 };
-        monthlySource.amount += amount;
-        monthlySource.count += 1;
-        byMonthIncomeSource.set(sourceKey, monthlySource);
-      }
-      sourceItem.count += 1;
-    } else if (transaction.type === TransactionType.EXPENSE) {
-      if (uncategorized) {
-        uncategorizedExpenses += amount;
-        monthly.uncategorizedExpenses += amount;
-      } else {
-        expenses += amount;
-        monthly.expenses += amount;
-        sourceItem.expenses += amount;
-        const categoryId = transaction.category?.id ?? null;
-        const categoryName = transaction.category?.name ?? "Uncategorized";
-        const key = categoryId ?? "uncategorized";
-        const category = byCategory.get(key) ?? { categoryId, name: categoryName, color: transaction.category?.color ?? null, amount: 0, count: 0 };
-        category.amount += amount;
-        category.count += 1;
-        byCategory.set(key, category);
-        const monthlyCategoryKey = `${month}|${key}`;
-        const monthlyCategory = byMonthCategory.get(monthlyCategoryKey) ?? { month, categoryId, name: categoryName, color: transaction.category?.color ?? null, amount: 0, count: 0 };
-        monthlyCategory.amount += amount;
-        monthlyCategory.count += 1;
-        byMonthCategory.set(monthlyCategoryKey, monthlyCategory);
-      }
-      sourceItem.count += 1;
-    } else {
-      // TRANSFER and any future types: counted in activity, never in totals.
-      sourceItem.count += 1;
-    }
-    byMonth.set(month, monthly);
-    bySource.set(source, sourceItem);
-  }
-
-  const net = income - expenses;
-  res.json({
-    data: {
-      from: from?.toISOString() ?? null,
-      to: to?.toISOString() ?? null,
-      currency: activeCurrency,
-      totals: { income, expenses, net, savingRate: income === 0 ? 0 : net / income, uncategorizedIncome, uncategorizedExpenses },
-      spendingByCategory: [...byCategory.values()].sort((a, b) => b.amount - a.amount),
-      incomeAndSpendingBySource: [...bySource.values()].sort((a, b) => (b.income + b.expenses) - (a.income + a.expenses)),
-      monthly: [...byMonth.values()],
-      monthlySpendingByCategory: [...byMonthCategory.values()],
-      monthlyIncomeBySource: [...byMonthIncomeSource.values()],
-      transactionCount: transactions.length,
-    },
-  });
+  res.json({ data: await buildInsightsSummary(req.auth!.userId, from, to) });
 });
 
 /** Net worth for the greeting: wallet stablecoin balances plus ledger positions. */

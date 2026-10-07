@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
 import { ZodError } from "zod";
 import { logger } from "../lib/logger.js";
+import { Sentry, hashUserId } from "../lib/sentry.js";
 
 export class AppError extends Error {
   constructor(
@@ -34,6 +35,21 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   const message = appError?.message ?? "An unexpected error occurred.";
 
   logger.error({ err: error, requestId: req.requestId }, "request failed");
+
+  // Only genuine 5s are incidents. AppError carries an intentional status, and
+  // a 402 paywall or a 404 is correct behaviour, not something to wake anyone for.
+  if (!appError || statusCode >= 500) {
+    Sentry.withScope((scope) => {
+      scope.setTag("requestId", req.requestId ?? "unknown");
+      if (req.method) scope.setTag("method", req.method);
+      // Hashed, never the raw Clerk id, so a report can be grouped per user
+      // without identifying them.
+      const userTag = hashUserId(req.auth?.userId);
+      if (userTag) scope.setTag("user", userTag);
+      Sentry.captureException(error);
+    });
+  }
+
   res.status(statusCode).json({
     error: { code: appError?.code ?? "INTERNAL_ERROR", message },
     requestId: req.requestId,

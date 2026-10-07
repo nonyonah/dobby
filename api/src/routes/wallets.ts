@@ -69,6 +69,7 @@ walletsRouter.post("/", async (req, res) => {
 });
 
 walletsRouter.patch("/:id", async (req, res) => {
+  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
   const input = walletSchema.partial().parse(req.body);
   const ownerClerkId = req.auth!.userId;
   const existing = await prisma.walletAccount.findFirst({ where: { id: req.params.id, ownerClerkId } });
@@ -104,6 +105,7 @@ walletsRouter.patch("/:id", async (req, res) => {
 });
 
 walletsRouter.delete("/:id", async (req, res) => {
+  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
   const result = await prisma.walletAccount.deleteMany({
     where: { id: req.params.id, ownerClerkId: req.auth!.userId },
   });

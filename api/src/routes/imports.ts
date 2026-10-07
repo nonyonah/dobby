@@ -8,7 +8,6 @@ import { findCompletedImportByHash, isPdfImport, processImportRecord, processPdf
 import { notifyImportComplete } from "../lib/mailer.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
-import { assertPro } from "../middleware/plan.js";
 
 export const importsRouter = Router();
 importsRouter.use(requireAuth);
@@ -29,7 +28,6 @@ importsRouter.get("/", async (req, res) => {
 });
 
 importsRouter.post("/presign", async (req, res) => {
-  await assertPro(req.auth?.userId, "Uploading statements");
   const input = presignSchema.parse(req.body);
   const extension = input.originalName.split(".").pop()?.toLowerCase() || input.type.toLowerCase();
   const id = randomUUID();
@@ -49,7 +47,6 @@ importsRouter.post("/presign", async (req, res) => {
 });
 
 importsRouter.put("/:id/file", async (req, res) => {
-  await assertPro(req.auth?.userId, "Uploading statements");
   const record = await prisma.transactionImport.findFirst({ where: { id: req.params.id, ownerClerkId: req.auth!.userId } });
   if (!record?.objectKey) {
     res.status(404).json({ error: { code: "IMPORT_NOT_FOUND", message: "Import was not found." } });
@@ -64,7 +61,6 @@ importsRouter.put("/:id/file", async (req, res) => {
 });
 
 importsRouter.post("/:id/process", async (req, res) => {
-  await assertPro(req.auth?.userId, "Processing statements");
   const ownerClerkId = req.auth!.userId;
   const record = await prisma.transactionImport.findFirst({ where: { id: req.params.id, ownerClerkId } });
   if (!record) {

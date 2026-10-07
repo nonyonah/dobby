@@ -13,3 +13,4 @@
 
 # build output
 *.tsbuildinfo
+**/node_modules/

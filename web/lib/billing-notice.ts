@@ -48,7 +48,7 @@ export function deriveBillingNotice(input: BillingNoticeInput): BillingNotice | 
     return {
       status: "danger",
       title: "Your free trial has ended",
-      body: "Nothing was deleted — your ledger, history and past insights are all still here. Upgrade to resume adding transactions, connections and categorization.",
+      body: "Nothing was deleted — imports, categorization and your ledger stay free forever. Upgrade to Pro for email auto-fetch, stablecoin wallets and tax advisory.",
       action: "renew",
     };
   }

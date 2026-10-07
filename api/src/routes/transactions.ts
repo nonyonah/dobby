@@ -3,7 +3,6 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { assertPro } from "../middleware/plan.js";
 import { convertCurrencyAmount } from "../providers/frankfurter.js";
 
 export const transactionsRouter = Router();
@@ -135,7 +134,6 @@ transactionsRouter.get("/", async (req, res) => {
 });
 
 transactionsRouter.post("/", async (req, res) => {
-  await assertPro(req.auth?.userId, "Adding transactions");
   const input = transactionSchema.parse(req.body);
   const ownerClerkId = req.auth!.userId;
   const relationError = await assertRelations(ownerClerkId, input.accountId, input.categoryId);
@@ -174,7 +172,6 @@ transactionsRouter.get("/:id", async (req, res) => {
 });
 
 transactionsRouter.patch("/:id", async (req, res) => {
-  await assertPro(req.auth?.userId, "Editing transactions");
   const input = transactionSchema.partial().parse(req.body);
   const ownerClerkId = req.auth!.userId;
   const existing = await prisma.transaction.findFirst({ where: { id: req.params.id, ownerClerkId } });
@@ -204,7 +201,6 @@ transactionsRouter.patch("/:id", async (req, res) => {
 });
 
 transactionsRouter.delete("/:id", async (req, res) => {
-  await assertPro(req.auth?.userId, "Deleting transactions");
   const result = await prisma.transaction.deleteMany({ where: { id: req.params.id, ownerClerkId: req.auth!.userId } });
   if (result.count === 0) {
     res.status(404).json({ error: { code: "TRANSACTION_NOT_FOUND", message: "Transaction was not found." } });
@@ -214,7 +210,6 @@ transactionsRouter.delete("/:id", async (req, res) => {
 });
 
 transactionsRouter.post("/bulk-delete", async (req, res) => {
-  await assertPro(req.auth?.userId, "Deleting transactions");
   const input = z.object({ ids: z.array(z.string().min(1)).min(1).max(100) }).parse(req.body);
   const result = await prisma.transaction.deleteMany({ where: { id: { in: input.ids }, ownerClerkId: req.auth!.userId } });
   res.json({ data: { deletedCount: result.count } });

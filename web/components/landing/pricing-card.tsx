@@ -20,25 +20,32 @@ const INTERVALS: { value: Interval; label: string }[] = [
 
 const PRICE: Record<Interval, { amount: string; cadence: string; note: string }> = {
   month: {
-    amount: "$5",
+    amount: "$3",
     cadence: "per month",
     note: "Billed monthly. Cancel any time.",
   },
   year: {
-    amount: "$50",
+    amount: "$32.40",
     cadence: "per year",
-    note: "Billed yearly — $10 less than paying monthly, with a 7-day free trial.",
+    note: "Billed yearly — 10% off monthly, with a 7-day free trial.",
   },
 };
 
 /** Everything Dobby Pro unlocks, in the words the app itself uses. */
 const PRO_FEATURES = [
-  "Unlimited imports — statements, receipts and manual entries",
+  "Everything in Free",
   "Email auto-fetch from Gmail or Outlook",
-  "Wallet tracking with net worth across banks, cards and stablecoins",
+  "Stablecoin wallet connections",
   "Proactive AI flags that explain unusual activity",
-  "Tax readiness — deduction flags and monthly reminders",
-  "Categorisation and rules that learn from every approval",
+  "Tax advisory — estimates, deduction flags and reminders",
+];
+
+const FREE_FEATURES = [
+  "Statement and receipt imports",
+  "Automatic categorization for every transaction",
+  "Review queue and rules that learn from approvals",
+  "Net worth across wallets and accounts",
+  "Your ledger and history, kept forever",
 ];
 
 export function PricingCard() {
@@ -70,6 +77,45 @@ export function PricingCard() {
             </button>
           );
         })}
+      </div>
+
+      <div className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-line bg-card p-6 sm:p-7">
+        {/* Free card, rendered above: */}
+        <div className="flex flex-col gap-5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="m-0 text-[14px] font-semibold text-foreground">Dobby Free</p>
+            <span className="inline-flex items-center rounded-full border border-line bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+              Forever
+            </span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <p className="m-0 flex items-baseline gap-1.5">
+              <span className="font-mono text-[40px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">$0</span>
+              <span className="text-[13px] text-muted-foreground">per month</span>
+            </p>
+            <p className="m-0 text-[12px] text-faint">No card required.</p>
+          </div>
+          <div className="border-t border-line pt-5">
+            <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
+              {FREE_FEATURES.map((feature) => (
+                <li key={feature} className="flex items-start gap-2.5 text-[13px] leading-snug text-foreground">
+                  <span aria-hidden="true" className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">
+                    <CheckIcon />
+                  </span>
+                  {feature}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex flex-col gap-2 border-t border-line pt-5">
+            <Link
+              href="/sign-up"
+              className="inline-flex h-10 items-center justify-center rounded-[10px] border border-line bg-card px-5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            >
+              Start with Free
+            </Link>
+          </div>
+        </div>
       </div>
 
       <div className="flex w-full max-w-md flex-col gap-5 rounded-xl border border-line bg-card p-6 sm:p-7">
@@ -108,7 +154,7 @@ export function PricingCard() {
             href="/sign-up"
             className="inline-flex h-10 items-center justify-center rounded-[10px] bg-primary px-5 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
-            Start free — 7-day trial
+            Start Pro — 7-day trial
           </Link>
           <p className="m-0 text-center text-[12px] text-faint">No card required to start.</p>
         </div>

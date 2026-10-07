@@ -82,12 +82,6 @@ export const COUNTRY_OPTIONS = BILLING_COUNTRIES.map(({ value, label }) => ({ va
 export const CURRENCY_OPTIONS = CURRENCIES.map(({ value, label }) => ({ value, label }));
 export const TAX_JURISDICTION_OPTIONS = TAX_JURISDICTIONS.map(({ value, label }) => ({ value, label }));
 
-export const THEME_OPTIONS = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
-
 /** Resolves a stored billing country, defaulting to Nigeria. */
 export function toCountry(value: string | null | undefined): (typeof BILLING_COUNTRIES)[number] {
   const key = (value ?? "").toLowerCase();

@@ -89,73 +89,78 @@ export async function runFilingDeadlineReminders(now = new Date()) {
   });
   let sent = 0;
   let skipped = 0;
+  const candidates: Array<{ profile: (typeof profiles)[number]; mark: number; daysLeft: number; deadline: string }> = [];
   for (const profile of profiles) {
-    try {
-      if (!profile.owner.email) {
-        skipped += 1;
-        continue;
-      }
-      if (computeEffectivePlan(profile.owner) === "EXPIRED") {
-        skipped += 1;
-        continue;
-      }
-      const deadline = filingDeadlineFor(profile.country, profile.taxYear);
-      const daysLeft = daysBeforeDeadline(deadline, now);
-      const mark = markForDeadline(deadline, now);
-      if (mark === null) {
-        skipped += 1;
-        continue;
-      }
-      const already = await prisma.reminderLog.findUnique({
-        where: {
-          ownerClerkId_kind_taxYear_daysBefore: {
-            ownerClerkId: profile.ownerClerkId,
-            kind: "filing-deadline",
-            taxYear: profile.taxYear,
-            daysBefore: mark,
-          },
-        },
-        select: { id: true },
-      });
-      if (already) {
-        skipped += 1;
-        continue;
-      }
-      const outstanding = profile.checklistItems.filter((item) => item.country === profile.country && item.status === "OUTSTANDING").map((item) => item.label);
-      const email = deadlineEmail({
-        country: profile.country,
-        taxYear: profile.taxYear,
-        deadline,
-        daysLeft,
-        estimatedTaxOwed: profile.estimatedTaxOwed.toString(),
-        outstanding,
-      });
-      const ok = await sendDeadlineNotification({
-        to: profile.owner.email,
-        firstName: profile.owner.firstName,
-        deadlineLabel: email.deadlineLabel,
-        daysRemaining: daysLeft,
-        jurisdictionLabel: email.jurisdiction,
-        estimatedTaxOwed: Number(profile.estimatedTaxOwed ?? 0),
-        currency: getTaxRules(profile.country as never).currency,
-        checklistReady: 0,
-        checklistTotal: outstanding.length,
-        subject: email.subject,
-      });
-      if (!ok) {
-        skipped += 1;
-        continue;
-      }
-      await prisma.reminderLog.create({
-        data: { ownerClerkId: profile.ownerClerkId, kind: "filing-deadline", taxYear: profile.taxYear, daysBefore: mark },
-      });
-      sent += 1;
-    } catch (error) {
-      logger.warn(
-        { ownerClerkId: profile.ownerClerkId, error: error instanceof Error ? error.message : String(error) },
-        "filing deadline reminder failed for one user",
-      );
+    if (!profile.owner.email || computeEffectivePlan(profile.owner) === "EXPIRED") {
       skipped += 1;
+      continue;
+    }
+    const deadline = filingDeadlineFor(profile.country, profile.taxYear);
+    const daysLeft = daysBeforeDeadline(deadline, now);
+    const mark = markForDeadline(deadline, now);
+    if (mark === null) {
+      skipped += 1;
+      continue;
+    }
+    candidates.push({ profile, mark, daysLeft, deadline });
+  }
+
+  if (candidates.length > 0) {
+    const alreadySent = await prisma.reminderLog.findMany({
+      where: {
+        kind: "filing-deadline",
+        OR: candidates.map(({ profile, mark }) => ({
+          ownerClerkId: profile.ownerClerkId,
+          taxYear: profile.taxYear,
+          daysBefore: mark,
+        })),
+      },
+      select: { ownerClerkId: true, taxYear: true, daysBefore: true },
+    });
+    const sentKeys = new Set(alreadySent.map((row) => `${row.ownerClerkId}:${row.taxYear}:${row.daysBefore}`));
+
+    for (const { profile, mark, daysLeft, deadline } of candidates) {
+      try {
+        if (sentKeys.has(`${profile.ownerClerkId}:${profile.taxYear}:${mark}`)) {
+          skipped += 1;
+          continue;
+        }
+        const outstanding = profile.checklistItems.filter((item) => item.country === profile.country && item.status === "OUTSTANDING").map((item) => item.label);
+        const email = deadlineEmail({
+          country: profile.country,
+          taxYear: profile.taxYear,
+          deadline,
+          daysLeft,
+          estimatedTaxOwed: profile.estimatedTaxOwed.toString(),
+          outstanding,
+        });
+        const ok = await sendDeadlineNotification({
+          to: profile.owner.email!,
+          firstName: profile.owner.firstName,
+          deadlineLabel: email.deadlineLabel,
+          daysRemaining: daysLeft,
+          jurisdictionLabel: email.jurisdiction,
+          estimatedTaxOwed: Number(profile.estimatedTaxOwed ?? 0),
+          currency: getTaxRules(profile.country as never).currency,
+          checklistReady: 0,
+          checklistTotal: outstanding.length,
+          subject: email.subject,
+        });
+        if (!ok) {
+          skipped += 1;
+          continue;
+        }
+        await prisma.reminderLog.create({
+          data: { ownerClerkId: profile.ownerClerkId, kind: "filing-deadline", taxYear: profile.taxYear, daysBefore: mark },
+        });
+        sent += 1;
+      } catch (error) {
+        logger.warn(
+          { ownerClerkId: profile.ownerClerkId, error: error instanceof Error ? error.message : String(error) },
+          "filing deadline reminder failed for one user",
+        );
+        skipped += 1;
+      }
     }
   }
   return { sent, skipped };

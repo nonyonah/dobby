@@ -2,7 +2,6 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { assertPro } from "../middleware/plan.js";
 
 export const categoriesRouter = Router();
 categoriesRouter.use(requireAuth);
@@ -43,7 +42,6 @@ async function pickUnusedColor(ownerClerkId: string): Promise<string> {
 }
 
 categoriesRouter.post("/", async (req, res) => {
-  await assertPro(req.auth?.userId, "Creating categories");
   const input = categorySchema.parse(req.body);
   // A category always ends up with a colour of its own: the user's pick when
   // they made one, otherwise the next unused palette entry.
@@ -71,7 +69,6 @@ async function forbidProtectedDefault(ownerClerkId: string, id: string): Promise
 }
 
 categoriesRouter.patch("/:id", async (req, res) => {
-  await assertPro(req.auth?.userId, "Changing categories");
   const input = categorySchema.partial().parse(req.body);
   if (input.isArchived) {
     const forbidden = await forbidProtectedDefault(req.auth!.userId, req.params.id);
@@ -93,7 +90,6 @@ categoriesRouter.patch("/:id", async (req, res) => {
 });
 
 categoriesRouter.delete("/:id", async (req, res) => {
-  await assertPro(req.auth?.userId, "Archiving categories");
   const forbidden = await forbidProtectedDefault(req.auth!.userId, req.params.id);
   if (forbidden) {
     res.status(400).json({ error: { code: "PROTECTED_CATEGORY", message: forbidden } });

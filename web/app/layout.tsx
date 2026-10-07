@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { Inter } from "next/font/google";
-import { ThemeSync } from "@/components/theme-sync";
+import { AccentSync } from "@/components/accent-sync";
+import { PageViewTracker } from "@/components/page-view-tracker";
+import { UserbackProvider } from "@/components/userback";
 import { AnchoredToastProvider, ToastProvider } from "@/components/ui/toast";
 import "./globals.css";
 
@@ -26,21 +28,14 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider appearance={clerkAppearance}>
-      <head>
-        {/*
-          Sets the theme class before first paint. React hydration happens well
-          after first paint, so without this a visitor whose stored preference
-          differs from the OS scheme would see a full-page light flash.
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=localStorage.getItem("dobby-theme");if(p!=="light"&&p!=="dark"){p="system"}var d=p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var r=document.documentElement;r.classList.toggle("dark",d);r.setAttribute("data-theme",d?"dark":"light")}catch(e){}})();`,
-          }}
-        />
-      </head>
-      <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
+      {/* Permanent dark mode. The class and the HeroUI attribute are stamped
+          here at render time — no stored preference, no inline script, no
+          first-paint flash: the server sends the page already dark. */}
+      <html lang="en" className={`${inter.variable} h-full antialiased dark`} data-theme="dark">
         <body className="relative min-h-full flex flex-col">
-          <ThemeSync />
+          <UserbackProvider>
+          <AccentSync />
+        <PageViewTracker />
           {/* coss toasts are mounted by their providers rather than by a
               separate <Toaster/>, so they wrap the app instead of sitting
               beside it. Anchored goes inside plain: both declare a
@@ -52,8 +47,11 @@ export default function RootLayout({
                   `position: relative` keeps backdrops covering the visual
                   viewport on iOS Safari 26+. */}
               <div className="isolate relative flex min-h-full flex-col">{children}</div>
+              {/* PostHog is not fetched until this is accepted, so the banner
+                  is the only thing that exists before consent. */}
             </AnchoredToastProvider>
           </ToastProvider>
+          </UserbackProvider>
         </body>
       </html>
     </ClerkProvider>

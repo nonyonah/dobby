@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 /*
- * Dark mode is driven by a `.dark` class on <html>, not by the OS media
- * query, so the Theme setting in Settings can force Light or Dark. An inline
- * script in the root layout sets the class before first paint, and
- * ThemeSync keeps it in step with the stored preference and the OS.
- * The media query below only covers the "no class set yet" case, so a
- * first-time visitor still gets the system theme without a flash.
+ * The app is permanently dark: the root layout stamps a `.dark` class and
+ * `data-theme="dark"` onto <html> at render time, and nothing removes them,
+ * so there is no stored preference, no OS listener and no first-paint flash
+ * to guard against. The class-driven `@custom-variant` below is kept so
+ * `dark:` variants and the `.dark` token block keep working unchanged —
+ * there is just no light mode left to switch to.
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -499,6 +499,27 @@ body {
   ::backdrop {
     border-color: var(--color-border);
   }
+}
+
+/* Every tappable control is a 50px pill: buttons (including dropdown and
+   popover triggers), text inputs, selects and textareas. Raw <button> and
+   <input> call sites carry their own rounded-* utilities, so this rule lives
+   outside every cascade layer — unlayered author styles beat the utilities
+   layer, which is the only way one line can out-rank a written `rounded-md`
+   without editing every call site. Menu, popover and dialog surfaces are not
+   controls, so their panels keep their own radii; only their triggers go
+   pill. Checkboxes opt back out below: a 50px box on a size-4 square is a
+   circle, which reads as a radio, not a checkbox. Native checkbox and radio
+   inputs are excluded for the same reason. */
+button,
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  border-radius: 50px;
+}
+
+[data-slot="checkbox"] {
+  border-radius: 0.25rem;
 }
 
 /* coss's Dialog pads each named section (header p-6, panel p-6, footer px-6)

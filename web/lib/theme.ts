@@ -94,41 +94,14 @@ export function applyAccentColor(accent: AccentColor) {
   set("--brand-token-foreground", tintForeground);
 }
 
-/* ---------------------------------------------------------------- theme */
-
-export type ThemePreference = "system" | "light" | "dark";
-export const THEME_STORAGE_KEY = "dobby-theme";
-
-export function isThemePreference(value: unknown): value is ThemePreference {
-  return value === "system" || value === "light" || value === "dark";
-}
-
-export function readStoredTheme(): ThemePreference | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return isThemePreference(stored) ? stored : null;
-  } catch {
-    return null;
-  }
-}
-
-export function systemPrefersDark(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-export function resolveTheme(preference: ThemePreference, prefersDark: boolean): "light" | "dark" {
-  if (preference === "light") return "light";
-  if (preference === "dark") return "dark";
-  return prefersDark ? "dark" : "light";
-}
+/* ------------------------------------------------------------------ misc */
 
 /**
- * A theme flip restyles nearly every element at once, so without this every
- * `transition-colors` in the app fires simultaneously and the switch smears
- * across the page instead of snapping. Transitions are disabled for the
- * duration of the swap, a reflow is forced so the new values commit, and they
- * are restored on the next frame.
+ * A palette swap (an accent change, or anything else that restyles nearly
+ * every element at once) makes every `transition-colors` in the app fire
+ * simultaneously, so the switch smears across the page instead of snapping.
+ * Transitions are disabled for the duration of the swap, a reflow is forced
+ * so the new values commit, and they are restored on the next frame.
  */
 export function withoutTransitions(mutate: () => void) {
   const root = document.documentElement;
@@ -148,35 +121,4 @@ export function withoutTransitions(mutate: () => void) {
       });
     });
   }
-}
-
-/**
- * Applies the resolved theme plus the accent. The accent is recomputed every
- * time because its derived shades are light- or dark-aware, so they have to be
- * recalculated when the scheme changes.
- */
-export function applyTheme(preference: ThemePreference, options: { animate?: boolean } = {}) {
-  if (typeof document === "undefined") return;
-  const resolved = resolveTheme(preference, systemPrefersDark());
-  const dark = resolved === "dark";
-  const apply = () => {
-    const root = document.documentElement;
-    root.classList.toggle("dark", dark);
-    // HeroUI's stylesheet keys off [data-theme], not a class, so it needs its
-    // own attribute or the tables and sidebars would stay on the OS scheme
-    // while the rest of the app followed the setting.
-    root.setAttribute("data-theme", resolved);
-    applyAccentColor(readStoredAccent() ?? DEFAULT_ACCENT);
-  };
-  if (options.animate === false) {
-    apply();
-    return;
-  }
-  withoutTransitions(apply);
-}
-
-/** Notifies the app that the preference changed, so ThemeSync can react. */
-export function announceThemeChange() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent("dobby-theme-change"));
 }

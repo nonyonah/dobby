@@ -126,6 +126,9 @@ model User {
   emailImports         EmailImport[]
   reminderLogs         ReminderLog[]
   payments             Payment[]
+
+  @@index([email])
+  @@index([plan])
 }
 
 model Profile {
@@ -222,6 +225,7 @@ model Payment {
   owner           User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@index([ownerClerkId, status])
+  @@index([providerTxId])
 }
 
 model Account {
@@ -380,6 +384,7 @@ model Transaction {
   @@index([ownerClerkId, occurredAt])
   @@index([ownerClerkId, categoryId, occurredAt])
   @@index([ownerClerkId, fingerprint])
+  @@index([importId])
 }
 
 model TransactionImport {

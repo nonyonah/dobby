@@ -26,7 +26,7 @@ export function LandingNav() {
         scrolled ? "border-line bg-background" : "border-transparent bg-transparent"
       }`}
     >
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
+      <div className="relative mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
         <Link
           href="/"
           className="flex items-center gap-2 rounded outline-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
@@ -34,20 +34,27 @@ export function LandingNav() {
           <BrandLogo size={24} />
           <span className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">Dobby</span>
         </Link>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/sign-in"
-            className="hidden rounded-[10px] px-3 py-2 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 sm:inline-flex"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/sign-up"
-            className="inline-flex items-center rounded-[10px] bg-primary px-3.5 py-2 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-          >
-            Get started
-          </Link>
-        </div>
+        <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 sm:flex">
+          {[
+            { href: "/", label: "Home" },
+            { href: "#features", label: "Features" },
+            { href: "#pricing", label: "Pricing" },
+          ].map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="rounded-[10px] px-3 py-2 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <Link
+          href="/sign-up"
+          className="inline-flex items-center rounded-[10px] bg-primary px-3.5 py-2 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+        >
+          Get started
+        </Link>
       </div>
     </header>
   );

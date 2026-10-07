@@ -13,7 +13,7 @@ type PlanRow = {
   trialStartedAt: Date | null;
   bachsSubscriptionStatus?: string | null;
   bachsTrialEnd?: Date | null;
-  /** Term end for one-time purchases (Flutterwave). Null for subscriptions/trials. */
+  /** Term end for one-time purchases (e.g. a crypto checkout). Null for subscriptions/trials. */
   planExpiresAt?: Date | null;
 };
 
@@ -54,7 +54,7 @@ export function computeEffectivePlan(user: PlanRow): EffectivePlan {
   const status = user.bachsSubscriptionStatus;
   if (status === "trialing") return "TRIAL";
   if (status === "active" || status === "past_due") return "ACTIVE";
-  // One-time terms (Flutterwave) lapse on their own clock, independent of the
+  // One-time terms (e.g. crypto) lapse on their own clock, independent of the
   // signup trial: a stored ACTIVE with a past term end is EXPIRED.
   if (user.planExpiresAt && user.planExpiresAt.getTime() <= Date.now()) {
     // A lapsed one-time term falls back to the signup trial clock — it never

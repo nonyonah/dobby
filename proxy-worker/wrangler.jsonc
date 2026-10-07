@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dobby-framer-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-07",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "FRAMER_ORIGIN": "https://dobbybookkeeping.framer.website"
+  },
+  "routes": [
+    { "pattern": "dobby.riftlabs.xyz/", "zone_name": "riftlabs.xyz" },
+    { "pattern": "www.dobby.riftlabs.xyz/", "zone_name": "riftlabs.xyz" }
+  ]
+}

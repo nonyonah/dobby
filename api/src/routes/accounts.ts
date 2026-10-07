@@ -3,7 +3,6 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { assertPro } from "../middleware/plan.js";
 
 export const accountsRouter = Router();
 accountsRouter.use(requireAuth);
@@ -25,7 +24,6 @@ accountsRouter.get("/", async (req, res) => {
 });
 
 accountsRouter.post("/", async (req, res) => {
-  await assertPro(req.auth?.userId, "Adding accounts");
   const input = accountSchema.parse(req.body);
   const account = await prisma.account.create({
     data: { ...input, ownerClerkId: req.auth!.userId },
