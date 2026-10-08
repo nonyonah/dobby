@@ -1,11 +1,8 @@
 import { env } from "./config/env.js";
 import { app } from "./app.js";
 import { logger } from "./lib/logger.js";
-import { initSentry } from "./lib/sentry.js";
 import { prisma } from "./lib/prisma.js";
 import { startScheduler } from "./jobs/scheduler.js";
-
-initSentry();
 
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, environment: env.NODE_ENV }, "Dobby API listening");

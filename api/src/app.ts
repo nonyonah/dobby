@@ -5,6 +5,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { pinoHttp } from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
+import { initSentry } from "./lib/sentry.js";
 import { env } from "./config/env.js";
 import { logger } from "./lib/logger.js";
 import { requestId } from "./middleware/request-id.js";
@@ -26,6 +27,8 @@ import { currencyRouter } from "./routes/currency.js";
 import { integrationsRouter } from "./routes/integrations.js";
 import { emailsRouter } from "./routes/emails.js";
 import { billingRouter, billingWebhookRouter } from "./routes/billing.js";
+
+initSentry();
 
 export const app = express();
 
@@ -82,3 +85,5 @@ app.use("/v1/billing", billingRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
+
+export default app;

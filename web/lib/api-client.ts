@@ -44,7 +44,7 @@ function invalidateCache() {
 
 export function createApiClient(
   getToken: TokenProvider,
-  baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000",
+  baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "",
 ) {
   const root = baseUrl.replace(/\/$/, "");
 
