@@ -1,8 +1,7 @@
 import { generateText } from "ai";
 import { GoogleGenAI } from "@google/genai";
 import { spawn } from "node:child_process";
-import { dirname, resolve as resolvePath } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve as resolvePath } from "node:path";
 import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
@@ -378,7 +377,7 @@ type PdfPage = { page: number; text: string; ocr: boolean; image?: string };
 
 function extractPdfPages(bytes: Buffer): Promise<{ pages: PdfPage[]; encrypted: boolean }> {
   return new Promise((resolve, reject) => {
-    const scriptPath = resolvePath(dirname(fileURLToPath(import.meta.url)), "../../scripts/extract_pdf.py");
+    const scriptPath = resolvePath(__dirname, "../../scripts/extract_pdf.py");
     const python = spawn(env.PYTHON_BIN, [scriptPath], { stdio: ["pipe", "pipe", "pipe"] });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
