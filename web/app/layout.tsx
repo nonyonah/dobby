@@ -6,6 +6,7 @@ import { AccentSync } from "@/components/accent-sync";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { UserbackProvider } from "@/components/userback";
 import { AnchoredToastProvider, ToastProvider } from "@/components/ui/toast";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const inter = Inter({
@@ -52,6 +53,7 @@ export default function RootLayout({
             </AnchoredToastProvider>
           </ToastProvider>
           </UserbackProvider>
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>
