@@ -10,6 +10,7 @@ import type { TxFull } from "@/lib/transactions";
 import { BreakdownPie } from "./breakdown-pie";
 import { FlowNarrative } from "./flow-narrative";
 import { FlowTable } from "./flow-table";
+import { LoadingRegion, TableSkeletonRows } from "@/components/loading-skeletons";
 import { toast } from "./ui/toast";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 
@@ -112,7 +113,11 @@ export function SpendingSection({ month, year, yearSummary, onMonthChange }: { m
       <BreakdownPie title="Spending by category" items={items} month={month} year={year} months={MONTHS} onMonthChange={onMonthChange} />
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          {loading ? <div className="mb-2 rounded-md bg-secondary px-3 py-2 text-[12px] text-muted-foreground" role="status">Loading transactions for this month…</div> : null}
+          {loading ? (
+            <LoadingRegion label="Loading transactions for this month" className="mb-2">
+              <TableSkeletonRows rows={4} columns={2} />
+            </LoadingRegion>
+          ) : null}
           <FlowTable title="Transactions" typeLabel="Spending" filterLabel="All categories" rows={rows} />
         </div>
         <FlowNarrative title="Spending summary">
@@ -138,7 +143,11 @@ export function IncomeSection({ month, year, yearSummary, onMonthChange }: { mon
       <BreakdownPie title="Income by source" items={items} month={month} year={year} months={MONTHS} onMonthChange={onMonthChange} />
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          {loading ? <div className="mb-2 rounded-md bg-secondary px-3 py-2 text-[12px] text-muted-foreground" role="status">Loading transactions for this month…</div> : null}
+          {loading ? (
+            <LoadingRegion label="Loading transactions for this month" className="mb-2">
+              <TableSkeletonRows rows={4} columns={2} />
+            </LoadingRegion>
+          ) : null}
           <FlowTable title="Transactions" typeLabel="Income" filterLabel="All sources" rows={rows} income />
         </div>
         <FlowNarrative title="Income summary">

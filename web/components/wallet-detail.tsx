@@ -17,6 +17,7 @@ import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, formatUSD, getAppCurrency } from "@/lib/format";
 import { fetchWalletSummary } from "@/lib/wallet-summary";
 import type { TxFull } from "@/lib/transactions";
+import { DetailSkeleton, ChartSkeleton, LoadingRegion, StatSkeleton, TableSkeletonRows } from "@/components/loading-skeletons";
 
 /**
  * One connected wallet, reached by clicking its row in the AI sidebar's
@@ -284,32 +285,45 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                 ) : null}
 
                 {/* Two cards: what this wallet holds, and in how many assets. */}
-                <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                  <StatCard
-                    label="Total holdings"
-                    value={formatCurrency(display?.amount ?? 0, display?.currency ?? "USD")}
-                    hint={loading ? "Reading balances…" : wallet?.status === "ok" ? "Live balance" : "Balance unavailable"}
-                  />
-                  <StatCard
-                    label="Assets"
-                    value={String(assets.length)}
-                    hint={
-                      assets.length > 0
-                        ? assets.slice(0, 3).map((item) => item.name).join(" · ") + (assets.length > 3 ? ` +${assets.length - 3}` : "")
-                        : "Nothing priced yet"
-                    }
-                    accent={assets[0]?.color}
-                  />
-                </div>
+                {loading ? (
+                  <LoadingRegion label="Loading wallet balances" className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                    <StatSkeleton cols={1} />
+                    <StatSkeleton cols={1} />
+                  </LoadingRegion>
+                ) : (
+                  <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                    <StatCard
+                      label="Total holdings"
+                      value={formatCurrency(display?.amount ?? 0, display?.currency ?? "USD")}
+                      hint={wallet?.status === "ok" ? "Live balance" : "Balance unavailable"}
+                    />
+                    <StatCard
+                      label="Assets"
+                      value={String(assets.length)}
+                      hint={
+                        assets.length > 0
+                          ? assets.slice(0, 3).map((item) => item.name).join(" · ") + (assets.length > 3 ? ` +${assets.length - 3}` : "")
+                          : "Nothing priced yet"
+                      }
+                      accent={assets[0]?.color}
+                    />
+                  </div>
+                )}
 
-                <BreakdownPie title="Holdings by asset" items={assets} filterLabel="All assets" />
+                {loading ? (
+                  <LoadingRegion label="Loading asset breakdown">
+                    <ChartSkeleton height="h-[220px]" />
+                  </LoadingRegion>
+                ) : (
+                  <BreakdownPie title="Holdings by asset" items={assets} filterLabel="All assets" />
+                )}
 
                 <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
                   <div className="lg:col-span-2">
                     {summaryState === "loading" ? (
-                      <div className="mb-2 rounded-md bg-secondary px-3 py-2 text-[12px] text-muted-foreground" role="status">
-                        Loading on-chain activity…
-                      </div>
+                      <LoadingRegion label="Loading on-chain activity" className="mb-2">
+                        <TableSkeletonRows rows={4} columns={2} />
+                      </LoadingRegion>
                     ) : null}
                     <FlowTable title="Recent activity" typeLabel="On-chain" filterLabel={chainLabel(wallet?.chain ?? "BASE")} rows={rows} signed />
                   </div>
@@ -407,9 +421,9 @@ function AccountsTab({ accounts, loading }: { accounts: NetWorthSnapshot["accoun
           ))}
         </ul>
         {loading ? (
-          <div className="px-4 py-4 text-[12px] text-muted-foreground" role="status">
-            Loading account balances…
-          </div>
+          <LoadingRegion label="Loading account balances" className="px-4 py-4">
+            <DetailSkeleton lines={2} />
+          </LoadingRegion>
         ) : null}
       </Card>
     </>

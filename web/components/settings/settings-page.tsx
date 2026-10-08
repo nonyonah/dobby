@@ -25,6 +25,7 @@ import { deriveBillingNotice } from "@/lib/billing-notice";
 import { usePlan } from "@/components/plan-provider";
 import { useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWalletSummary, summarizeTransfers, SUMMARY_UNAVAILABLE } from "@/lib/wallet-summary";
 
 // Shadow-as-border: a transparent ring reads as a 1px edge without a hard
@@ -94,10 +95,10 @@ function RowPlaceholder({ labelWidth = 92 }: { labelWidth?: number }) {
   return (
     <div className={rowClass} aria-hidden="true">
       <div className="min-w-0 flex-1">
-        <span className="block h-[13px] rounded-md bg-muted" style={{ width: labelWidth }} />
+        <Skeleton className="h-[13px]" style={{ width: labelWidth }} />
       </div>
       <div className="flex w-full shrink-0 justify-start sm:w-[220px] sm:justify-end">
-        <span className="block h-7 w-[132px] rounded-md bg-muted" />
+        <Skeleton className="h-7 w-[132px] rounded-[50px]" />
       </div>
     </div>
   );

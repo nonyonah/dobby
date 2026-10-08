@@ -8,6 +8,7 @@ import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { toast } from "@/components/ui/toast";
 import { formatCurrency } from "@/lib/format";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
+import { LoadingRegion, StatSkeleton } from "@/components/loading-skeletons";
 
 type Holding = { walletId: string; symbol: string; amount: number; usdValue: number | null };
 type WalletStatus = { id: string; displayName: string; chain: string; address: string; status: "ok" | "provider_unconfigured" | "error"; detail?: string };
@@ -66,7 +67,9 @@ export function NetWorthSection({ className = "" }: { className?: string }) {
       </CardHeader>
       <CardContent>
         {snapshot === null ? (
-          <p className="m-0 py-2 text-[13px] text-muted-foreground" role="status">Loading net worth…</p>
+          <LoadingRegion label="Loading net worth" className="py-2">
+            <StatSkeleton cols={3} />
+          </LoadingRegion>
         ) : snapshot.wallets.length === 0 ? (
           <div className="rounded-lg bg-muted px-3 py-4 text-center" role="status">
             <p className="m-0 text-[13px] font-medium">No wallets connected yet</p>

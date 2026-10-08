@@ -9,7 +9,13 @@ const optionalString = z.preprocess((value) => (value === "" ? undefined : value
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+  // Defaults to the port the compute plane routes (:8000) rather than the local
+  // dev port. `vercel.json` cannot declare a port — the platform injects PORT
+  // and probes it — so when that injection does not happen the previous 4000
+  // default left the process listening where nothing was looking, which is the
+  // "app on the vm not ready (listening on :8000)" timeout. Local dev pins
+  // PORT=4000 in .env, so this default only applies where PORT is unset.
+  PORT: z.coerce.number().int().min(1).max(65535).default(8000),
   API_ORIGIN: z.string().url().default("http://localhost:4000"),
   WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
   CLERK_SECRET_KEY: z.string().min(1),

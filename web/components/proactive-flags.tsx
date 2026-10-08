@@ -10,6 +10,7 @@ import { usePlan } from "@/components/plan-provider";
 import { UpgradeCard } from "@/components/upgrade";
 import { toast } from "@/components/ui/toast";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
+import { ListSkeleton, LoadingRegion } from "@/components/loading-skeletons";
 
 type Flag = { id: string; kind: string; title: string; detail: string; href: string };
 type FlagsResult = { flags: Flag[]; currency: string; periodLabel: string | null; asOf: string };
@@ -66,7 +67,9 @@ export function ProactiveFlags() {
   return (
     <ModuleCard title="Proactive flags">
       {flags === null ? (
-        <p className="m-0 py-2 text-[12px] text-muted-foreground" role="status">Scanning your ledger for flags…</p>
+        <LoadingRegion label="Scanning your ledger for flags" className="py-2">
+          <ListSkeleton rows={3} />
+        </LoadingRegion>
       ) : visible.length === 0 ? (
         <div className="rounded-md bg-muted px-3 py-4 text-center" role="status">
           <p className="m-0 text-[13px] font-medium">You’re all caught up</p>

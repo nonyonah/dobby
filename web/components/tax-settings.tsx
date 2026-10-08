@@ -4,6 +4,8 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { AlertIcon, SettingsIcon } from "@hugeicons/core-free-icons";
 import { Alert, AlertContent, AlertDescription, AlertIndicator } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { LoadingRegion } from "@/components/loading-skeletons";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -124,7 +126,13 @@ export function TaxSettingsForm({ onSaved }: { onSaved?: () => void }) {
   };
 
   if (!rules) {
-    return <p className="m-0 text-[13px] text-muted-foreground">Loading your tax settings…</p>;
+    return (
+      <LoadingRegion label="Loading your tax settings" className="space-y-3 py-2">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-9 w-full rounded-lg" />
+        <Skeleton className="h-9 w-2/3 rounded-lg" />
+      </LoadingRegion>
+    );
   }
 
   const jurisdiction = TAX_JURISDICTIONS.find(

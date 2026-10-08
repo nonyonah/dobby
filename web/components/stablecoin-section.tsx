@@ -11,6 +11,7 @@ import { MoneyStats } from "@/components/money-stats";
 import { BreakdownPie } from "@/components/breakdown-pie";
 import { FlowNarrative } from "@/components/flow-narrative";
 import { FlowTable } from "@/components/flow-table";
+import { LoadingRegion, TableSkeletonRows } from "@/components/loading-skeletons";
 
 /** Assets that count as stablecoins anywhere in the app. CNGN is Nigeria's. */
 export const STABLECOIN_SYMBOLS = ["USDC", "USDT", "CNGN"];
@@ -127,9 +128,9 @@ export function StablecoinSection({
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {loading ? (
-            <div className="mb-2 rounded-md bg-secondary px-3 py-2 text-[12px] text-muted-foreground" role="status">
-              Loading stablecoin transactions for {year}…
-            </div>
+            <LoadingRegion label={`Loading stablecoin transactions for ${year}`} className="mb-2">
+              <TableSkeletonRows rows={4} columns={2} />
+            </LoadingRegion>
           ) : null}
           <FlowTable
             title="Transactions"
