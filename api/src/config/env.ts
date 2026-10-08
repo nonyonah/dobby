@@ -52,8 +52,12 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error("Invalid environment configuration:", parsed.error.flatten().fieldErrors);
-  process.exit(1);
+  const fields = parsed.error.flatten().fieldErrors;
+  const summary = Object.entries(fields)
+    .map(([key, errors]) => `${key}: ${errors?.join(", ")}`)
+    .join("; ");
+
+  throw new Error(`Invalid environment configuration. ${summary}`);
 }
 
 export const env = parsed.data;
