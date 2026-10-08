@@ -100,10 +100,10 @@ function Hero() {
       />
       <Container className="flex flex-col pb-16 pt-24 sm:pb-24 sm:pt-32">
         <Reveal delay={0.1} className="mx-auto flex w-full max-w-3xl flex-col text-left">
-          <h1 className="m-0 text-balance text-[48px] font-normal leading-[1.1] tracking-[-0.03em] text-foreground">
+          <h1 className="m-0 text-balance text-[32px] font-normal sm:text-[48px] leading-[1.1] tracking-[-0.03em] text-foreground">
             Know what you owe. Before the deadline does
           </h1>
-          <p className="m-0 mt-5 max-w-xl text-pretty text-[16px] font-normal leading-relaxed text-muted-foreground">
+          <p className="m-0 mt-5 max-w-xl text-pretty text-[14px] font-normal leading-relaxed text-muted-foreground sm:text-[16px]">
             Bookkeeping that keeps your records in order and tells you exactly where you stand for tax season. No spreadsheets, no scramble in March.
           </p>
           <div className="mt-5">
@@ -160,28 +160,18 @@ function Hero() {
 function Features() {
   return (
     <section id="features">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-16 px-[60px] py-12 sm:py-16">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-5 sm:gap-16 sm:px-[60px] py-12 sm:py-16">
         <Reveal delay={0.1} className="flex flex-col items-start gap-4 text-left">
           <p className="m-0 text-[14px] font-normal text-faint">Financial intelligence</p>
-          <h2 className="m-0 max-w-xl text-balance text-[38px] font-normal leading-[1.15] tracking-[-0.02em] text-foreground">
+          <h2 className="m-0 max-w-xl text-balance text-[28px] font-normal sm:text-[38px] leading-[1.15] tracking-[-0.02em] text-foreground">
             Everything you need to stay on top of your money
           </h2>
-          <p className="m-0 max-w-md text-pretty text-[16px] font-normal leading-relaxed text-muted-foreground">
+          <p className="m-0 max-w-md text-pretty text-[14px] font-normal sm:text-[16px] leading-relaxed text-muted-foreground">
             From everyday bookkeeping to tax season handled automatically, so you're never caught off guard
           </p>
         </Reveal>
-        <Reveal delay={0.2} className="flex items-stretch gap-6">
+        <Reveal delay={0.2}>
           <FeatureAccordion />
-          <div className="min-w-0 flex-1 overflow-hidden rounded-[4px] border border-line/60 bg-card">
-            <Image
-              src="/dashboard-dark.png"
-              alt="The Dobby dashboard"
-              width={2304}
-              height={1160}
-              sizes="(min-width: 1152px) 50vw, 100vw"
-              className="h-full w-full object-cover"
-            />
-          </div>
         </Reveal>
       </div>
     </section>
@@ -195,13 +185,13 @@ function Features() {
 function Pricing() {
   return (
     <section id="pricing">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-[60px] py-12 sm:py-16">
-        <Reveal delay={0.1} className="flex h-[151.5px] w-[480px] flex-col items-start gap-4 text-left">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 sm:gap-12 sm:px-[60px] py-12 sm:py-16">
+        <Reveal delay={0.1} className="flex h-auto w-full sm:h-[151.5px] sm:w-[480px] flex-col items-start gap-4 text-left">
           <p className="m-0 text-[14px] font-normal text-faint">Transparent pricing</p>
-          <h2 className="m-0 w-full text-[38px] font-normal leading-[1.15] tracking-[-0.02em] text-foreground">
+          <h2 className="m-0 w-full text-[28px] font-normal sm:text-[38px] leading-[1.15] tracking-[-0.02em] text-foreground">
             Try everything, free for 7 days
           </h2>
-          <p className="m-0 w-full text-pretty text-[16px] font-normal leading-relaxed text-muted-foreground">
+          <p className="m-0 w-full text-pretty text-[14px] font-normal sm:text-[16px] leading-relaxed text-muted-foreground">
             No card required. See exactly what it's like to never scramble for your records again.
           </p>
         </Reveal>
@@ -236,9 +226,9 @@ export default async function LandingPage() {
         <Features />
         <Pricing />
       </main>
-      <footer className="h-[216.5px] bg-[#131517]">
-        <Reveal className="mx-auto flex h-full w-full max-w-6xl items-center justify-between px-[60px]">
-          <div className="flex flex-col items-start gap-[68px]">
+      <footer className="min-h-[216.5px] py-12 sm:h-[216.5px] sm:py-0 bg-[#131517]">
+        <Reveal className="mx-auto flex h-full w-full max-w-6xl flex-col items-start justify-center gap-8 px-5 sm:flex-row sm:items-center sm:justify-between sm:px-[60px]">
+          <div className="flex flex-col items-start gap-10 sm:gap-[68px]">
             <Link href="/" className="flex items-center gap-2">
               <BrandLogo size={24} />
               <span className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">Dobby</span>
