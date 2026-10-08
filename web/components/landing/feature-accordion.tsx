@@ -14,27 +14,27 @@ const ITEMS = [
   {
     title: "Automatic bookkeeping",
     body: "Upload a statement or forward a receipt. We categorize it, you just confirm.",
-    image: "/Image%20Card/Automate%20Bookkeeping%20in%20Nature.png",
+    image: "/image-card/automate-bookkeeping.png",
   },
   {
     title: "Always know what you owe",
     body: "A running tax estimate that updates as you go, not once a year under deadline pressure.",
-    image: "/Image%20Card/Tax%20estimates.jpeg",
+    image: "/image-card/tax-estimates.jpeg",
   },
   {
     title: "One view of your whole financial life",
     body: "Stablecoin wallets, bank accounts (coming soon) tracked together in real time.",
-    image: "/Image%20Card/One%20view%20of%20your%20financial%20life.jpeg",
+    image: "/image-card/one-view-financial-life.jpeg",
   },
   {
     title: "You're always in control",
     body: "Read-only connections, editable categories, and rules you set. Nothing happens without your say.",
-    image: "/Image%20Card/In%20control%20of%20your%20finances.png",
+    image: "/image-card/in-control.png",
   },
   {
     title: "Never get caught by a renewal",
     body: "Subscription tracking that flags upcoming charges and price increases before they hit (coming soon).",
-    image: "/Image%20Card/Never%20get%20caught%20by%20a%20renewal.jpeg",
+    image: "/image-card/never-get-caught-renewal.jpeg",
   },
 ];
 

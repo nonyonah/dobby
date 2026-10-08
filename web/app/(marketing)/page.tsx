@@ -9,7 +9,7 @@ import { FeatureAccordion } from "@/components/landing/feature-accordion";
 import { Reveal } from "@/components/landing/reveal";
 
 export const metadata: Metadata = {
-  title: "Dobby — Bookkeeping that keeps itself up to date",
+  title: "Dobby",
   description:
     "Income, expenses, stablecoins and tax readiness in one calm workspace. Import statements, connect your email, track wallets — Dobby categorises everything and asks only when it is unsure.",
 };
