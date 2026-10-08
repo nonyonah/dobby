@@ -17,9 +17,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Dobby — Income overview",
+  title: {
+    default: "Dobby",
+    template: "%s | Dobby",
+  },
   description:
-    "Rift Labs income, expenses and taxable income dashboard. shadcn/ui patterns with Rift Labs tokens.",
+    "Income, expenses, stablecoins and tax readiness in one calm workspace.",
 };
 
 export default function RootLayout({

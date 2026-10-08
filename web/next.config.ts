@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs/config";
 
 const nextConfig: NextConfig = {
+  images: {
+    // The app currently only renders bundled public assets. Serving them
+    // directly avoids production failures in the image optimizer/proxy path.
+    unoptimized: true,
+  },
   turbopack: {
     root: __dirname,
   },
