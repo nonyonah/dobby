@@ -14,16 +14,17 @@ import { Switch } from "@/components/ui/switch";
 
 type Interval = "month" | "year";
 
+/** Mirrors api/src/lib/bachs.ts BACHS_USD_PRICES ($4/mo, $36/yr = 25% off). */
 const PRICE: Record<Interval, { amount: string; cadence: string; note: string }> = {
   month: {
-    amount: "$3",
+    amount: "$4",
     cadence: "per month",
     note: "Billed monthly. Cancel any time.",
   },
   year: {
-    amount: "$32.40",
+    amount: "$36",
     cadence: "per year",
-    note: "Billed yearly — 10% off monthly, with a 7-day free trial.",
+    note: "Billed yearly — 25% off monthly, with a 7-day free trial.",
   },
 };
 
@@ -64,7 +65,7 @@ export function PricingCard() {
           Annual
         </span>
         <span className="inline-flex items-center rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-medium text-success">
-          10% off
+          25% off
         </span>
       </div>
 

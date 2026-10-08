@@ -502,9 +502,12 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
               <TableHead id="name" className="px-3 py-2 text-[12px] font-medium text-muted-foreground">
                 <button type="button" onClick={() => toggleSort("name")} className="flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">Transaction <SortIcon dir={sortKey === "name" ? sortDir : "desc"} active={sortKey === "name"} /></button>
               </TableHead>
-              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Category</TableHead>
-              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Tax</TableHead>
-              <TableHead className="px-3 py-2 text-[12px] font-medium text-muted-foreground">Source</TableHead>
+              {/* Tax and Source are secondary here — both fold into the
+                  transaction cell below `md` rather than forcing the whole
+                  table into a horizontal scroll on a phone. */}
+              <TableHead className="hidden px-3 py-2 text-[12px] font-medium text-muted-foreground md:table-cell">Category</TableHead>
+              <TableHead className="hidden px-3 py-2 text-[12px] font-medium text-muted-foreground md:table-cell">Tax</TableHead>
+              <TableHead className="hidden px-3 py-2 text-[12px] font-medium text-muted-foreground md:table-cell">Source</TableHead>
 
               <TableHead id="amount" className="px-3 py-2 text-right text-[12px] font-medium text-muted-foreground">
                 <button type="button" onClick={() => toggleSort("amount")} className="ml-auto flex cursor-pointer items-center gap-1 rounded outline-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">Amount <SortIcon dir={sortKey === "amount" ? sortDir : "desc"} active={sortKey === "amount"} /></button>
@@ -528,10 +531,18 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                     ) : null}
                     <TableRow id={t.id} onClick={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-line hover:bg-secondary! ${selected ? "bg-primary/10 hover:bg-primary/15!" : ""}`}>
                       <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-primary" /></TableCell>
-                      <TableCell className="max-w-56 px-3 py-2.5 leading-normal"><span className="block truncate font-medium text-foreground">{t.name}</span><span className="block truncate text-[12px] text-muted-foreground">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}</TableCell>
-                      <TableCell className="px-3 py-2.5"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} /></TableCell>
-                      <TableCell className="px-3 py-2.5"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-primary text-primary-foreground" : "border-transparent bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></TableCell>
-                      <TableCell className="px-3 py-2.5"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"><SIcon /></span></TableCell>
+                      <TableCell className="max-w-56 px-3 py-2.5 leading-normal"><span className="block truncate font-medium text-foreground">{t.name}</span><span className="block truncate text-[12px] text-muted-foreground">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}
+                        {/* Category, tax and source move in here on phones so no
+                            information is lost when the columns collapse. */}
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5 md:hidden">
+                          <CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} />
+                          <span className={`inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span>
+                          <span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground"><SIcon className="size-3" /></span>
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden px-3 py-2.5 md:table-cell"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} /></TableCell>
+                      <TableCell className="hidden px-3 py-2.5 md:table-cell"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-primary text-primary-foreground" : "border-transparent bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></TableCell>
+                      <TableCell className="hidden px-3 py-2.5 md:table-cell"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"><SIcon /></span></TableCell>
 
                       <TableCell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-success" : "text-danger"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</TableCell>
                     </TableRow>

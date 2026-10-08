@@ -24,11 +24,6 @@ export interface ConnectedWallet {
   color: string;
 }
 
-export interface WalletSummary {
-  provider?: string;
-  transfers?: Array<{ hash: string; from: string; to: string; value?: number | string; asset?: string | null }>;
-}
-
 const CHAINS = [
   { value: "BASE", label: "Base" },
   { value: "SOLANA", label: "Solana" },
@@ -56,7 +51,7 @@ export function WalletConnectModal({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnected: (wallet: ConnectedWallet, summary: WalletSummary | null) => void;
+  onConnected: (wallet: ConnectedWallet) => void;
   /** Colours already used by existing wallets, shown as "in use". */
   connectedColors?: string[];
 }) {
@@ -93,14 +88,12 @@ export function WalletConnectModal({
         displayName: trimmedName,
         color,
       });
-      let summary: WalletSummary | null = null;
-      try {
-        const response = await api.get<{ data: WalletSummary }>(`/v1/wallets/${created.data.id}/summary`);
-        summary = response.data;
-      } catch {
-        summary = null;
-      }
-      onConnected(created.data, summary);
+      // No summary fetch here on purpose: the API proxies the chain provider live, so
+      // a brand-new address can take tens of seconds and sometimes fails
+      // outright. Waiting on it meant a successful connect appeared to hang, and
+      // a failure blocked the success toast. Callers refetch the wallet list and
+      // its summary themselves.
+      onConnected(created.data);
       reset();
       onOpenChange(false);
       toast.success(`${trimmedName} connected`);
@@ -136,11 +129,13 @@ export function WalletConnectModal({
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-[12px] font-medium text-muted-foreground">Wallet address</span>
+            <span className="mb-1 block text-[12px] font-medium text-muted-foreground">
+              {chain === "BASE" ? "Base address" : "Solana address"}
+            </span>
             <Input
               value={address}
               onChange={(event) => setAddress(event.target.value)}
-              placeholder={chain === "BASE" ? "0x…" : "Base58 public key…"}
+              placeholder={chain === "BASE" ? "0x…" : "Solana address…"}
               autoComplete="off"
               spellCheck={false}
               className="mono h-8"

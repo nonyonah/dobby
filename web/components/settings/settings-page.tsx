@@ -25,6 +25,7 @@ import { deriveBillingNotice } from "@/lib/billing-notice";
 import { usePlan } from "@/components/plan-provider";
 import { useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
+import { fetchWalletSummary, summarizeTransfers, SUMMARY_UNAVAILABLE } from "@/lib/wallet-summary";
 
 // Shadow-as-border: a transparent ring reads as a 1px edge without a hard
 // border colour. Dark mode swaps to a single white ring, because layered black
@@ -122,22 +123,6 @@ const BRANDFETCH_LOGO = (domain: string) => `https://cdn.brandfetch.io/domain/${
 function shortAddress(address: string): string {
   if (address.length <= 12) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
-
-function summarizeTransfers(transfers?: Array<{ asset?: string | null; value?: number | string | null }>): string {
-  if (!transfers || transfers.length === 0) return "No on-chain activity yet";
-  const totals = new Map<string, number>();
-  for (const transfer of transfers) {
-    const asset = (transfer.asset ?? "UNKNOWN").toUpperCase();
-    const value = Number(transfer.value ?? 0);
-    if (!Number.isFinite(value)) continue;
-    totals.set(asset, (totals.get(asset) ?? 0) + Math.abs(value));
-  }
-  const stables = ["USDC", "CNGN", "ETH"]
-    .filter((asset) => totals.has(asset))
-    .map((asset) => `${totals.get(asset)?.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${asset}`);
-  const parts = stables.length > 0 ? stables : [`${transfers.length} transfers`];
-  return `${transfers.length} transfers · ${parts.slice(0, 2).join(" · ")}`;
 }
 
 const PROVIDER_ROWS = [
@@ -384,6 +369,11 @@ function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: 
 export function SettingsPage() {
   const [wallets, setWallets] = useState<Array<{ id: string; chain: string; address: string; displayName: string; color: string }>>([]);
   const [walletSummaries, setWalletSummaries] = useState<Record<string, string>>({});
+  // Bumped after a wallet is connected so the loader above re-runs and picks up
+  // the new wallet, its summary, and anything else that depends on it. Patching
+  // local state alone left net worth and insights showing the pre-connect
+  // picture until a manual reload.
+  const [reloadToken, setReloadToken] = useState(0);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const [providers, setProviders] = useState<Record<string, { status: string; live: boolean }>>({});
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
@@ -637,12 +627,12 @@ export function SettingsPage() {
         setWallets(walletResponse.data);
         void Promise.all(
           walletResponse.data.map(async (wallet) => {
-            try {
-              const summary = await api.get<{ data: { provider?: string; transfers?: Array<{ asset?: string | null; value?: number | string | null }> } }>(`/v1/wallets/${wallet.id}/summary`);
-              if (!cancelled) setWalletSummaries((prev) => ({ ...prev, [wallet.id]: summarizeTransfers(summary.data.transfers) }));
-            } catch {
-              if (!cancelled) setWalletSummaries((prev) => ({ ...prev, [wallet.id]: "Summary unavailable" }));
-            }
+            const summary = await fetchWalletSummary(api, wallet.id);
+            if (cancelled) return;
+            setWalletSummaries((prev) => ({
+              ...prev,
+              [wallet.id]: summary ? summarizeTransfers(summary.transfers) : SUMMARY_UNAVAILABLE,
+            }));
           }),
         );
       } else {
@@ -689,7 +679,7 @@ export function SettingsPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, reloadToken]);
 
   const refreshProviders = async () => {
     try {
@@ -1126,12 +1116,12 @@ export function SettingsPage() {
         open={walletModalOpen}
         onOpenChange={setWalletModalOpen}
         connectedColors={wallets.map((wallet) => wallet.color)}
-        onConnected={(wallet, summary) => {
-          setWallets((prev) => [...prev, wallet]);
-          setWalletSummaries((prev) => ({
-            ...prev,
-            [wallet.id]: summary ? summarizeTransfers(summary.transfers) : "Summary unavailable",
-          }));
+        onConnected={() => {
+          // Re-run the loader rather than splicing the new wallet into local
+          // state: the wallet list, its summary and the aggregates derived from
+          // it all come from the server, and the modal's optimistic copy cannot
+          // know what the provider actually returns for a fresh address.
+          setReloadToken((token) => token + 1);
         }}
       />
     </div>

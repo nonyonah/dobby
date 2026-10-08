@@ -348,15 +348,33 @@ export type BillingOption = {
   pricing: "fixed" | "local";
 };
 
-const CARD_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", method: "card", amount: 5, currency: "USD", label: "$5/mo", pricing: "local" },
-  { provider: "bachs", interval: "year", method: "card", amount: 50, currency: "USD", label: "$50/yr", pricing: "local" },
-];
+// Derived from BACHS_USD_PRICES so the pills the client renders can never
+// drift from the amount we actually charge.
+const usd = (interval: BillingInterval) => Number(BACHS_USD_PRICES[interval].amount);
+const label = (interval: BillingInterval) =>
+  interval === "month"
+    ? `$${usd(interval)}/mo`
+    : `$${usd(interval).toFixed(2)}/yr`;
 
-const CRYPTO_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", method: "crypto", amount: 5, currency: "USD", label: "$5/mo · Crypto", pricing: "fixed" },
-  { provider: "bachs", interval: "year", method: "crypto", amount: 50, currency: "USD", label: "$50/yr · Crypto", pricing: "fixed" },
-];
+const CARD_OPTIONS: BillingOption[] = (["month", "year"] as const).map((interval) => ({
+  provider: "bachs",
+  interval,
+  method: "card",
+  amount: usd(interval),
+  currency: "USD",
+  label: label(interval),
+  pricing: "local",
+}));
+
+const CRYPTO_OPTIONS: BillingOption[] = (["month", "year"] as const).map((interval) => ({
+  provider: "bachs",
+  interval,
+  method: "crypto",
+  amount: usd(interval),
+  currency: "USD",
+  label: `${label(interval)} · Crypto`,
+  pricing: "fixed",
+}));
 
 billingRouter.get("/options", async (_req, res) => {
   // Bachs resolves the customer's currency itself at checkout — a currency
@@ -410,7 +428,7 @@ async function grantBachsTerm(ownerClerkId: string, txRef: string, providerTxId:
   if (!payment || payment.provider !== "bachs") throw new AppError(404, "No matching payment request.", "PAYMENT_NOT_FOUND");
   if (payment.ownerClerkId !== ownerClerkId) throw new AppError(403, "This payment belongs to a different account.", "PAYMENT_OWNER_MISMATCH");
   if (payment.status === "paid") return { granted: true, already: true as const, periodEndsAt: payment.periodEndsAt };
-  const expected = payment.plan === "year" ? 50 : 5;
+  const expected = usd(payment.plan === "year" ? "year" : "month");
   if (currency !== "USD" || amount < expected) {
     throw new AppError(402, "Paid amount does not match the plan price.", "PAYMENT_AMOUNT_MISMATCH");
   }

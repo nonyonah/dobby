@@ -27,11 +27,13 @@ export type BillingOption = {
   pricing: "fixed" | "local";
 };
 
+// Mirrors api/src/lib/bachs.ts BACHS_USD_PRICES — shown only if /v1/billing/options
+// is unreachable, so keep it in step with the server-side catalog.
 const FALLBACK_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", method: "card", amount: 3, currency: "USD", label: "$3/mo", pricing: "local" },
-  { provider: "bachs", interval: "month", method: "crypto", amount: 3, currency: "USD", label: "$3/mo · Crypto", pricing: "fixed" },
-  { provider: "bachs", interval: "year", method: "card", amount: 32.4, currency: "USD", label: "$32.40/yr", pricing: "local" },
-  { provider: "bachs", interval: "year", method: "crypto", amount: 32.4, currency: "USD", label: "$32.40/yr · Crypto", pricing: "fixed" },
+  { provider: "bachs", interval: "month", method: "card", amount: 4, currency: "USD", label: "$4/mo", pricing: "local" },
+  { provider: "bachs", interval: "month", method: "crypto", amount: 4, currency: "USD", label: "$4/mo · Crypto", pricing: "fixed" },
+  { provider: "bachs", interval: "year", method: "card", amount: 36, currency: "USD", label: "$36/yr", pricing: "local" },
+  { provider: "bachs", interval: "year", method: "crypto", amount: 36, currency: "USD", label: "$36/yr · Crypto", pricing: "fixed" },
 ];
 
 const optionKey = (option: BillingOption) => `${option.provider}:${option.interval}:${option.method}`;

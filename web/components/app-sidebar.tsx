@@ -238,8 +238,11 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
                 return <BookmarkIcon />;
               }}
               onActiveChange={(id) => {
+                // A wallet row opens that wallet's own page — its live balance,
+                // asset mix and on-chain activity. There is no separate nav
+                // entry for wallets: this list is the index.
                 if (id.startsWith("wallet-")) {
-                  router.push("/transactions?source=wallet");
+                  router.push(`/wallets/${id.slice("wallet-".length)}`);
                   return;
                 }
                 const hrefs: Record<string, string> = {

@@ -33,6 +33,15 @@ type CacheEntry = { value: unknown; expires: number };
 const responseCache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<unknown>>();
 
+/**
+ * Bumped by every mutation. A read that was already in flight when a mutation
+ * landed would otherwise resolve *after* it and write its pre-mutation result
+ * into the freshly-cleared cache, so the next reader sees stale data for a
+ * whole TTL — which is how a newly connected wallet could vanish from the list
+ * for seconds after being added.
+ */
+let generation = 0;
+
 function isCacheable(path: string) {
   return CACHEABLE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}/`));
 }
@@ -40,6 +49,7 @@ function isCacheable(path: string) {
 /** Mutations make cached reads stale — drop everything we might reuse. */
 function invalidateCache() {
   responseCache.clear();
+  generation += 1;
 }
 
 export function createApiClient(
@@ -101,9 +111,14 @@ export function createApiClient(
     const pending = inflight.get(key);
     if (pending) return pending as Promise<T>;
 
+    const startedAt = generation;
     const promise = request<T>(path, {}, options)
       .then((value) => {
-        if (isCacheable(path)) responseCache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
+        // Only publish to the cache if no mutation intervened while this read
+        // was in flight; otherwise the value is already stale.
+        if (isCacheable(path) && startedAt === generation) {
+          responseCache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
+        }
         return value;
       })
       .finally(() => {

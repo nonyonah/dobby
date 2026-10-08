@@ -23,6 +23,7 @@ const envSchema = z.object({
   R2_BUCKET_NAME: z.string().min(1).optional(),
   R2_ENDPOINT: z.string().url().optional(),
   ALCHEMY_BASE_API_URL: z.string().url().optional(),
+  ALCHEMY_SOLANA_API_URL: z.string().url().optional(),
   ALCHEMY_API_KEY: z.string().min(1).optional(),
   COMPOSIO_API_KEY: z.string().min(1).optional(),
   COMPOSIO_AUTH_CONFIG_GMAIL: z.string().min(1).optional(),

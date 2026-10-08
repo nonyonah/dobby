@@ -21,10 +21,15 @@ interface BreakdownPieProps {
   title: string;
 
   items: BreakdownItem[];
-  month: number;
-  year: number;
-  months: { value: number; label: string }[];
-  onMonthChange: (month: number) => void;
+  /**
+   * Month controls are optional. Flow-based tabs (spending, income, stablecoin)
+   * pass them and let the month drive the chart; a balances snapshot (wallets,
+   * accounts) omits them and is captioned "as of now" instead.
+   */
+  month?: number;
+  year?: number;
+  months?: { value: number; label: string }[];
+  onMonthChange?: (month: number) => void;
   /** Label for the "everything" option of the item filter, e.g. "All assets". */
   filterLabel?: string;
 }
@@ -38,9 +43,10 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
     [title]
   );
   const visible = catFilter === "all" ? items : items.filter((item) => item.id === catFilter);
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  const monthLabel = MONTH_LABELS[month] ?? "Month";
-  const dateLabel = `${monthLabel} 1, ${year} - ${monthLabel} ${lastDay}, ${year}`;
+  const snapshot = month === undefined || year === undefined;
+  const lastDay = snapshot ? 0 : new Date(year, (month ?? 0) + 1, 0).getDate();
+  const monthLabel = snapshot ? "" : (MONTH_LABELS[month ?? 0] ?? "Month");
+  const dateLabel = snapshot ? "Current balances" : `${monthLabel} 1, ${year} - ${monthLabel} ${lastDay}, ${year}`;
 
   return (
     <Card className="gap-4 p-4 sm:p-5">
@@ -55,11 +61,12 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
             <FilterIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
             <NativeSelect aria-label={`Filter by ${filterLabel.replace("All ", "").toLowerCase()}`} className="w-auto" value={catFilter} onValueChange={(value) => setCatFilter(value ?? "all")} options={[{ value: "all", label: filterLabel }, ...items.map((item) => ({ value: item.id, label: item.name }))]} />
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <CalendarIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-            <NativeSelect aria-label="Filter by month" className="w-auto" value={String(month)} onValueChange={(value) => onMonthChange(Number(value))} options={months.map((item) => ({ value: String(item.value), label: item.label }))} />
-          </div>
-
+          {snapshot ? null : (
+            <div className="flex shrink-0 items-center gap-1.5">
+              <CalendarIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+              <NativeSelect aria-label="Filter by month" className="w-auto" value={String(month)} onValueChange={(value) => onMonthChange?.(Number(value))} options={(months ?? []).map((item) => ({ value: String(item.value), label: item.label }))} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -88,7 +95,7 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
           </ChartContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
             <span className="mono text-xl font-semibold tabular-nums">{formatUSD(total)}</span>
-            <span className="text-[11px] text-muted-foreground">{monthLabel}</span>
+            <span className="text-[11px] text-muted-foreground">{snapshot ? "total" : monthLabel}</span>
           </div>
         </div>
 

@@ -3,8 +3,7 @@ import { Chain } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { getBlockscoutAddressSummary } from "../lib/blockscout.js";
-import { getBaseWalletTransfers } from "../providers/alchemy.js";
-import { env } from "../config/env.js";
+import { alchemyConfigured, getBaseWalletTransfers, getSolanaWalletTransfers } from "../providers/alchemy.js";
 import { requireAuth } from "../middleware/auth.js";
 import { assertPro } from "../middleware/plan.js";
 
@@ -123,8 +122,12 @@ walletsRouter.get("/:id/summary", async (req, res) => {
     res.status(404).json({ error: { code: "WALLET_NOT_FOUND", message: "Wallet was not found." } });
     return;
   }
-  if (wallet.chain === Chain.BASE && env.ALCHEMY_BASE_API_URL && env.ALCHEMY_API_KEY) {
+  if (wallet.chain === Chain.BASE && alchemyConfigured("base")) {
     res.json({ data: { chain: wallet.chain, address: wallet.address, provider: "alchemy", transfers: await getBaseWalletTransfers(wallet.address) } });
+    return;
+  }
+  if (wallet.chain === Chain.SOLANA && alchemyConfigured("solana")) {
+    res.json({ data: { chain: wallet.chain, address: wallet.address, provider: "alchemy", transfers: await getSolanaWalletTransfers(wallet.address) } });
     return;
   }
   res.json({ data: await getBlockscoutAddressSummary(wallet.chain, wallet.address) });

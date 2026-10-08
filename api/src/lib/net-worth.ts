@@ -1,9 +1,8 @@
 import { Chain } from "@prisma/client";
 import { prisma } from "./prisma.js";
-import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
 import { logger } from "./logger.js";
-import { getBaseWalletBalances } from "../providers/alchemy.js";
+import { alchemyConfigured, getBaseWalletBalances, getSolanaWalletBalances } from "../providers/alchemy.js";
 import { getBlockscoutBalances } from "./blockscout.js";
 import { getConversionFactors } from "../providers/frankfurter.js";
 
@@ -65,12 +64,12 @@ export interface NetWorthSnapshot {
 }
 
 async function fetchBalances(chain: Chain, address: string): Promise<Array<{ symbol: string; amount: number; address?: string }>> {
-  if (chain === Chain.BASE && envAlchemyConfigured()) return getBaseWalletBalances(address);
+  // Alchemy first wherever it is wired, then Blockscout as the EVM fallback.
+  // Solana has no Blockscout, so without a Solana Alchemy key it falls through
+  // and surfaces as provider_unconfigured rather than a bogus zero balance.
+  if (chain === Chain.BASE && alchemyConfigured("base")) return getBaseWalletBalances(address);
+  if (chain === Chain.SOLANA && alchemyConfigured("solana")) return getSolanaWalletBalances(address);
   return getBlockscoutBalances(chain, address);
-}
-
-function envAlchemyConfigured() {
-  return Boolean(env.ALCHEMY_BASE_API_URL && env.ALCHEMY_API_KEY);
 }
 
 /**

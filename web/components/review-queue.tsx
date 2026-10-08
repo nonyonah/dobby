@@ -180,7 +180,9 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                   <TableHead className="w-10 px-2 py-2"><input type="checkbox" checked={allChecked} onChange={() => setChecked(allChecked ? new Set() : new Set(rows.map((row) => row.id)))} aria-label="Select all transactions to review" className="size-4 accent-primary" /></TableHead>
                   <TableHead className="px-2 py-2 font-medium">Transaction</TableHead>
                   <TableHead className="px-2 py-2 font-medium">AI suggestion</TableHead>
-                  <TableHead className="px-2 py-2 font-medium">Source</TableHead>
+                  {/* Source folds into the transaction cell on phones so the
+                      category picker and amount keep a usable width. */}
+                  <TableHead className="hidden px-2 py-2 font-medium md:table-cell">Source</TableHead>
                   <TableHead className="px-2 py-2 text-right font-medium">Amount</TableHead>
                   <TableHead className="px-2 py-2 text-right font-medium">Action</TableHead>
                 </TableRow>
@@ -193,7 +195,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                   const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
                   return <TableRow key={row.id} id={row.id} data-focused={focusId === row.id ? "true" : undefined} className={`border-b border-line last:border-0 ${focusId === row.id ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""}`}>
                     <TableCell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-primary" /></TableCell>
-                    <TableCell className="px-2 py-3 leading-normal"><span className="block font-medium">{row.name}</span><span className="block text-[12px] text-muted-foreground">{row.account} · {row.date.slice(5).replace("-", "/")}</span></TableCell>
+                    <TableCell className="px-2 py-3 leading-normal"><span className="block font-medium">{row.name}</span><span className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-muted-foreground"><span>{row.account} · {row.date.slice(5).replace("-", "/")}</span><span className="inline-flex items-center gap-1 md:hidden" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></span></TableCell>
                     <TableCell className="px-2 py-3">
                       {categories.length > 0 ? (
                         <select
@@ -214,7 +216,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                       )}
                       <span className="ml-2 text-[11px] text-muted-foreground">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
                     </TableCell>
-                    <TableCell className="px-2 py-3"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></TableCell>
+                    <TableCell className="hidden px-2 py-3 md:table-cell"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></TableCell>
                     <TableCell className="px-2 py-3 text-right">
                       {row.needsManualReview ? (
                         <span className="mono text-[12px] text-muted-foreground">Not extracted</span>

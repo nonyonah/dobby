@@ -60,10 +60,10 @@ export type CheckoutSession = { checkout_id: string; checkout_url: string };
 /** The two cadences Dobby Pro is sold on. */
 export type BillingInterval = "month" | "year";
 
-/** One-time USD prices mirroring the subscription catalog ($5/mo, $50/yr). */
+/** One-time USD prices mirroring the subscription catalog ($4/mo, $36/yr). */
 export const BACHS_USD_PRICES = {
-  month: { amount: "5.00", days: 30 },
-  year: { amount: "50.00", days: 365 },
+  month: { amount: "4.00", days: 30 },
+  year: { amount: "36.00", days: 365 },
 } as const;
 
 const productIdFor = (interval: BillingInterval) =>

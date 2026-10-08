@@ -39,7 +39,7 @@ describe("createProCheckout", () => {
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.product_cart).toBeUndefined();
-    expect(body.pricing).toMatchObject({ base_currency: "USD", amount: "50.00" });
+    expect(body.pricing).toMatchObject({ base_currency: "USD", amount: "36.00" });
     expect(body.payment_method_options).toEqual({ crypto: {} });
     expect(body.reference).toBe("dobby-test-ref");
   });
