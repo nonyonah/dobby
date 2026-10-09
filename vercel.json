@@ -6,5 +6,24 @@
       "framework": "nextjs"
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": { "service": "web" } }]
+  "rewrites": [
+    { "source": "/v1/:path*", "destination": "https://dobby-production-c0ce.up.railway.app/v1/:path*" },
+    { "source": "/health", "destination": "https://dobby-production-c0ce.up.railway.app/health" },
+    { "source": "/health/:path*", "destination": "https://dobby-production-c0ce.up.railway.app/health/:path*" },
+    { "source": "/(.*)", "destination": { "service": "web" } }
+  ],
+  "headers": [
+    {
+      "source": "/v1/:path*",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
+    },
+    {
+      "source": "/health",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
+    },
+    {
+      "source": "/health/:path*",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
+    }
+  ]
 }
