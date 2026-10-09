@@ -52,9 +52,20 @@ function invalidateCache() {
   generation += 1;
 }
 
+/**
+ * The API's origin when `NEXT_PUBLIC_API_URL` is not set. Requests go straight
+ * to Railway rather than through the same-origin proxy in `next.config.ts`,
+ * which saves a hop — the proxy remains as the fallback if this is ever unset
+ * or overridden, so neither path is load-bearing on its own.
+ */
+export const DEFAULT_API_ORIGIN = "https://dobby-production-c0ce.up.railway.app";
+
 export function createApiClient(
   getToken: TokenProvider,
-  baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "",
+  // An explicitly empty value counts as unset: Next inlines a missing var as
+  // undefined and a blank one as "", and neither should send requests
+  // same-origin when a real origin is available.
+  baseUrl = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_ORIGIN,
 ) {
   const root = baseUrl.replace(/\/$/, "");
 
