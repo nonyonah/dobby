@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs/config";
 
+// Where the API lives. This is read at build time by the server, so it is
+// always present regardless of NEXT_PUBLIC_* plumbing — same-origin requests
+// for /v1 and /health are proxied here.
+const API_ORIGIN =
+  process.env.API_PROXY_ORIGIN ??
+  "https://dobby-production-c0ce.up.railway.app";
+
 const nextConfig: NextConfig = {
   images: {
     // The app currently only renders bundled public assets. Serving them
@@ -11,10 +18,22 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
   async rewrites() {
-    return [
-      // Proxy PostHog through our origin so ad blockers don't drop events.
-      { source: "/ph/:path*", destination: "https://eu.i.posthog.com/:path*" },
-    ];
+    return {
+      // The API proxy must be checked before the filesystem, otherwise the
+      // prerendered 404 page answers /v1/* with HTML instead of JSON.
+      beforeFiles: [
+        {
+          source: "/v1/:path*",
+          destination: `${API_ORIGIN}/v1/:path*`,
+        },
+        { source: "/health", destination: `${API_ORIGIN}/health` },
+        { source: "/health/:path*", destination: `${API_ORIGIN}/health/:path*` },
+      ],
+      afterFiles: [
+        // Proxy PostHog through our origin so ad blockers don't drop events.
+        { source: "/ph/:path*", destination: "https://eu.i.posthog.com/:path*" },
+      ],
+    };
   },
 };
 

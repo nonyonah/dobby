@@ -68,6 +68,15 @@ app.use("/health", healthRouter);
 // depend on Clerk request parsing.
 app.use(clerkMiddleware());
 
+// Every /v1 response is scoped to one user behind a Bearer token, so it must
+// never be stored by a shared cache. Set here rather than at the edge: this
+// header travels with the response through the Vercel proxy, whereas edge
+// header rules are not applied to responses an external rewrite forwards.
+app.use("/v1", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 app.use("/v1/me", meRouter);
 app.use("/v1/wallets", walletsRouter);
 app.use("/v1/accounts", accountsRouter);
