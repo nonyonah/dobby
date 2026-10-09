@@ -26,8 +26,6 @@ export type BillingNoticeInput = {
   trialEndsAt?: string | null;
   /** Present where `/v1/billing` has been fetched, e.g. Settings. */
   subscription?: { cancelAtPeriodEnd?: boolean | null; currentPeriodEnd?: string | null; status?: string | null } | null;
-  /** One-time prepaid term, which has no auto-renew. */
-  billingTerm?: { plan?: string; periodEndsAt?: string | null } | null;
   /** Injectable clock so the derivation stays testable and hydration-safe. */
   now: number;
   formatDate: (iso: string) => string | null;
@@ -42,7 +40,7 @@ export function daysUntil(iso: string | null | undefined, now: number): number |
 const plural = (days: number) => `${days} ${days === 1 ? "day" : "days"}`;
 
 export function deriveBillingNotice(input: BillingNoticeInput): BillingNotice | null {
-  const { plan, trialEndsAt, subscription, billingTerm, now, formatDate } = input;
+  const { plan, trialEndsAt, subscription, now, formatDate } = input;
 
   if (plan === "EXPIRED") {
     return {
@@ -65,24 +63,6 @@ export function deriveBillingNotice(input: BillingNoticeInput): BillingNotice | 
       body: "Pro stays active until then, so nothing is lost yet. Renew to keep every feature running without interruption.",
       action: "renew",
     };
-  }
-
-  // A one-time term has no auto-renew, so it lapses silently unless we say so.
-  const subscribed = Boolean(subscription && !subscription.cancelAtPeriodEnd && subscription.status !== "canceled");
-  const termActive = plan === "ACTIVE" && !subscribed && billingTerm?.periodEndsAt
-    ? new Date(billingTerm.periodEndsAt).getTime() > now
-    : false;
-  if (termActive) {
-    const days = daysUntil(billingTerm?.periodEndsAt, now);
-    if (days !== null && days <= 7) {
-      return {
-        status: "warning",
-        title: `Your ${billingTerm?.plan === "year" ? "annual" : "monthly"} term ends in ${plural(days)}`,
-        body: "This is a one-time term with no auto-renew, so Pro will drop to the free tier when it ends. Renew to keep it running.",
-        action: "renew",
-      };
-    }
-    return null;
   }
 
   if (plan === "TRIAL") {

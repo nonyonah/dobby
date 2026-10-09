@@ -272,14 +272,14 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
             }
           />
           <DropdownMenuContent align="start" side="top" className="w-56">
-            <DropdownMenuItem onClick={() => window.open("mailto:support@riftlabs.xyz?subject=Dobby%20support", "_self")} className="items-start gap-2">
+            <DropdownMenuItem onClick={() => window.open("mailto:nonyonah@gmail.com?subject=Dobby%20support", "_self")} className="items-start gap-2">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"><EmailIcon className="size-3.5" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium">Contact support</span>
                 <span className="block text-[11px] text-muted-foreground">Email us and we&apos;ll reply</span>
               </span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => window.open("mailto:support@riftlabs.xyz?subject=Dobby%20feedback", "_self")} className="items-start gap-2">
+            <DropdownMenuItem onClick={() => window.open("mailto:nonyonah@gmail.com?subject=Dobby%20feedback", "_self")} className="items-start gap-2">
               <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"><HugeiconsIcon icon={SparklesIcon} size={14} aria-hidden="true"  /></span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium">Send feedback</span>

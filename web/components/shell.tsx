@@ -32,7 +32,7 @@ export function Shell({ title, active, children }: ShellProps) {
   const { me } = usePlan();
 
   const handleSupportClick = () => {
-    if (!openUserback()) window.open("mailto:support@riftlabs.xyz?subject=Dobby%20support", "_self");
+    if (!openUserback()) window.open("mailto:nonyonah@gmail.com?subject=Dobby%20support", "_self");
   };
 
   /**

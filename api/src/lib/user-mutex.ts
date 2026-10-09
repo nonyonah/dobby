@@ -6,9 +6,8 @@
  * so it covers the current deployment, but it stops covering the moment a second
  * instance is added (or the process is clustered) — the keys would then be
  * unrelated per instance and two instances could still race. Anything that must
- * hold across instances needs a database-level guard instead, the way
- * `grantProTermFromPayment` claims `pending` -> `paid` conditionally rather than
- * serializing in memory.
+ * hold across instances needs a database-level guard instead — a conditional
+ * `updateMany` that claims a row rather than serializing in memory.
  */
 const chains = new Map<string, Promise<unknown>>();
 

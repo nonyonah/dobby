@@ -1,14 +1,13 @@
 import { Router } from "express";
 import { clerkClient } from "@clerk/express";
-import { Plan, Prisma } from "@prisma/client";
+import { Plan } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
-import { BACHS_USD_PRICES, billingConfigured, cancelProSubscription, createCryptoCheckout, createPortalSession, createProCheckout, getCheckoutSession, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
-import { grantProTermFromPayment } from "../lib/payment-grant.js";
+import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createPortalSession, createProCheckout, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
 import { computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "../middleware/plan.js";
 
 const WEBHOOK_PATH = "/webhook";
@@ -28,7 +27,14 @@ type SubscriptionData = {
   status?: string;
   product_id?: string;
   metadata?: Record<string, unknown>;
-  customer?: { customer_id?: string; email?: string };
+  /** Bachs sends the customer record as `{ id, email, name }` — the key is `id`, not `customer_id`. */
+  customer?: { id?: string | null; email?: string; name?: string };
+  /**
+   * What the buyer actually supplied, present whenever an identity was collected
+   * even when no `cust_` record was created. A guest checkout carries the email
+   * here and leaves `customer` null, so this is the reliable address to match on.
+   */
+  customer_details?: { email?: string; name?: string };
   trial_end?: string | null;
   current_period_end?: string | null;
   cancel_at_period_end?: boolean;
@@ -37,12 +43,13 @@ type SubscriptionData = {
 async function findUserForSubscription(data: SubscriptionData) {
   const conditions: Array<Record<string, unknown>> = [];
   const clerkId = typeof data.metadata?.clerk_user_id === "string" ? data.metadata.clerk_user_id : undefined;
-  const email = data.customer?.email?.trim();
+  const email = data.customer_details?.email?.trim() || data.customer?.email?.trim();
+  const customerId = data.customer?.id ?? undefined;
 
   if (clerkId) conditions.push({ clerkId });
   if (email) conditions.push({ email: { equals: email, mode: "insensitive" as const } });
   if (data.subscription_id) conditions.push({ bachsSubscriptionId: data.subscription_id });
-  if (data.customer?.customer_id) conditions.push({ bachsCustomerId: data.customer.customer_id });
+  if (customerId) conditions.push({ bachsCustomerId: customerId });
   if (conditions.length === 0) return null;
 
   return prisma.user.findFirst({ where: { OR: conditions } });
@@ -72,7 +79,7 @@ async function applySubscription(data: SubscriptionData, eventType: string) {
     where: { clerkId: user.clerkId },
     data: {
       plan,
-      bachsCustomerId: data.customer?.customer_id ?? user.bachsCustomerId,
+      bachsCustomerId: data.customer?.id ?? user.bachsCustomerId,
       bachsSubscriptionId: data.subscription_id ?? user.bachsSubscriptionId,
       bachsSubscriptionStatus: status,
       bachsTrialEnd: data.trial_end ? new Date(data.trial_end) : user.bachsTrialEnd,
@@ -149,19 +156,12 @@ billingWebhookRouter.post(WEBHOOK_PATH, async (req, res) => {
     case "customer.subscription.deleted":
       await cancelSubscription(data);
       break;
-    case "checkout.completed":
-    case "collection.succeeded": {
-      const handled = await applyCryptoCollection(data, event.type);
-      if (!handled) logger.info({ eventId: event.id, eventType: event.type }, "bachs crypto event not fulfilled");
-      break;
-    }
-    case "checkout.expired":
-    case "collection.failed":
-    case "collection.underpaid":
-      await failCryptoCollection(data, event.type);
-      break;
     default:
-      logger.info({ eventId: event.id, eventType: event.type }, "bachs webhook ignored");
+      // `collection.succeeded` and `invoice.paid` also fire on a subscription
+      // checkout. They carry the charge, not the entitlement, and the
+      // subscription events above are what grant and revoke Pro — fulfilling
+      // from a payment event would double-grant across a plan change.
+      logger.info({ eventId: event.id, eventType: event.type }, "bachs webhook handled by the subscription events");
   }
 
   // Always acknowledge: Bachs retries unacknowledged deliveries, and an event we
@@ -187,11 +187,6 @@ billingRouter.get("/", async (req, res) => {
       planExpiresAt: true,
     },
   });
-  const term = await prisma.payment.findFirst({
-    where: { ownerClerkId: req.auth!.userId, provider: "bachs", status: "paid" },
-    orderBy: { paidAt: "desc" },
-    select: { provider: true, plan: true, periodEndsAt: true, currency: true, amount: true },
-  });
 
   res.json({
     data: {
@@ -199,9 +194,6 @@ billingRouter.get("/", async (req, res) => {
       trialEndsAt: user ? trialEndsAt(user) : null,
       configured: billingConfigured(),
       planExpiresAt: user?.planExpiresAt ?? null,
-      term: term
-        ? { provider: "bachs", plan: term.plan, periodEndsAt: term.periodEndsAt, amount: term.amount.toString(), currency: term.currency }
-        : null,
       subscription: user?.bachsSubscriptionId
         ? {
             id: user.bachsSubscriptionId,
@@ -217,10 +209,8 @@ billingRouter.get("/", async (req, res) => {
 billingRouter.post("/checkout", async (req, res) => {
   const input = z.object({
     interval: z.enum(["month", "year"]).default("month"),
-    method: z.enum(["card", "crypto"]).default("card"),
   }).parse(req.body ?? {});
   const interval: BillingInterval = input.interval;
-  const method = input.method;
 
   const clerkId = req.auth!.userId;
   const user = await prisma.user.upsert({
@@ -250,34 +240,7 @@ billingRouter.post("/checkout", async (req, res) => {
   }
 
   const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;
-  if (method === "crypto") {
-    // One-time crypto term: subscriptions reject non-card methods, so this
-    // sells the same cadence as pure pricing and fulfills a 30/365-day term
-    // through the shared Payment row (webhook + status poll below).
-    const price = BACHS_USD_PRICES[interval];
-    const txRef = `dobby-bachs-${Date.now().toString(36)}-${clerkId.slice(-6)}`;
-    await prisma.payment.create({
-      data: {
-        ownerClerkId: clerkId,
-        provider: "bachs",
-        txRef,
-        plan: interval,
-        amount: new Prisma.Decimal(price.amount),
-        currency: "USD",
-        status: "pending",
-      },
-    });
-    const session = await createCryptoCheckout({ email, name, clerkUserId: clerkId, interval, reference: txRef });
-    res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url } });
-    return;
-  }
-  const session = await createProCheckout({
-    email,
-    name,
-    clerkUserId: clerkId,
-    interval,
-    method,
-  });
+  const session = await createProCheckout({ email, name, clerkUserId: clerkId, interval });
 
   res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url } });
 });
@@ -335,201 +298,39 @@ billingRouter.post("/cancel", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Pricing options (Bachs per-country pricing)
 // ---------------------------------------------------------------------------
-
 export type BillingOption = {
   provider: "bachs";
   interval: BillingInterval;
-  /** Card = Bachs subscription; crypto = one-time terms. */
-  method: "card" | "crypto";
   amount: number;
   currency: string;
   label: string;
-  /** Whether this price is a fixed catalog price or resolves per customer. */
-  pricing: "fixed" | "local";
+  /** Bachs converts to the customer's own currency when the checkout opens. */
+  pricing: "local";
 };
 
-// Derived from BACHS_USD_PRICES so the pills the client renders can never
-// drift from the amount we actually charge.
-const usd = (interval: BillingInterval) => Number(BACHS_USD_PRICES[interval].amount);
+const usd = (interval: BillingInterval) => Number(SUBSCRIPTION_PRICE_ANCHORS[interval]);
 const label = (interval: BillingInterval) =>
-  interval === "month"
-    ? `$${usd(interval)}/mo`
-    : `$${usd(interval).toFixed(2)}/yr`;
+  interval === "month" ? `$${usd(interval)}/mo` : `$${usd(interval).toFixed(2)}/yr`;
 
 const CARD_OPTIONS: BillingOption[] = (["month", "year"] as const).map((interval) => ({
   provider: "bachs",
   interval,
-  method: "card",
   amount: usd(interval),
   currency: "USD",
   label: label(interval),
   pricing: "local",
 }));
 
-const CRYPTO_OPTIONS: BillingOption[] = (["month", "year"] as const).map((interval) => ({
-  provider: "bachs",
-  interval,
-  method: "crypto",
-  amount: usd(interval),
-  currency: "USD",
-  label: `${label(interval)} · Crypto`,
-  pricing: "fixed",
-}));
-
 billingRouter.get("/options", async (_req, res) => {
-  // Bachs resolves the customer's currency itself at checkout — a currency
-  // option set on the product wins, then adaptive conversion, then the USD
-  // primary — so there is no region logic here to get out of sync with the
-  // catalog. The USD amounts are anchors for the price pills; `pricing:
-  // "local"` tells the client the card rows may render in the customer's
-  // currency once the checkout opens. Crypto stays USD: it is a raw-amount
-  // checkout, not a catalog product, so adaptive pricing does not apply.
+  // Bachs resolves the customer's currency itself at checkout — a currency set
+  // on the product wins, then adaptive conversion, then the USD primary — so
+  // there is no region logic here to drift from the catalog. The USD amounts are
+  // display anchors for the pills, not the amount charged: the catalog product
+  // behind BACHS_PRO_*_PRODUCT_ID owns the real price.
   res.json({
     data: {
       region: null,
-      options: billingConfigured() ? [...CARD_OPTIONS, ...CRYPTO_OPTIONS] : [],
+      options: billingConfigured() ? CARD_OPTIONS : [],
     },
   });
 });
-
-/**
- * Cancel a one-time Pro term (crypto): there is nothing to
- * unsubscribe from, so this forfeits the remaining days immediately. Bachs
- * subscriptions must use /cancel instead.
- */
-billingRouter.post("/term/cancel", async (req, res) => {
-  const clerkId = req.auth!.userId;
-  const user = await prisma.user.findUnique({
-    where: { clerkId },
-    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true, planExpiresAt: true },
-  });
-  if (!user || computeEffectivePlan(user) !== "ACTIVE") {
-    throw new AppError(400, "There is no active Pro access to cancel.", "NO_ACTIVE_TERM");
-  }
-  if (user.bachsSubscriptionStatus === "active" || user.bachsSubscriptionStatus === "past_due" || user.bachsSubscriptionStatus === "trialing") {
-    throw new AppError(400, "This account bills through a subscription — cancel that instead.", "USE_SUBSCRIPTION_CANCEL");
-  }
-  if (!user.planExpiresAt || user.planExpiresAt.getTime() <= Date.now()) {
-    throw new AppError(400, "There is no active prepaid term to cancel.", "NO_TERM");
-  }
-  // Forfeiting a term must not also eat a still-running signup trial.
-  const fallback = computeLocalPlan({ plan: "TRIAL", trialStartedAt: user.trialStartedAt });
-  await prisma.user.update({ where: { clerkId }, data: { planExpiresAt: new Date(), plan: fallback === "TRIAL" ? Plan.TRIAL : Plan.EXPIRED } });
-  logger.info({ clerkId }, "one-time Pro term forfeited");
-  res.json({ data: { canceled: true } });
-});
-
-/**
- * Fulfill a paid Bachs crypto checkout as a 30/365-day Pro term. Idempotent on
- * txRef; strict on amount.
- */
-async function grantBachsTerm(ownerClerkId: string, txRef: string, providerTxId: string, amount: number, currency: string) {
-  const payment = await prisma.payment.findUnique({ where: { txRef } });
-  if (!payment || payment.provider !== "bachs") throw new AppError(404, "No matching payment request.", "PAYMENT_NOT_FOUND");
-  if (payment.ownerClerkId !== ownerClerkId) throw new AppError(403, "This payment belongs to a different account.", "PAYMENT_OWNER_MISMATCH");
-  if (payment.status === "paid") return { granted: true, already: true as const, periodEndsAt: payment.periodEndsAt };
-  const expected = usd(payment.plan === "year" ? "year" : "month");
-  if (currency !== "USD" || amount < expected) {
-    throw new AppError(402, "Paid amount does not match the plan price.", "PAYMENT_AMOUNT_MISMATCH");
-  }
-  const days = payment.plan === "year" ? BACHS_USD_PRICES.year.days : BACHS_USD_PRICES.month.days;
-  const paidAt = new Date();
-  const periodEndsAt = new Date(paidAt.getTime() + days * 86_400_000);
-  const result = await grantProTermFromPayment({
-    txRef,
-    ownerClerkId,
-    providerTxId,
-    paidAt,
-    periodEndsAt,
-  });
-  if (!result.already) logger.info({ clerkId: ownerClerkId, txRef, plan: payment.plan }, "bachs crypto term granted");
-  return result;
-}
-
-/** Poll target for the overlay after a crypto checkout completes in-browser. */
-billingRouter.post("/bachs/status", async (req, res) => {
-  const checkoutId = z.object({ checkoutId: z.string().min(1) }).parse(req.body).checkoutId;
-  const clerkId = req.auth!.userId;
-  const session = await getCheckoutSession(checkoutId);
-  const paymentStatus = session.payment_status ?? session.status ?? null;
-  if (paymentStatus !== "succeeded") {
-    res.json({ data: { paymentStatus, granted: false } });
-    return;
-  }
-  const txRef = session.reference ?? undefined;
-  const amount = Number(session.amount ?? NaN);
-  const currency = (session.currency ?? "").toUpperCase();
-  if (!txRef || !Number.isFinite(amount) || !currency) {
-    throw new AppError(502, "Checkout session is missing payment details.", "PAYMENT_DETAILS_MISSING");
-  }
-  res.json({ data: { paymentStatus, ...(await grantBachsTerm(clerkId, txRef, session.checkout_id ?? checkoutId, amount, currency)) } });
-});
-
-type CollectionData = {
-  reference?: unknown;
-  client_reference?: unknown;
-  checkout_id?: unknown;
-  checkoutId?: unknown;
-  amount?: unknown;
-  total?: unknown;
-  currency?: unknown;
-  metadata?: Record<string, unknown>;
-};
-
-function stringField(value: unknown): string | undefined {
-  return typeof value === "string" && value ? value : undefined;
-}
-
-/**
- * Fulfill a one-time crypto checkout from a webhook event. Parses leniently
- * (Bachs may add fields) and verifies through the session whenever the event
- * names one. Business mismatches return false (acknowledged, no retry);
- * transport failures throw (non-2xx retries the delivery).
- */
-async function applyCryptoCollection(data: SubscriptionData & CollectionData, eventType: string): Promise<boolean> {
-  const txRef = stringField(data.reference) ?? stringField(data.client_reference);
-  if (!txRef) {
-    logger.warn({ eventType }, "bachs crypto event has no reference");
-    return false;
-  }
-  const payment = await prisma.payment.findUnique({ where: { txRef } });
-  if (!payment || payment.provider !== "bachs") return false;
-  if (payment.status === "paid") return true;
-  const checkoutId = stringField(data.checkout_id) ?? stringField(data.checkoutId);
-  try {
-    if (checkoutId) {
-      const session = await getCheckoutSession(checkoutId);
-      if ((session.payment_status ?? session.status) !== "succeeded") return false;
-      const amount = Number(session.amount ?? data.amount ?? data.total ?? NaN);
-      const currency = String(session.currency ?? data.currency ?? "").toUpperCase();
-      if (!Number.isFinite(amount) || !currency) return false;
-      await grantBachsTerm(payment.ownerClerkId, txRef, session.checkout_id ?? checkoutId, amount, currency);
-      return true;
-    }
-    const amount = Number(data.amount ?? data.total ?? NaN);
-    const currency = String(data.currency ?? "").toUpperCase();
-    if (!Number.isFinite(amount) || !currency) {
-      logger.warn({ txRef, eventType }, "bachs collection event missing amount/currency");
-      return false;
-    }
-    await grantBachsTerm(payment.ownerClerkId, txRef, txRef, amount, currency);
-    return true;
-  } catch (error) {
-    if (error instanceof AppError) {
-      logger.warn({ txRef, error: error.message }, "bachs crypto event rejected");
-      return false;
-    }
-    throw error;
-  }
-}
-
-/** A failed/underpaid/expired crypto checkout fails its pending payment row. */
-async function failCryptoCollection(data: SubscriptionData & CollectionData, eventType: string): Promise<void> {
-  const txRef = stringField(data.reference) ?? stringField(data.client_reference);
-  if (!txRef) return;
-  try {
-    await prisma.payment.updateMany({ where: { txRef, status: "pending" }, data: { status: "failed" } });
-  } catch (error) {
-    logger.warn({ txRef, eventType, error: error instanceof Error ? error.message : String(error) }, "could not fail crypto payment");
-  }
-}

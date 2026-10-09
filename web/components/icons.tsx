@@ -29,6 +29,7 @@ import {
   GridViewIcon,
   MailIcon,
   MoreVerticalIcon,
+  NewTwitterIcon,
   PencilEdit02Icon,
   PlusIcon as PlusGlyph,
   ReceiptIcon as ReceiptGlyph,
@@ -239,6 +240,10 @@ export function FolderIcon({ className }: IconProps) {
 
 export function BriefcaseIcon({ className }: IconProps) {
   return <P icon={BriefcaseGlyph} size={16} className={className} />
+}
+
+export function XIcon({ className }: IconProps) {
+  return <P icon={NewTwitterIcon} size={16} className={className} />
 }
 
 export function FileIcon({ className }: IconProps) {

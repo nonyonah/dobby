@@ -18,28 +18,23 @@ export type BillingInterval = "month" | "year";
 export type BillingOption = {
   provider: "bachs";
   interval: BillingInterval;
-  /** Card = Bachs subscription; crypto = one-time terms. */
-  method: "card" | "crypto";
   amount: number;
   currency: string;
   label: string;
-  /** Fixed = a raw-amount checkout; local = Bachs resolves per-country pricing. */
-  pricing: "fixed" | "local";
+  /** Bachs converts to the customer's own currency when the checkout opens. */
+  pricing: "local";
 };
 
-// Mirrors api/src/lib/bachs.ts BACHS_USD_PRICES — shown only if /v1/billing/options
-// is unreachable, so keep it in step with the server-side catalog.
+// Mirrors api/src/lib/bachs.ts SUBSCRIPTION_PRICE_ANCHORS — shown only if
+// /v1/billing/options is unreachable. The Bachs catalog product owns the real
+// price; these are display anchors.
 const FALLBACK_OPTIONS: BillingOption[] = [
-  { provider: "bachs", interval: "month", method: "card", amount: 4, currency: "USD", label: "$4/mo", pricing: "local" },
-  { provider: "bachs", interval: "month", method: "crypto", amount: 4, currency: "USD", label: "$4/mo · Crypto", pricing: "fixed" },
-  { provider: "bachs", interval: "year", method: "card", amount: 36, currency: "USD", label: "$36/yr", pricing: "local" },
-  { provider: "bachs", interval: "year", method: "crypto", amount: 36, currency: "USD", label: "$36/yr · Crypto", pricing: "fixed" },
+  { provider: "bachs", interval: "month", amount: 4, currency: "USD", label: "$4/mo", pricing: "local" },
+  { provider: "bachs", interval: "year", amount: 36, currency: "USD", label: "$36/yr", pricing: "local" },
 ];
 
-const optionKey = (option: BillingOption) => `${option.provider}:${option.interval}:${option.method}`;
-
 function pillPrice(options: BillingOption[], interval: BillingInterval): string {
-  const primary = options.find((item) => item.interval === interval && item.method === "card") ?? options.find((item) => item.interval === interval);
+  const primary = options.find((item) => item.interval === interval);
   if (!primary) return "";
   try {
     const formatted = new Intl.NumberFormat(primary.currency === "NGN" ? "en-NG" : "en-US", {
@@ -53,16 +48,10 @@ function pillPrice(options: BillingOption[], interval: BillingInterval): string 
   }
 }
 
-function methodCopy(option: BillingOption): { title: string; sub: string } {
-  if (option.method === "card") {
-    return {
-      title: "Card",
-      sub: "Recurring subscription · 7-day free trial · billed in your local currency",
-    };
-  }
+function subscriptionCopy(option: BillingOption): { title: string; sub: string } {
   return {
-    title: "Crypto",
-    sub: `One-time USDT payment · ${option.interval === "month" ? "30 days" : "12 months"} of Pro, no auto-renew`,
+    title: "Card",
+    sub: `Recurring ${option.interval === "month" ? "monthly" : "annual"} subscription · 7-day free trial · cancel anytime · billed in your local currency`,
   };
 }
 
@@ -90,10 +79,10 @@ const UpgradeContext = createContext<UpgradeContextValue>({
 /**
  * Owns checkout creation so every upgrade control shares one request path and
  * one busy flag. Upgrade buttons open the picker dialog; the dialog hands one
- * explicit option to `startCheckout`. Both card and crypto open as an in-page
- * Bachs overlay (no public return address needed); webhooks fulfil in all
- * cases. Per-country pricing is Bachs' job: the hosted checkout resolves the
- * customer's currency from their location, so no region logic lives here.
+ * explicit option to `startCheckout`. The checkout opens as an in-page Bachs
+ * overlay, so no public return address is needed; webhooks fulfil in every case.
+ * Per-country pricing is Bachs' job: the hosted checkout resolves the customer's
+ * currency from their location, so no region logic lives here.
  */
 export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
@@ -105,8 +94,6 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const optionsRef = useRef<BillingOption[] | null>(null);
   const bachsRef = useRef<Bachs | null>(null);
   const completedRef = useRef(false);
-  const methodRef = useRef<"card" | "crypto">("card");
-  const checkoutRef = useRef<string | null>(null);
 
   // Prices loaded once; USD anchor labels render until then so nothing flashes
   // empty. Bachs swaps in the customer's currency when the checkout opens.
@@ -157,45 +144,13 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
     toast.warning("Your payment is still being confirmed — Pro will activate shortly.");
   }, [api, refreshPlan]);
 
-  // After a crypto checkout completes in-browser, the wallet transfer still
-  // needs on-chain confirmations — poll the session until it succeeds, then
-  // fulfill the term server-side (the webhook does the same if this misses).
-  const confirmCryptoTerm = useCallback(async (checkoutId: string) => {
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      try {
-        const status = await api.post<{ data: { paymentStatus?: string | null; granted?: boolean } }>(
-          "/v1/billing/bachs/status",
-          { checkoutId },
-        );
-        if (status.data.granted) {
-          refreshPlan();
-          setBusy(false);
-          toast.success("Payment confirmed — Dobby Pro is active.");
-          return;
-        }
-        if (status.data.paymentStatus && ["failed", "canceled", "expired"].includes(status.data.paymentStatus)) {
-          setBusy(false);
-          const guidance = guidanceFor(null, "payment");
-          toast.error("That crypto payment didn't complete", { description: guidanceText(guidance) });
-          return;
-        }
-      } catch {
-        // Keep polling; the transfer may still confirm on-chain.
-      }
-    }
-    setBusy(false);
-    toast.warning("Your crypto payment is still confirming — Pro will activate once it lands.");
-  }, [api, refreshPlan]);
-
   const handleEvent = useCallback(
     (event: BachsCheckoutEvent) => {
       switch (event.type) {
         case "checkout.completed":
           completedRef.current = true;
           toast.success("Payment received — activating Dobby Pro…");
-          if (methodRef.current === "crypto" && checkoutRef.current) void confirmCryptoTerm(checkoutRef.current);
-          else void confirmSubscription();
+          void confirmSubscription();
           break;
         case "checkout.failed":
           setBusy(false);
@@ -222,7 +177,7 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
           break;
       }
     },
-    [confirmCryptoTerm, confirmSubscription],
+    [confirmSubscription],
   );
 
   const openCheckout = useCallback(
@@ -249,19 +204,16 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
       if (busy) return;
       setBusy(true);
       completedRef.current = false;
-      methodRef.current = option.method === "crypto" ? "crypto" : "card";
-      checkoutRef.current = null;
       setDialogOpen(false);
       void (async () => {
         try {
-          const response = await api.post<{ data: { url: string; checkoutId?: string } }>("/v1/billing/checkout", {
+          const response = await api.post<{ data: { url: string } }>("/v1/billing/checkout", {
             interval: option.interval,
-            ...(option.method === "crypto" ? { method: "crypto" as const } : {}),
           });
-          if (response.data.checkoutId) checkoutRef.current = response.data.checkoutId;
-          // Load the script from the same origin that serves this session, so a
-          // sandbox checkout talks to the sandbox and live to live.
-          const bachs = bachsRef.current ?? (await loadBachs({ baseUrl: new URL(response.data.url).origin }));
+          // No baseUrl: a checkout session already carries its own environment,
+          // and the full checkout_url says which checkout serves it. The SDK only
+          // needs baseUrl for bare tokens, which this integration never uses.
+          const bachs = bachsRef.current ?? (await loadBachs());
           bachsRef.current = bachs;
           bachs.Initialize({ onEvent: handleEvent });
           await bachs.Checkout.open({ checkoutUrl: response.data.url, onEvent: handleEvent });
@@ -289,13 +241,11 @@ export function useUpgrade() {
   return useContext(UpgradeContext);
 }
 
-/** Plan picker: cadence pills, then one row per payment method. Mounts fresh per open. */
+/** Plan picker: cadence pills, then a summary of the single card subscription. Mounts fresh per open. */
 function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose: () => void }) {
   const { options, busy, startCheckout } = useUpgrade();
   const [interval, setInterval] = useState<BillingInterval>(preset);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const rows = options.filter((option) => option.interval === interval);
-  const selected = rows.find((row) => optionKey(row) === selectedKey) ?? rows[0] ?? null;
+  const selected = options.find((option) => option.interval === interval) ?? options[0] ?? null;
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -303,7 +253,7 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
         <DialogHeader>
           <DialogTitle>Upgrade to Dobby Pro</DialogTitle>
           <DialogDescription>
-            Billed in your local currency via Bachs — card subscription or one-time crypto.
+            Billed in your local currency via Bachs. Cancel any time — Pro runs until the period you paid for ends.
           </DialogDescription>
         </DialogHeader>
         <div className="flex gap-2" role="group" aria-label="Billing cadence">
@@ -311,7 +261,7 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
             <button
               key={cadence}
               type="button"
-              onClick={() => { setInterval(cadence); setSelectedKey(null); }}
+              onClick={() => setInterval(cadence)}
               aria-pressed={interval === cadence}
               className={`flex-1 cursor-pointer rounded-xl border px-3 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
                 interval === cadence ? "border-primary bg-primary/5" : "border-line hover:border-muted-foreground/40"
@@ -324,38 +274,15 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
             </button>
           ))}
         </div>
-        <div className="flex flex-col gap-2" role="radiogroup" aria-label="Payment method">
-          {rows.map((option) => {
-            const copy = methodCopy(option);
-            const active = selected?.provider === option.provider && selected?.method === option.method;
-            return (
-              <button
-                key={optionKey(option)}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => setSelectedKey(optionKey(option))}
-                className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
-                  active ? "border-primary bg-primary/5" : "border-line hover:border-muted-foreground/40"
-                }`}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                    active ? "border-primary" : "border-muted-foreground/40"
-                  }`}
-                >
-                  {active ? <span className="size-2 rounded-full bg-primary" /> : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-semibold text-foreground">{copy.title}</span>
-                  <span className="block truncate text-[12px] text-muted-foreground">{copy.sub}</span>
-                </span>
-                <span className="mono shrink-0 text-[13px] font-semibold tabular-nums text-foreground">{option.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {selected ? (
+          <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5">
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-semibold text-foreground">{subscriptionCopy(selected).title}</span>
+              <span className="block truncate text-[12px] text-muted-foreground">{subscriptionCopy(selected).sub}</span>
+            </span>
+            <span className="mono shrink-0 text-[13px] font-semibold tabular-nums text-foreground">{selected.label}</span>
+          </div>
+        ) : null}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="small" onClick={onClose}>
             Cancel

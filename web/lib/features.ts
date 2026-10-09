@@ -17,3 +17,10 @@ export type FeatureFlag = keyof typeof FEATURES;
 export function featureEnabled(flag: FeatureFlag): boolean {
   return FEATURES[flag];
 }
+
+/**
+ * Wallets the free tier may connect. Mirrors `FREE_WALLET_LIMIT` in
+ * `api/src/middleware/plan.ts` — the API stays the authority on the limit, and
+ * this only decides whether to offer the Connect button or the upgrade prompt.
+ */
+export const FREE_WALLET_LIMIT = 1;

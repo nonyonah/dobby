@@ -23,7 +23,7 @@ const ITEMS = [
   },
   {
     title: "One view of your whole financial life",
-    body: "Stablecoin wallets, bank accounts (coming soon) tracked together in real time.",
+    body: "Stablecoin wallets tracked in real time — one on Free, unlimited on Pro. Bank accounts coming soon.",
     image: "/image-card/one-view-financial-life.jpeg",
   },
   {

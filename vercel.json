@@ -1,20 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
-    "api": {
-      "root": "api",
-      "framework": "express",
-      "entrypoint": "app.js",
-      "buildCommand": "npm run build"
-    },
     "web": {
       "root": "web",
       "framework": "nextjs"
     }
   },
-  "rewrites": [
-    { "source": "/health", "destination": { "service": "api" } },
-    { "source": "/v1/(.*)", "destination": { "service": "api" } },
-    { "source": "/(.*)", "destination": { "service": "web" } }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": { "service": "web" } }]
 }

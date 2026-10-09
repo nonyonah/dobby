@@ -18,7 +18,7 @@ import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, re
 import { readStoredCurrency, setAppCurrency, writeStoredCurrency } from "@/lib/format";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
-import { FEATURES } from "@/lib/features";
+import { FEATURES, FREE_WALLET_LIMIT } from "@/lib/features";
 import { BILLING_COUNTRIES, COUNTRY_OPTIONS, CURRENCIES, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS } from "@/lib/countries";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { deriveBillingNotice } from "@/lib/billing-notice";
@@ -44,14 +44,6 @@ type BillingSubscription = {
   status?: string | null;
   currentPeriodEnd?: string | null;
   cancelAtPeriodEnd?: boolean | null;
-};
-
-type BillingTerm = {
-  provider: string;
-  plan: string;
-  periodEndsAt: string | null;
-  amount: string;
-  currency: string;
 };
 
 const formatDate = (value: string | null | undefined) =>
@@ -398,23 +390,19 @@ export function SettingsPage() {
   const [fullName, setFullName] = useState("");
   const { openCheckout, busy: checkoutBusy, refreshOptions } = useUpgrade();
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
-  const [billingTerm, setBillingTerm] = useState<BillingTerm | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   // Live subscription that has not been set to end: the plan control is then a
   // cancel button, and only reverts to the monthly/annual picker once cancelled.
   const subscribed = Boolean(subscription && !subscription.cancelAtPeriodEnd && subscription.status !== "canceled");
-  // Paid Pro by any route: a live Bachs subscription or an unexpired one-time
-  // term. Either way the upgrade control morphs into Subscribed + Cancel.
-  // The clock is frozen at mount — term boundaries move in days, not seconds.
+  // Paid Pro is now a live subscription only. The clock is frozen at mount so
+  // this stays hydration-safe.
   const [pageOpenedAt] = useState(() => Date.now());
-  const termActive = useMemo(
-    () => plan === "ACTIVE" && !subscribed && billingTerm?.periodEndsAt
-      ? new Date(billingTerm.periodEndsAt).getTime() > pageOpenedAt
-      : false,
-    [plan, subscribed, billingTerm, pageOpenedAt],
-  );
-  const paidPro = subscribed || termActive;
+  const paidPro = subscribed;
+  // The free tier still tracks one wallet, so "Connect" is available to
+  // everyone — the API is the authority on the limit, and upgrading is what
+  // lifts it.
+  const walletLimitReached = !isPro && wallets.length >= FREE_WALLET_LIMIT;
 
   const billingNotice = useMemo(
     () =>
@@ -422,11 +410,10 @@ export function SettingsPage() {
         plan,
         trialEndsAt,
         subscription,
-        billingTerm,
         now: pageOpenedAt,
         formatDate,
       }),
-    [plan, trialEndsAt, subscription, billingTerm, pageOpenedAt],
+    [plan, trialEndsAt, subscription, pageOpenedAt],
   );
 
   // Cancelling stops the next renewal only: Bachs keeps Pro running until the
@@ -441,23 +428,6 @@ export function SettingsPage() {
       toast.success(until ? `Subscription canceled — Pro stays on until ${until}.` : "Subscription canceled.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not cancel your subscription.");
-    } finally {
-      setCanceling(false);
-      setCancelConfirmOpen(false);
-    }
-  };
-
-  // Cancelling a one-time term forfeits the remaining days immediately —
-  // there is no subscription to stop renewing.
-  const cancelTerm = async () => {
-    setCanceling(true);
-    try {
-      await api.post("/v1/billing/term/cancel", {});
-      setBillingTerm(null);
-      refreshPlan();
-      toast.success("Pro ended — you're back on the free view. Nothing was deleted.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not end Pro.");
     } finally {
       setCanceling(false);
       setCancelConfirmOpen(false);
@@ -619,7 +589,7 @@ export function SettingsPage() {
         api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations"),
         api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25"),
         api.get<{ data: Array<SyncJob & { provider: string; id: string }> }>("/v1/emails/sync"),
-        api.get<{ data: { subscription: BillingSubscription | null; term: BillingTerm | null } }>("/v1/billing"),
+        api.get<{ data: { subscription: BillingSubscription | null } }>("/v1/billing"),
       ]);
       if (cancelled) return;
 
@@ -647,7 +617,6 @@ export function SettingsPage() {
       if (duplicateResult.status === "fulfilled") setDuplicateEmails(duplicateResult.value.data);
       if (billingResult.status === "fulfilled") {
         setSubscription(billingResult.value.data.subscription ?? null);
-        setBillingTerm(billingResult.value.data.term ?? null);
       }
 
       if (jobResult.status === "fulfilled") {
@@ -841,7 +810,7 @@ export function SettingsPage() {
               <Row
                 label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">No wallets connected yet</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><HugeiconsIcon icon={LinkIcon}  /> Connect</Button>
+                <Button variant="secondary" size="small" onClick={() => setWalletModalOpen(true)}><HugeiconsIcon icon={LinkIcon}  /> Connect</Button>
               </Row>
             ) : (
               wallets.map((wallet) => (
@@ -855,9 +824,9 @@ export function SettingsPage() {
             )}
             {wallets.length > 0 ? (
               <Row
-                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Base or Solana address with a custom color</span></span></span>}
+                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{walletLimitReached ? `The free tier tracks ${FREE_WALLET_LIMIT} wallet. Upgrade to track them all.` : "Base or Solana address with a custom color"}</span></span></span>}
               >
-                <Button variant="secondary" size="small" onClick={() => (isPro ? setWalletModalOpen(true) : openCheckout())}><HugeiconsIcon icon={LinkIcon}  /> Connect</Button>
+                <Button variant={walletLimitReached ? "primary" : "secondary"} size="small" onClick={() => (walletLimitReached ? openCheckout() : setWalletModalOpen(true))}>{walletLimitReached ? "Upgrade" : "Connect"}</Button>
               </Row>
             ) : null}
             <Row label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={BriefcaseIcon} size={16}  /></span><span><span className="block">Bank</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">Bank connections are planned for a future release.</span></span></span>}><Button variant="secondary" size="small" disabled>Coming soon</Button></Row>
@@ -992,13 +961,9 @@ export function SettingsPage() {
               <Row
                 label="Dobby Pro"
                 description={
-                  subscribed
-                    ? subscription?.currentPeriodEnd
-                      ? `Billed through Bachs, renews ${formatDate(subscription.currentPeriodEnd)}. Cancelling keeps Pro until then — nothing is deleted.`
-                      : "Billed through Bachs. Cancelling keeps Pro until the end of the paid period — nothing is deleted."
-                    : billingTerm?.periodEndsAt
-                      ? `One-time ${billingTerm.plan === "year" ? "annual" : "monthly"} term — Pro until ${formatDate(billingTerm.periodEndsAt)}. No auto-renew.`
-                      : "Dobby Pro is active on a one-time term. No auto-renew."
+                  subscription?.currentPeriodEnd
+                    ? `Billed through Bachs, renews ${formatDate(subscription.currentPeriodEnd)}. Cancelling keeps Pro until then — nothing is deleted.`
+                    : "Billed through Bachs. Cancelling keeps Pro until the end of the paid period — nothing is deleted."
                 }
               >
                 <div className="flex shrink-0 gap-2">
@@ -1022,7 +987,7 @@ export function SettingsPage() {
                       ? "Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a 7-day free trial."
                       : plan === "TRIAL"
                         ? "Keep every feature without interruption when your trial ends. Both plans start with a 7-day free trial."
-                        : "Unlocks email auto-fetch, wallet tracking, net worth, proactive flags, and monthly reminders."
+                        : "Unlocks email auto-fetch, unlimited wallets, net worth, proactive flags, and monthly reminders."
                 }
               >
                 <Button variant="primary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>
@@ -1034,11 +999,9 @@ export function SettingsPage() {
               label="Current plan"
               description={
                 plan === "ACTIVE"
-                  ? billingTerm?.periodEndsAt
-                    ? `Dobby Pro until ${formatDate(billingTerm.periodEndsAt)} (one-time ${billingTerm.plan === "year" ? "annual" : "monthly"} term, no auto-renew).`
-                    : subscription?.currentPeriodEnd
-                    ? `Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders. Renews ${formatDate(subscription.currentPeriodEnd)}.`
-                    : "Dobby Pro — email auto-fetch, wallet tracking, net worth, proactive flags, and monthly tax reminders."
+                  ? subscription?.currentPeriodEnd
+                    ? `Dobby Pro — email auto-fetch, unlimited wallets, net worth, proactive flags, and monthly tax reminders. Renews ${formatDate(subscription.currentPeriodEnd)}.`
+                    : "Dobby Pro — email auto-fetch, unlimited wallets, net worth, proactive flags, and monthly tax reminders."
                   : plan === "TRIAL"
                     ? `Free trial — every Pro feature unlocked for 7 days, no card required${trialEndsOn ? `, ending ${trialEndsOn}` : ""}.`
                     : plan === "EXPIRED"
@@ -1090,25 +1053,21 @@ export function SettingsPage() {
       <AlertDialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{subscribed ? "Cancel your subscription?" : "End Pro now?"}</AlertDialogTitle>
+            <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
             <AlertDialogDescription>
-              {subscribed ? (
-                subscription?.currentPeriodEnd
-                  ? `You keep Dobby Pro until ${formatDate(subscription.currentPeriodEnd)}, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are.`
-                  : "You keep Dobby Pro until the end of the paid period, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are."
-              ) : (
-                "Your one-time term ends immediately and the workspace goes back to view-only. The remaining days are forfeited — nothing is deleted."
-              )}
+              {subscription?.currentPeriodEnd
+                ? `You keep Dobby Pro until ${formatDate(subscription.currentPeriodEnd)}, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are.`
+                : "You keep Dobby Pro until the end of the paid period, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={canceling}>{subscribed ? "Keep subscription" : "Keep Pro"}</AlertDialogCancel>
+            <AlertDialogCancel disabled={canceling}>Keep subscription</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={canceling}
-              onClick={() => void (subscribed ? cancelSubscription() : cancelTerm())}
+              onClick={() => void cancelSubscription()}
             >
-              {canceling ? "Canceling…" : subscribed ? "Cancel subscription" : "End Pro now"}
+              {canceling ? "Canceling…" : "Cancel subscription"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

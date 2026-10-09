@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { getBlockscoutAddressSummary } from "../lib/blockscout.js";
 import { alchemyConfigured, getBaseWalletTransfers, getSolanaWalletTransfers } from "../providers/alchemy.js";
 import { requireAuth } from "../middleware/auth.js";
-import { assertPro } from "../middleware/plan.js";
+import { assertWalletCapacity } from "../middleware/plan.js";
 
 export const walletsRouter = Router();
 walletsRouter.use(requireAuth);
@@ -37,7 +37,7 @@ walletsRouter.get("/", async (req, res) => {
 });
 
 walletsRouter.post("/", async (req, res) => {
-  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
+  await assertWalletCapacity(req.auth?.userId);
   const input = walletSchema.parse(req.body);
   const address = input.chain === Chain.BASE ? input.address.toLowerCase() : input.address;
   const validationError = validateAddress(input.chain, address);
@@ -68,7 +68,6 @@ walletsRouter.post("/", async (req, res) => {
 });
 
 walletsRouter.patch("/:id", async (req, res) => {
-  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
   const input = walletSchema.partial().parse(req.body);
   const ownerClerkId = req.auth!.userId;
   const existing = await prisma.walletAccount.findFirst({ where: { id: req.params.id, ownerClerkId } });
@@ -104,7 +103,6 @@ walletsRouter.patch("/:id", async (req, res) => {
 });
 
 walletsRouter.delete("/:id", async (req, res) => {
-  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
   const result = await prisma.walletAccount.deleteMany({
     where: { id: req.params.id, ownerClerkId: req.auth!.userId },
   });
@@ -116,7 +114,6 @@ walletsRouter.delete("/:id", async (req, res) => {
 });
 
 walletsRouter.get("/:id/summary", async (req, res) => {
-  await assertPro(req.auth?.userId, "Stablecoin wallet tracking");
   const wallet = await prisma.walletAccount.findFirst({ where: { id: req.params.id, ownerClerkId: req.auth!.userId } });
   if (!wallet) {
     res.status(404).json({ error: { code: "WALLET_NOT_FOUND", message: "Wallet was not found." } });

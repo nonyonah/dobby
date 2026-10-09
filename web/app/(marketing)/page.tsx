@@ -7,6 +7,7 @@ import { BrandLogo } from "@/components/ui/brand-logo";
 import { PricingCard } from "@/components/landing/pricing-card";
 import { FeatureAccordion } from "@/components/landing/feature-accordion";
 import { Reveal } from "@/components/landing/reveal";
+import { XIcon } from "@/components/icons";
 
 export const metadata: Metadata = {
   title: "Dobby",
@@ -199,9 +200,9 @@ function Pricing() {
           <PricingCard />
         </Reveal>
         <p className="m-0 text-center text-[12px] text-faint">
-          Pay by card or crypto — your payment method is chosen inside checkout. Dobby Pro starts with a
-          7-day free trial. When a subscription ends, your ledger and history stay exactly as they are — the
-          workspace goes view-only, nothing is deleted.
+          Pay by card, billed in your local currency inside checkout. Dobby Pro starts with a 7-day free
+          trial. When a subscription ends, your ledger and history stay exactly as they are — the workspace
+          goes view-only, nothing is deleted.
         </p>
       </div>
     </section>
@@ -239,6 +240,18 @@ export default async function LandingPage() {
             <Link href="/" className="text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground">Home</Link>
             <Link href="#features" className="text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground">Features</Link>
             <Link href="#pricing" className="text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground">Pricing</Link>
+            {/* The founder's X handle, so a question can reach a person rather than
+                a shared support inbox. Opens in a new tab because a same-tab
+                navigation to x.com would strand the visitor away from the app. */}
+            <a
+              href="https://x.com/its_nonsoo"
+              target="_blank"
+              rel="noopener noreferrer me"
+              className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <XIcon className="size-3.5 shrink-0" aria-hidden="true" />
+              Contact
+            </a>
           </nav>
         </Reveal>
       </footer>

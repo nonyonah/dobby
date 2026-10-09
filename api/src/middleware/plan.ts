@@ -93,6 +93,42 @@ export async function loadEffectivePlan(
   return { plan, trialStartedAt: user.trialStartedAt, trialEndsAt: trialEndsAt(user) };
 }
 
+/** Wallets a free account may connect. Pro is unlimited. */
+export const FREE_WALLET_LIMIT = 1;
+
+/**
+ * Throws unless the account can add one more wallet.
+ *
+ * Wallet tracking stays reachable on the free tier — up to a single address —
+ * so a lapsed trial does not strand someone who connected a wallet while it
+ * was running. Pro removes the cap. Reads and deletions are never gated, so
+ * the one free wallet can always be inspected or removed (which frees the
+ * slot again).
+ */
+export async function assertWalletCapacity(userId: string | undefined): Promise<void> {
+  if (!userId) {
+    throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
+  }
+  const user = await prisma.user.findUnique({
+    where: { clerkId: userId },
+    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true, planExpiresAt: true },
+  });
+  if (!user) {
+    throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
+  }
+
+  if (computeEffectivePlan(user) === "ACTIVE") return;
+
+  const existing = await prisma.walletAccount.count({ where: { ownerClerkId: userId } });
+  if (existing < FREE_WALLET_LIMIT) return;
+
+  throw new AppError(
+    402,
+    `The free tier tracks ${FREE_WALLET_LIMIT} wallet. Remove this one to connect a different address, or upgrade to Dobby Pro to track them all.`,
+    "UPGRADE_REQUIRED",
+  );
+}
+
 /**
  * Throws unless the signed-in account currently has Pro access — an active
  * subscription or a trial still inside its 7-day window.

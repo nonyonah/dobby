@@ -6,15 +6,14 @@ import { CheckIcon } from "@/components/icons";
 import { Switch } from "@/components/ui/switch";
 
 /**
- * Pricing card — one Pro plan sold on two cadences. The segmented picker
- * above the card is the only choice a visitor makes; payment method (card or
- * crypto) is settled later inside the checkout provider's own flow, so it is
- * deliberately not part of this UI.
+ * Pricing card — one Pro plan sold on two cadences. The segmented picker above
+ * the card is the only choice a visitor makes; payment is settled later inside
+ * the checkout provider's own flow, so it is deliberately not part of this UI.
  */
 
 type Interval = "month" | "year";
 
-/** Mirrors api/src/lib/bachs.ts BACHS_USD_PRICES ($4/mo, $36/yr = 25% off). */
+/** Mirrors api/src/lib/bachs.ts SUBSCRIPTION_PRICE_ANCHORS ($4/mo, $36/yr = 10% off). */
 const PRICE: Record<Interval, { amount: string; cadence: string; note: string }> = {
   month: {
     amount: "$4",
@@ -24,7 +23,7 @@ const PRICE: Record<Interval, { amount: string; cadence: string; note: string }>
   year: {
     amount: "$36",
     cadence: "per year",
-    note: "Billed yearly — 25% off monthly, with a 7-day free trial.",
+    note: "Billed yearly — 10% off monthly, with a 7-day free trial.",
   },
 };
 
@@ -32,7 +31,7 @@ const PRICE: Record<Interval, { amount: string; cadence: string; note: string }>
 const PRO_FEATURES = [
   "Everything in Free",
   "Email auto-fetch from Gmail or Outlook",
-  "Stablecoin wallet connections",
+  "Unlimited stablecoin wallet connections",
   "Proactive AI flags that explain unusual activity",
   "Tax advisory — estimates, deduction flags and reminders",
 ];
@@ -42,6 +41,7 @@ const FREE_FEATURES = [
   "Automatic categorization for every transaction",
   "Review queue and rules that learn from approvals",
   "Net worth across wallets and accounts",
+  "One stablecoin wallet connection",
   "Your ledger and history, kept forever",
 ];
 
@@ -65,7 +65,7 @@ export function PricingCard() {
           Annual
         </span>
         <span className="inline-flex items-center rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-medium text-success">
-          25% off
+          10% off
         </span>
       </div>
 
