@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "node",
+  "packages": {
+    "node": "22.22.3",
+    "python": "3.12"
+  },
+  "steps": {
+    "build": {
+      "commands": [
+        "...",
+        "python3 -m venv .venv",
+        ".venv/bin/pip install --no-cache-dir --upgrade pip",
+        ".venv/bin/pip install --no-cache-dir -r requirements.txt"
+      ]
+    }
+  },
+  "deploy": {
+    "aptPackages": ["...", "tesseract-ocr", "tesseract-ocr-eng"],
+    "startCommand": "node dist/server.js",
+    "variables": {
+      "PYTHON_BIN": ".venv/bin/python"
+    }
+  }
+}
