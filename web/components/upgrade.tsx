@@ -192,6 +192,33 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
     void ensureOptions();
   }, [ensureOptions]);
 
+  /**
+   * Loads the SDK once and initialises it once.
+   *
+   * Bachs' guidance is to initialise when the app loads rather than on every
+   * click: the SDK is then already warm when the user reaches the button, and a
+   * `checkout.error` has somewhere to go before a checkout is ever opened. The
+   * ref also keeps it to a single load under StrictMode's double-mount, which a
+   * bare "initialise in an effect" would not.
+   */
+  const ensureBachs = useCallback(
+    async (onEvent: (event: BachsCheckoutEvent) => void) => {
+      const existing = bachsRef.current;
+      if (existing) return existing;
+      const bachs = await loadBachs();
+      bachs.Initialize({ onEvent });
+      bachsRef.current = bachs;
+      return bachs;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    // Warm the overlay up front. Failure here is not worth surfacing: the real
+    // checkout path re-tries on click and reports properly if it still fails.
+    void ensureBachs(handleEvent).catch(() => undefined);
+  }, [ensureBachs, handleEvent]);
+
   const startCheckout = useCallback(
     (option: BillingOption) => {
       if (busy) return;
@@ -206,9 +233,7 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
           // No baseUrl: a checkout session already carries its own environment,
           // and the full checkout_url says which checkout serves it. The SDK only
           // needs baseUrl for bare tokens, which this integration never uses.
-          const bachs = bachsRef.current ?? (await loadBachs());
-          bachsRef.current = bachs;
-          bachs.Initialize({ onEvent: handleEvent });
+          const bachs = await ensureBachs(handleEvent);
           await bachs.Checkout.open({ checkoutUrl: response.data.url, onEvent: handleEvent });
         } catch (error) {
           setBusy(false);
@@ -217,7 +242,7 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
         }
       })();
     },
-    [api, busy, handleEvent],
+    [api, busy, ensureBachs, handleEvent],
   );
 
   return (
