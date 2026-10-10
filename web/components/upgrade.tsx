@@ -48,13 +48,6 @@ function pillPrice(options: BillingOption[], interval: BillingInterval): string 
   }
 }
 
-function subscriptionCopy(option: BillingOption): { title: string; sub: string } {
-  return {
-    title: "Card",
-    sub: `Recurring ${option.interval === "month" ? "monthly" : "annual"} subscription · 7-day free trial · cancel anytime · billed in your local currency`,
-  };
-}
-
 type UpgradeContextValue = {
   /** Opens the plan picker dialog. */
   openCheckout: (preset?: BillingInterval) => void;
@@ -241,7 +234,7 @@ export function useUpgrade() {
   return useContext(UpgradeContext);
 }
 
-/** Plan picker: cadence pills, then a summary of the single card subscription. Mounts fresh per open. */
+/** Plan picker: cadence cards and the terms, nothing else. Mounts fresh per open. */
 function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose: () => void }) {
   const { options, busy, startCheckout } = useUpgrade();
   const [interval, setInterval] = useState<BillingInterval>(preset);
@@ -263,7 +256,7 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
               type="button"
               onClick={() => setInterval(cadence)}
               aria-pressed={interval === cadence}
-              className={`flex-1 cursor-pointer rounded-xl border px-3 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
+              className={`flex-1 cursor-pointer rounded-[10px] border px-3 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
                 interval === cadence ? "border-primary bg-primary/5" : "border-line hover:border-muted-foreground/40"
               }`}
             >
@@ -274,15 +267,6 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
             </button>
           ))}
         </div>
-        {selected ? (
-          <div className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5">
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold text-foreground">{subscriptionCopy(selected).title}</span>
-              <span className="block truncate text-[12px] text-muted-foreground">{subscriptionCopy(selected).sub}</span>
-            </span>
-            <span className="mono shrink-0 text-[13px] font-semibold tabular-nums text-foreground">{selected.label}</span>
-          </div>
-        ) : null}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="small" onClick={onClose}>
             Cancel
