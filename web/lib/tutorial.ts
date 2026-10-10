@@ -51,6 +51,20 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: "Dobby sorts each transaction as it arrives and asks only when it isn't sure. Anything ambiguous waits in To review until you say otherwise.",
   },
   {
+    /**
+     * Carries `?view=ledger` deliberately. The Import button only exists in the
+     * ledger view, and the page opens on "To review" — so without the query the
+     * anchor resolves to nothing and driver.js skips the step, which is the same
+     * failure the view-switcher step documents.
+     */
+    href: "/transactions?view=ledger",
+    anchor: "import-statement",
+    side: "bottom",
+    align: "end",
+    title: "Bring your statements in",
+    body: "Drop in a bank statement or a CSV and Dobby reads it, sorts it and checks it adds up — so nothing goes missing quietly.",
+  },
+  {
     href: "/insights",
     anchor: "insights-sections",
     side: "bottom",

@@ -4,8 +4,9 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { getConversionFactors } from "../providers/frankfurter.js";
-import { settleImportsFor } from "../imports/pipeline.js";
+import { fingerprintFor, settleImportsFor } from "../imports/pipeline.js";
 import { runExclusive } from "../lib/user-mutex.js";
+import { AppError } from "../middleware/errors.js";
 
 export const reviewsRouter = Router();
 reviewsRouter.use(requireAuth);
@@ -267,6 +268,97 @@ function accountTypeForSection(name: string): AccountType {
   if (/wallet/.test(text)) return AccountType.WALLET;
   return AccountType.BANK;
 }
+
+/**
+ * Edits a row that is still waiting in the queue.
+ *
+ * The review queue's rows are not transactions yet — there is nothing at
+ * `/v1/transactions/{id}` to patch until the row is approved. Editing one used
+ * to send that request anyway, which failed every time, so the editor opened,
+ * accepted changes, and silently discarded them on save.
+ *
+ * Only the proposed shape is writable: the parsed source row stays exactly as
+ * the statement gave it, because that is the record of what the bank said, and
+ * the checksum was computed against it.
+ */
+reviewsRouter.patch("/:id", async (req, res) => {
+  const ownerClerkId = req.auth!.userId;
+  const input = z
+    .object({
+      type: z.nativeEnum(TransactionType).optional(),
+      amount: z.number().finite().positive().optional(),
+      currency: z.string().trim().length(3).toUpperCase().optional(),
+      description: z.string().trim().min(1).max(240).optional(),
+      occurredAt: z.coerce.date().optional(),
+      categoryId: z.string().trim().min(1).max(80).nullable().optional(),
+      isTaxable: z.boolean().nullable().optional(),
+    })
+    .parse(req.body ?? {});
+
+  const item = await prisma.transactionReviewItem.findFirst({
+    where: { id: req.params.id, ownerClerkId, status: ReviewStatus.PENDING },
+  });
+  if (!item) {
+    throw new AppError(404, "This row is no longer waiting for review.", "REVIEW_ITEM_NOT_FOUND");
+  }
+
+  // The name travels with the id so the queue renders the chip without a second
+  // lookup per row, and an explicit null clears the category rather than
+  // silently keeping the old one.
+  let categoryName: string | undefined;
+  if (input.categoryId) {
+    const category = await prisma.category.findFirst({
+      where: { id: input.categoryId, ownerClerkId, isArchived: false },
+      select: { id: true, name: true },
+    });
+    if (!category) {
+      throw new AppError(400, "The chosen category is not available.", "INVALID_CATEGORY");
+    }
+    categoryName = category.name;
+  }
+
+  const current =
+    item.proposedData && typeof item.proposedData === "object" && !Array.isArray(item.proposedData)
+      ? (item.proposedData as Record<string, unknown>)
+      : {};
+
+  const occurredAt = (input.occurredAt ?? (typeof current.occurredAt === "string" ? new Date(current.occurredAt) : null)) ?? new Date();
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw new AppError(400, "That date could not be read.", "INVALID_OCCURRED_AT");
+  }
+  const amount = input.amount ?? (typeof current.amount === "number" ? current.amount : undefined);
+  const description = input.description ?? (typeof current.description === "string" ? current.description : undefined);
+  if (amount === undefined || description === undefined) {
+    throw new AppError(400, "This row has no transaction to edit.", "REVIEW_ITEM_INVALID");
+  }
+
+  const proposedData = {
+    ...current,
+    ...(input.type ? { type: input.type } : {}),
+    ...(input.currency ? { currency: input.currency } : {}),
+    amount,
+    description,
+    occurredAt: occurredAt.toISOString(),
+    ...(input.categoryId !== undefined ? { categoryId: input.categoryId, ...(categoryName !== undefined ? { categoryName } : {}) } : {}),
+    ...(input.isTaxable !== undefined
+      ? // The user answered it, so it is recorded as theirs and no later rule
+        // pass can overturn it.
+        { isTaxable: input.isTaxable, taxableSource: "user", taxTreatment: input.isTaxable ? "taxable" : "not_taxable" }
+      : {}),
+  } as Prisma.InputJsonValue;
+
+  // The fingerprint is the duplicate check on approval, so it has to follow the
+  // edit: leaving it on the pre-edit values would compare the approved row
+  // against the wrong transaction.
+  const fingerprint = fingerprintFor(occurredAt.toISOString(), input.type === TransactionType.EXPENSE ? -amount : amount, description);
+
+  const updated = await prisma.transactionReviewItem.update({
+    where: { id: item.id },
+    data: { proposedData, fingerprint },
+    include: { import: { select: { id: true, originalName: true, status: true } } },
+  });
+  res.json({ data: updated });
+});
 
 reviewsRouter.post("/approve-many", async (req, res) => {
   const input = z

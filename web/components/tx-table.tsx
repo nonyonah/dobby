@@ -452,6 +452,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
         <Button
           variant="primary"
           onClick={onImport}
+          data-tour="import-statement"
         >
           <UploadIcon />
           Import

@@ -174,8 +174,12 @@ function TransactionsInner() {
   const [view, setView] = useState<"ledger" | "review">("review");
   // A "to review" deep link (from Needs attention / flags) opens the Review tab
   // on the target row without an effect-driven state sync.
-  const deepLinkReview = useSearchParams().get("view") === "review";
-  const effectiveView = deepLinkReview ? "review" : view;
+  // A deep link can open either tab directly: `?view=review` for Needs-attention
+  // targets, `?view=ledger` for the tutorial, whose Import button only exists in
+  // the ledger view. Read once at mount — this is an entry point, not a
+  // two-way binding, and syncing it back would fight the segmented control.
+  const requestedView = useSearchParams().get("view");
+  const effectiveView = requestedView === "ledger" ? "ledger" : requestedView === "review" ? "review" : view;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -287,9 +291,14 @@ function TransactionsInner() {
 
   const save = async (next: TxFull, opts?: { rememberRule?: boolean }) => {
     let mapped: TxFull | null = null;
+    // A row in the review queue is not a transaction yet. Editing one used to
+    // patch /v1/transactions/{id}, which has nothing at that id until the row is
+    // approved — so the editor opened, took the change, and failed on save,
+    // every time. Queued rows are edited where they actually live.
+    const isQueued = reviewRows.some((row) => row.id === next.id) && !rows.some((row) => row.id === next.id);
     try {
       const liveIds = new Set(liveCategories.map((c) => c.id));
-      const response = await api.patch<{ data: ApiTransaction }>(`/v1/transactions/${next.id}`, {
+      const body = {
         type: next.kind ?? (next.amount >= 0 ? "INCOME" : "EXPENSE"),
         amount: Math.abs(next.sourceAmount ?? next.amount),
         currency: next.currency,
@@ -298,17 +307,30 @@ function TransactionsInner() {
         source: next.source,
         categoryId: (next.categoryId && liveIds.has(next.categoryId) ? next.categoryId : null) ?? categoryIds[next.category] ?? null,
         isTaxable: next.taxable,
-      });
-      mapped = mapTransaction(response.data);
-      setRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
-      setReviewRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
+      };
+      if (isQueued) {
+        await api.patch(`/v1/reviews/${next.id}`, body);
+        // The response is the review item, not a transaction, so the queued row
+        // is updated from the values just saved rather than re-mapped.
+        mapped = { ...next, parse: { state: "review", confidence: 90 } };
+        setReviewRows((prev) => prev.map((row) => (row.id === next.id ? mapped! : row)));
+      } else {
+        const response = await api.patch<{ data: ApiTransaction }>(`/v1/transactions/${next.id}`, body);
+        mapped = mapTransaction(response.data);
+        setRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
+        setReviewRows((prev) => prev.map((t) => (t.id === next.id ? mapped! : t)));
+      }
     } catch (error) {
       // A lapsed trial locks edits server-side — say so instead of a generic failure.
       if (error instanceof ApiError && error.code === "UPGRADE_REQUIRED") {
         const guidance = guidanceFor(error, "trial");
         toast.error(guidance.title, { description: guidanceText(guidance) });
       } else {
-        toast.error("Could not save this transaction. Try again.");
+        toast.error(
+          isQueued
+            ? "Could not save this review row. Try again."
+            : "Could not save this transaction. Try again.",
+        );
       }
       return;
     }
@@ -325,7 +347,7 @@ function TransactionsInner() {
         }
       }
     }
-    toast.success("Transaction updated");
+    toast.success(isQueued ? "Review row updated" : "Transaction updated");
   };
 
   const declineReview = async (ids: string[]) => {

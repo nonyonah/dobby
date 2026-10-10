@@ -82,6 +82,9 @@ function subscribeEnabled(onChange: () => void) {
 const getEnabledSnapshot = () => readTutorialEnabled();
 const getServerEnabledSnapshot = () => true;
 
+/** Route a step targets, without its query — readiness is about the route. */
+const routeOf = (href: string | undefined) => (href ? href.split("?")[0]! : undefined);
+
 /** driver.js step for one of ours, keeping the route change out of it. */
 function toDriveStep(step: TutorialStep): DriveStep {
   return {
@@ -203,7 +206,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
           // Navigate first; advancing here would highlight a node the next
           // route has not rendered yet. The pathname effect below re-applies
           // the step once the route settles.
-          if (next?.href && next.href !== pathnameRef.current) {
+          if (next?.href && routeOf(next.href) !== pathnameRef.current) {
             pendingRef.current = index + 1;
             routerRef.current.push(next.href);
             return;
@@ -214,7 +217,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
         onPrevClick: (_element, _step, opts) => {
           const index = opts.index ?? 0;
           const previous = TUTORIAL_STEPS[index - 1];
-          if (previous?.href && previous.href !== pathnameRef.current) {
+          if (previous?.href && routeOf(previous.href) !== pathnameRef.current) {
             pendingRef.current = index - 1;
             routerRef.current.push(previous.href);
             return;
@@ -249,9 +252,9 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       // find nothing, and skip straight past it. Navigate first and let the
       // pathname effect below start the tour once the route has settled.
       const first = TUTORIAL_STEPS[0];
-      if (first?.href && first.href !== pathnameRef.current) {
+      if (first?.href && routeOf(first.href) !== pathnameRef.current) {
         pendingRef.current = 0;
-        routerRef.current.push(first.href);
+        routerRef.current.push(first.href!);
         return;
       }
       instance.drive(0);
@@ -283,7 +286,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     const pending = pendingRef.current;
     if (pending === null) return;
     const step = TUTORIAL_STEPS[pending];
-    if (step?.href && pathname !== step.href) return;
+    if (step?.href && routeOf(step.href) !== pathname) return;
     pendingRef.current = null;
     clearPendingDrive();
     // The target element is rendered by a child that may still be mounting.
