@@ -410,7 +410,11 @@ export function SettingsPage() {
   // The free tier still tracks one wallet, so "Connect" is available to
   // everyone — the API is the authority on the limit, and upgrading is what
   // lifts it.
-  const walletLimitReached = !isPro && wallets.length >= FREE_WALLET_LIMIT;
+  // `isPro` is deliberately false until the plan resolves, so gating on it
+  // alone showed "Upgrade" to a trial user for the moment the read took —
+  // offering them a purchase they did not need, on a screen they were already
+  // entitled to use. Wait for the plan before deciding anything about it.
+  const walletLimitReached = !planLoading && !isPro && wallets.length >= FREE_WALLET_LIMIT;
 
   const billingNotice = useMemo(
     () =>
@@ -433,7 +437,9 @@ export function SettingsPage() {
       setSubscription((current) => (current ? { ...current, ...response.data } : current));
       refreshPlan();
       const until = formatDate(response.data.currentPeriodEnd);
-      toast.success(until ? `Subscription canceled — Pro stays on until ${until}.` : "Subscription canceled.");
+      // An immediate cancel clears the period, so there is normally no date to
+      // quote; the trial end is the only thing worth stating.
+      toast.success(until ? `Subscription canceled — Pro stays on until ${until}.` : "Subscription canceled — it will not renew.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not cancel your subscription.");
     } finally {
@@ -938,9 +944,13 @@ export function SettingsPage() {
             <Toggle label="Import completed" description="Get notified when a statement has finished processing." />
             <Row
               label="Monthly tax reminders"
-              description={isPro ? "Included in your plan — a monthly email with your estimate and outstanding documents." : "Included with Pro — a monthly email with your estimate and outstanding documents."}
+              description={planLoading || isPro ? "Included in your plan — a monthly email with your estimate and outstanding documents." : "Included with Pro — a monthly email with your estimate and outstanding documents."}
             >
-              {isPro ? (
+              {/* Same rule as the wallet: never show the upgrade while the plan
+                  is still being read. */}
+              {planLoading ? (
+                <span className="inline-flex w-fit items-center rounded-full border border-line bg-secondary px-2.5 py-1 text-[12px] font-medium text-muted-foreground">Checking your plan…</span>
+              ) : isPro ? (
                 <span className="inline-flex w-fit items-center rounded-full border border-line bg-secondary px-2.5 py-1 text-[12px] font-medium text-muted-foreground">Included in Pro</span>
               ) : (
                 <Button variant="secondary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>Upgrade</Button>
@@ -1137,9 +1147,12 @@ export function SettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel your subscription?</AlertDialogTitle>
             <AlertDialogDescription>
-              {subscription?.currentPeriodEnd
-                ? `You keep Dobby Pro until ${formatDate(subscription.currentPeriodEnd)}, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are.`
-                : "You keep Dobby Pro until the end of the paid period, then the workspace goes back to view-only. Nothing is deleted — your ledger, history, and insights stay exactly as they are."}
+              {/* Says what actually happens. The old copy promised access until
+                  the period end while the request cancelled immediately, so the
+                  account stopped at once and the message looked wrong. */}
+              Your subscription ends immediately and will not renew, so the workspace goes back to view-only now.
+              {trialEndsAt ? ` Your free trial runs to ${formatDate(trialEndsAt)}, so Pro stays on until then.` : ""}
+              Nothing is deleted — your ledger, history, and insights stay exactly as they are.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

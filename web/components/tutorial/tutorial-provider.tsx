@@ -289,11 +289,24 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     if (step?.href && routeOf(step.href) !== pathname) return;
     pendingRef.current = null;
     clearPendingDrive();
-    // The target element is rendered by a child that may still be mounting.
-    timerRef.current = window.setTimeout(() => {
+
+    // The target is rendered by a child that may still be mounting, and
+    // `skipMissingElement` turns "not there yet" into "this step never
+    // happens" — which is how the Import step went missing: the route had
+    // changed but the ledger table had not rendered. Poll briefly for the
+    // anchor instead of guessing a delay and hoping.
+    const selector = step.anchor ? `[data-tour="${step.anchor}"]` : undefined;
+    const deadline = Date.now() + 2000;
+    const attempt = () => {
+      const ready = !selector || document.querySelector(selector) !== null;
+      if (!ready && Date.now() < deadline) {
+        timerRef.current = window.setTimeout(attempt, 80);
+        return;
+      }
       timerRef.current = null;
       instanceRef.current?.drive(pending);
-    }, 120);
+    };
+    timerRef.current = window.setTimeout(attempt, selector ? 40 : 0);
   }, [pathname, clearPendingDrive]);
 
   const setEnabled = useCallback(

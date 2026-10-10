@@ -131,10 +131,18 @@ export type SubscriptionState = {
  * paid for runs out — Bachs emits `customer.subscription.deleted` at that
  * point, which is what finally downgrades the account.
  */
-export async function cancelProSubscription(subscriptionId: string): Promise<SubscriptionState> {
+export async function cancelProSubscription(
+  subscriptionId: string,
+  options: { atPeriodEnd?: boolean } = {},
+): Promise<SubscriptionState> {
+  // Immediate is the default because that is what a Cancel button means.
+  // `cancel_at_period_end: true` leaves the subscription billing normally in
+  // Bachs until the period runs out, so the dashboard still shows it as active
+  // and the user reasonably concludes the cancel did nothing.
+  const atPeriodEnd = options.atPeriodEnd ?? false;
   return bachsFetch(`/v1/subscriptions/${subscriptionId}`, {
     method: "DELETE",
-    body: JSON.stringify({ cancel_at_period_end: true, reason: "user_requested" }),
+    body: JSON.stringify({ cancel_at_period_end: atPeriodEnd, reason: "user_requested" }),
   });
 }
 

@@ -125,7 +125,9 @@ async function cancelSubscription(data: SubscriptionData) {
       // force-expire an account whose trial is still running.
       plan: isTrialLive(user.trialStartedAt) ? Plan.TRIAL : Plan.EXPIRED,
       bachsSubscriptionStatus: "canceled",
-      bachsCancelAtPeriodEnd: true,
+      // Mirrors how it actually ended. Hard-coding true here made an
+      // immediately-cancelled subscription look like it was still winding down.
+      bachsCancelAtPeriodEnd: data.cancel_at_period_end ?? false,
       ...(data.current_period_end ? { bachsCurrentPeriodEnd: new Date(data.current_period_end) } : {}),
     },
   });
@@ -370,6 +372,11 @@ billingRouter.post("/portal", async (req, res) => {
 
 billingRouter.post("/cancel", async (req, res) => {
   const clerkId = req.auth!.userId;
+  // Immediate unless asked otherwise. Period-end is kept available because
+  // there are reasons to want it, but it must be a choice rather than what a
+  // plain Cancel quietly does.
+  const input = z.object({ atPeriodEnd: z.boolean().optional() }).parse(req.body ?? {});
+  const atPeriodEnd = input.atPeriodEnd ?? false;
   const user = await prisma.user.findUnique({
     where: { clerkId },
     select: { bachsSubscriptionId: true, bachsSubscriptionStatus: true },
@@ -382,7 +389,7 @@ billingRouter.post("/cancel", async (req, res) => {
     throw new AppError(400, "This subscription is already canceled.", "ALREADY_CANCELED");
   }
 
-  const subscription = await cancelProSubscription(user.bachsSubscriptionId);
+  const subscription = await cancelProSubscription(user.bachsSubscriptionId, { atPeriodEnd });
 
   // Mirror what Bachs answered, but leave the plan alone: an end-of-period
   // cancel keeps the account on Pro until `customer.subscription.deleted`.
@@ -390,16 +397,19 @@ billingRouter.post("/cancel", async (req, res) => {
     where: { clerkId },
     data: {
       ...(subscription.status ? { bachsSubscriptionStatus: subscription.status } : {}),
-      bachsCancelAtPeriodEnd: subscription.cancel_at_period_end ?? true,
+      bachsCancelAtPeriodEnd: subscription.cancel_at_period_end ?? atPeriodEnd,
       ...(subscription.current_period_end ? { bachsCurrentPeriodEnd: new Date(subscription.current_period_end) } : {}),
     },
   });
 
-  logger.info({ clerkId, subscriptionId: user.bachsSubscriptionId }, "bachs subscription set to cancel");
+  logger.info({ clerkId, subscriptionId: user.bachsSubscriptionId, atPeriodEnd }, "bachs subscription canceled");
   res.json({
     data: {
-      cancelAtPeriodEnd: subscription.cancel_at_period_end ?? true,
-      currentPeriodEnd: subscription.current_period_end ?? null,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end ?? atPeriodEnd,
+      // Immediate cancellation clears the period, so there is no date left to
+      // keep the user on until. Sending the old one would tell them Pro runs to
+      // a date that no longer applies.
+      currentPeriodEnd: atPeriodEnd ? subscription.current_period_end ?? null : null,
     },
   });
 });
