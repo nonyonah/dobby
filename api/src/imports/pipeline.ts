@@ -1,4 +1,4 @@
-import { ImportStatus, ImportType, Prisma, ReviewStatus } from "@prisma/client";
+import { ImportStatus, ImportType, Prisma, ReviewStatus, TransferDirection } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { parse } from "csv-parse/sync";
 import { read as readWorkbook, utils as xlsxUtils } from "xlsx";
@@ -205,7 +205,11 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
         : undefined;
       const subAccount = typeof proposed?.subAccount === "string" ? proposed.subAccount : undefined;
       const reference = typeof proposed?.reference === "string" ? proposed.reference : undefined;
-      const transferDirection = proposed?.transferDirection === "IN" || proposed?.transferDirection === "OUT" ? proposed.transferDirection : undefined;
+      // Read out of JSON, so it arrives as a plain string and has to be narrowed
+      // back to the enum rather than passed through on trust.
+      const rawDirection = proposed?.transferDirection;
+      const transferDirection: TransferDirection | undefined =
+        rawDirection === "IN" || rawDirection === "OUT" ? rawDirection : undefined;
       return {
         ...(subAccount ? { subAccount } : {}),
         ...(reference ? { reference } : {}),

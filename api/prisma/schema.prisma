@@ -413,6 +413,7 @@ model Transaction {
   @@index([ownerClerkId, categoryId, occurredAt])
   @@index([ownerClerkId, fingerprint])
   @@index([ownerClerkId, reference])
+  @@index([ownerClerkId, transferDirection])
   @@index([ownerClerkId, userOverridden])
   @@index([importId])
 }
@@ -461,6 +462,9 @@ model TransactionReviewItem {
   reference    String?
   /// Section label when one statement carries several accounts.
   subAccount   String?
+  /// Which way this leg of a transfer moved. Both legs are TRANSFER, so without
+  /// this the pair is indistinguishable until it reaches a transaction.
+  transferDirection TransferDirection?
   confidence   Decimal?          @db.Decimal(5, 4)
   errorMessage String?
   createdAt    DateTime          @default(now())
