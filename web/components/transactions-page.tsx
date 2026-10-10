@@ -164,6 +164,11 @@ function mapReview(item: ApiReview): TxFull {
 function TransactionsInner() {
   const [rows, setRows] = useState<TxFull[]>([]);
   const [reviewRows, setReviewRows] = useState<TxFull[]>([]);
+  // The queue can be far larger than one page — a statement import drops
+  // hundreds of rows at once — so the client tracks the server's total and
+  // pages in the rest rather than assuming what arrived is all there is.
+  const [reviewTotal, setReviewTotal] = useState(0);
+  const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [approving, setApproving] = useState(false);
   const [approveProgress, setApproveProgress] = useState<string | null>(null);
   const [view, setView] = useState<"ledger" | "review">("review");
@@ -217,11 +222,12 @@ function TransactionsInner() {
     if (!isLoaded || !isSignedIn) return;
     let cancelled = false;
     void Promise.all([
-      api.get<{ data: ApiReview[] }>("/v1/reviews?status=PENDING"),
+      api.get<{ data: ApiReview[]; total: number }>("/v1/reviews?status=PENDING"),
       api.get<{ data: Array<{ id: string; name: string; isArchived: boolean }> }>("/v1/categories"),
     ]).then(([reviewResponse, categoryResponse]) => {
       if (cancelled) return;
       setReviewRows(reviewResponse.data.map(mapReview));
+      setReviewTotal(reviewResponse.total ?? reviewResponse.data.length);
       setCategoryIds(Object.fromEntries(categoryResponse.data.filter((category) => !category.isArchived).map((category) => [category.name.toLowerCase(), category.id])));
     }).catch(() => {
       if (!cancelled) {
@@ -330,8 +336,36 @@ function TransactionsInner() {
       toast.success(ids.length === 1 ? "Transaction declined" : `${ids.length} transactions declined`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not decline these transactions.");
-      const response = await api.get<{ data: ApiReview[] }>("/v1/reviews?status=PENDING");
+      const response = await api.get<{ data: ApiReview[]; total: number }>("/v1/reviews?status=PENDING");
       setReviewRows(response.data.map(mapReview));
+      setReviewTotal(response.total ?? response.data.length);
+    }
+  };
+
+  /**
+   * Fetches the next page of the queue and appends it.
+   *
+   * Keyset, not offset: rows are approved and declined as the user works, so an
+   * offset would shift under them and skip rows. The last row's id is the
+   * cursor, which the API orders on deterministically.
+   */
+  const loadMoreReviews = async () => {
+    const cursor = reviewRows.at(-1)?.id;
+    if (!cursor || loadingMoreReviews) return;
+    setLoadingMoreReviews(true);
+    try {
+      const response = await api.get<{ data: ApiReview[]; total: number }>(
+        `/v1/reviews?status=PENDING&cursor=${encodeURIComponent(cursor)}&take=200`,
+      );
+      setReviewRows((prev) => [...prev, ...response.data.map(mapReview)]);
+      setReviewTotal(response.total ?? reviewTotal);
+      requestAttentionSync();
+    } catch (error) {
+      toast.error(error instanceof ApiError && error.code === "NOT_FOUND"
+        ? "That page is no longer available. Reload the queue to start again."
+        : "Could not load more rows. Try again.");
+    } finally {
+      setLoadingMoreReviews(false);
     }
   };
 
@@ -455,7 +489,7 @@ function TransactionsInner() {
           />
           {effectiveView === "review" ? <p className="m-0 text-[12px] text-muted-foreground">Approve items to add them to Ledger</p> : null}
         </div>
-        {effectiveView === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving ? (approveProgress ?? true) : false} focusId={focusId ?? undefined} /> : <>
+        {effectiveView === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving ? (approveProgress ?? true) : false} focusId={focusId ?? undefined} total={reviewTotal} onLoadMore={loadMoreReviews} loadingMore={loadingMoreReviews} /> : <>
           <TxTable
             rows={rows}
             selectedId={selectedId}

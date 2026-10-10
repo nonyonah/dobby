@@ -35,14 +35,30 @@ const proposedTransactionSchema = z.object({
   taxableSource: z.enum(["rule", "user"]).optional(),
 });
 
+const listSchema = z.object({
+  status: z.nativeEnum(ReviewStatus).optional(),
+  /** Last row of the previous page. Keyset pagination, not offset. */
+  cursor: z.string().min(1).optional(),
+  take: z.coerce.number().int().min(1).max(500).default(200),
+});
+
 reviewsRouter.get("/", async (req, res) => {
-  const status = z.nativeEnum(ReviewStatus).optional().parse(req.query.status);
+  const { status, cursor, take } = listSchema.parse(req.query);
+  const where = { ownerClerkId: req.auth!.userId, ...(status ? { status } : {}) };
   const items = await prisma.transactionReviewItem.findMany({
-    where: { ownerClerkId: req.auth!.userId, ...(status ? { status } : {}) },
-    orderBy: [{ status: "asc" }, { createdAt: "asc" }],
-    take: 200,
+    where,
+    // `id` breaks ties. A statement lands hundreds of rows in one createMany,
+    // so ordering on createdAt alone leaves the page boundary ambiguous between
+    // rows sharing a timestamp — which drops or repeats rows as the user pages.
+    orderBy: [{ status: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    take,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: { import: { select: { id: true, originalName: true, status: true } } },
   });
+  // The size of the queue this page is a slice of. Without it the client cannot
+  // tell an exhausted queue from a truncated one, which is how a queue of 200+
+  // rows came to look like a queue of 200 and left the rest uneditable.
+  const total = await prisma.transactionReviewItem.count({ where });
   const profile = await prisma.profile.findUnique({ where: { clerkId: req.auth!.userId }, select: { currency: true } });
   const activeCurrency = profile?.currency?.toUpperCase() ?? "USD";
   // One batched rate lookup for the whole page. Converting per item meant up to
@@ -82,7 +98,7 @@ reviewsRouter.get("/", async (req, res) => {
       subAccount: proposal?.subAccount,
     };
   });
-  res.json({ data });
+  res.json({ data, total });
 });
 
 /**

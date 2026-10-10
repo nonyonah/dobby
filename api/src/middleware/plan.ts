@@ -104,34 +104,63 @@ export const FREE_WALLET_LIMIT = 1;
 /**
  * Throws unless the account can add one more wallet.
  *
- * Wallet tracking stays reachable on the free tier — up to a single address —
+* Wallet tracking stays reachable on the free tier — up to a single address —
  * so a lapsed trial does not strand someone who connected a wallet while it
- * was running. Pro removes the cap. Reads and deletions are never gated, so
- * the one free wallet can always be inspected or removed (which frees the
- * slot again).
+ * was running. A live trial is Pro and is not capped at all; Pro removes the
+ * cap. Reads and deletions are never gated, so the one free wallet can always
+ * be inspected or removed (which frees the slot again).
  */
-export async function assertWalletCapacity(userId: string | undefined): Promise<void> {
-  if (!userId) {
-    throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
-  }
-  const user = await prisma.user.findUnique({
-    where: { clerkId: userId },
-    select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true, planExpiresAt: true },
-  });
-  if (!user) {
-    throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
-  }
+/**
+ * Whether an account is subject to the free-tier wallet cap.
+ *
+ * Only a lapsed one. A trial is Pro access, exactly as `assertPro` treats it
+ * and as the client's `isPro` does — and gating on `ACTIVE` alone capped trial
+ * accounts at one wallet while the UI, which computes
+ * `!isPro && wallets.length >= FREE_WALLET_LIMIT`, kept offering the Connect
+ * button. The user filled in a form and got a 402 back with nothing to act on.
+ */
+export function walletLimitApplies(plan: EffectivePlan): boolean {
+  return plan === "EXPIRED";
+}
 
-  if (computeEffectivePlan(user) === "ACTIVE") return;
-
-  const existing = await prisma.walletAccount.count({ where: { ownerClerkId: userId } });
+/**
+ * The wallet-cap decision, given the account row and how many wallets it holds.
+ *
+ * Pure, so the rule can be checked without a database — the alternative was a
+ * test that reimplemented the gate, which passes whether or not the gate is
+ * right.
+ */
+export function assertWalletCapacityFor(user: PlanRow, existing: number): void {
+  if (!walletLimitApplies(computeEffectivePlan(user))) return;
   if (existing < FREE_WALLET_LIMIT) return;
-
   throw new AppError(
     402,
     `The free tier tracks ${FREE_WALLET_LIMIT} wallet. Remove this one to connect a different address, or upgrade to Dobby Pro to track them all.`,
     "UPGRADE_REQUIRED",
   );
+}
+
+/**
+ * Throws unless the account can add one more wallet.
+ *
+ * Reads and deletions are never gated, so a wallet on the free tier can always
+ * be inspected or removed (which frees the slot again).
+ */
+export async function assertWalletCapacity(userId: string | undefined): Promise<void> {
+  if (!userId) {
+    throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
+  }
+  const [user, existing] = await Promise.all([
+    prisma.user.findUnique({
+      where: { clerkId: userId },
+      select: { plan: true, trialStartedAt: true, bachsSubscriptionStatus: true, bachsTrialEnd: true, planExpiresAt: true },
+    }),
+    prisma.walletAccount.count({ where: { ownerClerkId: userId } }),
+  ]);
+  if (!user) {
+    throw new AppError(401, "Authentication is required.", "UNAUTHENTICATED");
+  }
+  assertWalletCapacityFor(user, existing);
 }
 
 /**

@@ -7,7 +7,7 @@ import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
-import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createPortalSession, createProCheckout, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
+import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createPortalSession, createProCheckout, retrieveSubscriptionOrNull, verifyBachsSignature, type BillingInterval, type SubscriptionState } from "../lib/bachs.js";
 import { computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "../middleware/plan.js";
 import { notifyTrialStarted } from "../lib/mailer.js";
 
@@ -191,21 +191,111 @@ billingWebhookRouter.post(WEBHOOK_PATH, async (req, res) => {
 export const billingRouter = Router();
 billingRouter.use(requireAuth);
 
-billingRouter.get("/", async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { clerkId: req.auth!.userId },
-    select: {
-      plan: true,
-      trialStartedAt: true,
-      bachsCustomerId: true,
-      bachsSubscriptionId: true,
-      bachsSubscriptionStatus: true,
-      bachsTrialEnd: true,
-      bachsCurrentPeriodEnd: true,
-      bachsCancelAtPeriodEnd: true,
-      planExpiresAt: true,
+/** Statuses that mean Bachs and the stored row already agree. */
+const SETTLED_STATUSES = new Set(["active", "trialing", "past_due"]);
+
+/** The user columns the billing read and the re-sync both need. */
+type BillingRow = {
+  clerkId: string;
+  plan: Plan;
+  trialStartedAt: Date | null;
+  bachsCustomerId: string | null;
+  bachsSubscriptionId: string | null;
+  bachsSubscriptionStatus: string | null;
+  bachsTrialEnd: Date | null;
+  bachsCurrentPeriodEnd: Date | null;
+  bachsCancelAtPeriodEnd: boolean;
+  planExpiresAt: Date | null;
+};
+
+const billingRowSelect = {
+  clerkId: true,
+  plan: true,
+  trialStartedAt: true,
+  bachsCustomerId: true,
+  bachsSubscriptionId: true,
+  bachsSubscriptionStatus: true,
+  bachsTrialEnd: true,
+  bachsCurrentPeriodEnd: true,
+  bachsCancelAtPeriodEnd: true,
+  planExpiresAt: true,
+} as const;
+
+/**
+ * Brings a stored subscription back in line with Bachs before answering.
+ *
+ * The webhook is the normal path, but it is a delivery rather than a
+ * guarantee. A missing webhook secret, a deploy mid-flight, or an event whose
+ * subscription did not match a user yet all freeze the row — and the visible
+ * symptom is a customer stuck on a trial: features they paid for stay locked,
+ * or a $0.00 trial that never becomes the subscription they started.
+ *
+ * Deliberately narrow. It calls Bachs only when the stored state says something
+ * is wrong — no subscription recorded, a status that is not one of the live
+ * ones, or a trial whose end date has passed — so a healthy paid account costs
+ * no upstream call at all. A lookup that fails leaves the stored row untouched:
+ * a rate-limited or unreachable Bachs must never make the plan worse than we
+ * already believe it to be.
+ */
+async function reconcileSubscription(user: BillingRow | null): Promise<BillingRow | null> {
+  if (!user?.bachsSubscriptionId) return user;
+  const status = user.bachsSubscriptionStatus ?? "";
+  const trialOverdue = status === "trialing" && user.bachsTrialEnd !== null && user.bachsTrialEnd.getTime() <= Date.now();
+  if (SETTLED_STATUSES.has(status) && !trialOverdue) return user;
+
+  let live: SubscriptionState | null;
+  try {
+    live = await retrieveSubscriptionOrNull(user.bachsSubscriptionId);
+  } catch (error) {
+    // Bachs unreachable or rate-limited. Keeping the stored row is the safe
+    // direction: a transient failure must not cost an account its entitlement.
+    logger.warn(
+      { subscriptionId: user.bachsSubscriptionId, error: error instanceof Error ? error.message : String(error) },
+      "could not re-sync subscription from Bachs; keeping stored state",
+    );
+    return user;
+  }
+
+  // Bachs has no record of this subscription. The row is describing something
+  // that is not there — which is exactly how a customer ends up looking at a
+  // live trial, and a plan page reading $0.00, for a subscription that ended,
+  // was reset, or was never really created. Recorded as terminal so the local
+  // clock decides again instead of the phantom keeping Pro open indefinitely.
+  if (live === null) {
+    if (status === "canceled") return user;
+    logger.warn({ subscriptionId: user.bachsSubscriptionId, was: status }, "Bachs has no record of this subscription; marking it ended");
+    return prisma.user.update({
+      where: { clerkId: user.clerkId },
+      data: { bachsSubscriptionStatus: "canceled" },
+      select: billingRowSelect,
+    });
+  }
+
+  if (!live.status || live.status === status) return user;
+
+  const paid = PAID_STATUSES.has(live.status);
+  logger.info({ subscriptionId: user.bachsSubscriptionId, from: status || null, to: live.status }, "re-synced subscription from Bachs");
+
+  return prisma.user.update({
+    where: { clerkId: user.clerkId },
+    data: {
+      bachsSubscriptionStatus: live.status,
+      ...(live.status === "trialing" && live.trial_end ? { bachsTrialEnd: new Date(live.trial_end) } : {}),
+      ...(live.current_period_end ? { bachsCurrentPeriodEnd: new Date(live.current_period_end) } : {}),
+      ...(typeof live.cancel_at_period_end === "boolean" ? { bachsCancelAtPeriodEnd: live.cancel_at_period_end } : {}),
+      // A trial that has become a paid subscription starts the local clock if it
+      // never did, so a lapsed signup window cannot immediately EXPIRE an
+      // account that is genuinely paying.
+      ...(paid && !user.trialStartedAt ? { trialStartedAt: new Date(), plan: Plan.ACTIVE } : {}),
     },
+    select: billingRowSelect,
   });
+}
+
+billingRouter.get("/", async (req, res) => {
+  const user = await reconcileSubscription(
+    await prisma.user.findUnique({ where: { clerkId: req.auth!.userId }, select: billingRowSelect }),
+  );
 
   res.json({
     data: {

@@ -67,9 +67,14 @@ interface ReviewQueueProps {
   busy?: boolean | string;
   /** Deep-linked row id (from Needs attention / flags) to highlight + scroll to. */
   focusId?: string;
+  /** Rows in the whole queue, which may exceed `rows` when it is paged. */
+  total?: number;
+  /** Fetches the next page. Omitted when there is nothing left to fetch. */
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
 }
 
-export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, busy = false, focusId }: ReviewQueueProps) {
+export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, busy = false, focusId, total, onLoadMore, loadingMore = false }: ReviewQueueProps) {
   // Fallback for rows the API could not price, so an unpriced amount never wears
   // a symbol the preference has moved away from.
   const appCurrency = useAppCurrency();
@@ -164,7 +169,7 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
             To review
             {rows.length > 0 ? (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary tabular-nums">
-                {rows.length}
+                {total !== undefined && total > rows.length ? `${rows.length} of ${total}` : rows.length}
               </span>
             ) : null}
           </AlertTitle>
@@ -179,6 +184,11 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
               <span className="text-[12px] text-muted-foreground">
                 {openTaxQuestions} {openTaxQuestions === 1 ? "row needs" : "rows need"} a tax answer
               </span>
+            ) : null}
+            {onLoadMore && rows.length < (total ?? rows.length) ? (
+              <Button variant="secondary" size="small" disabled={loadingMore || busy !== false} onClick={onLoadMore}>
+                {loadingMore ? "Loading…" : `Show ${Math.min(200, (total ?? rows.length) - rows.length)} more`}
+              </Button>
             ) : null}
             <Button variant="ghost" size="small" onClick={() => onDecline(rows.map((row) => row.id))}>Decline all</Button>
             {approvableRows.length > 0 ? (

@@ -49,7 +49,12 @@ async function bachsFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
       | undefined;
     const message = error?.detail ?? error?.error?.message ?? error?.message ?? error?.error?.error_code ?? error?.error_code;
     logger.warn({ path, status: response.status, message }, "bachs request failed");
-    throw new AppError(response.status === 400 ? 400 : 502, message ?? "Bachs could not complete the request.", "BACHS_UPSTREAM_ERROR");
+    // 4xx is Bachs telling us something definite — a subscription that no longer
+    // exists is a 404, and the caller must be able to tell that apart from an
+    // outage before deciding what to do with the row. Collapsing every non-400
+    // into 502 erased that distinction.
+    const status = response.status >= 400 && response.status < 500 ? response.status : 502;
+    throw new AppError(status, message ?? "Bachs could not complete the request.", "BACHS_UPSTREAM_ERROR");
   }
 
   return payload as T;
@@ -117,6 +122,7 @@ export type SubscriptionState = {
   status?: string;
   current_period_end?: string | null;
   cancel_at_period_end?: boolean;
+  trial_end?: string | null;
 };
 
 /**
@@ -130,6 +136,39 @@ export async function cancelProSubscription(subscriptionId: string): Promise<Sub
     method: "DELETE",
     body: JSON.stringify({ cancel_at_period_end: true, reason: "user_requested" }),
   });
+}
+
+/**
+ * Reads the live subscription back from Bachs.
+ *
+ * The webhook is the primary path, but it is a delivery, not a guarantee: a
+ * missing webhook secret, a redeploy mid-flight, or an event for a
+ * subscription we could not match at the time all leave the stored status
+ * frozen. That is what strands a customer on a trial that has already become
+ * a paid subscription — or, worse, on a $0.00 trial that never converts.
+ *
+ * So the row is reconciled against the source of truth on the way past.
+ */
+export async function retrieveSubscription(subscriptionId: string): Promise<SubscriptionState> {
+  return bachsFetch(`/v1/subscriptions/${subscriptionId}`, { method: "GET" });
+}
+
+/**
+ * The same read, but "Bachs has never heard of this subscription" is an answer
+ * rather than a failure.
+ *
+ * That case is the one that strands a customer: a sandbox reset, a subscription
+ * that ended and was reaped, or a row written from an event we matched
+ * incorrectly. Either way the local row claims a live trial that no longer
+ * exists, and without this the caller cannot tell that from Bachs being down.
+ */
+export async function retrieveSubscriptionOrNull(subscriptionId: string): Promise<SubscriptionState | null> {
+  try {
+    return await retrieveSubscription(subscriptionId);
+  } catch (error) {
+    if (error instanceof AppError && error.statusCode === 404) return null;
+    throw error;
+  }
 }
 
 const hmac = (secret: string, message: string) => crypto.createHmac("sha256", secret).update(message, "utf8").digest("hex");

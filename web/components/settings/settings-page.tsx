@@ -1010,7 +1010,6 @@ export function SettingsPage() {
                       {checkoutBusy ? "Opening checkout…" : "Renew Pro"}
                     </Button>
                   ) : null}
-                  <Link href="#plan" className="text-[13px] font-medium text-primary hover:text-primary">Plan details</Link>
                 </div>
               </Alert>
             ) : null}
