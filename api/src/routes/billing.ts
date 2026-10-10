@@ -317,6 +317,59 @@ billingRouter.get("/", async (req, res) => {
   });
 });
 
+type Identity = { email: string | null; firstName: string | null; lastName: string | null };
+
+/**
+ * Reads the signed-in identity out of Clerk, or null if Clerk cannot be reached.
+ *
+ * Best-effort on purpose: an outage at the checkout must not stop someone from
+ * paying.
+ */
+async function readClerkIdentity(clerkId: string, log: typeof logger): Promise<Partial<Identity> | null> {
+  try {
+    const clerkUser = await clerkClient.users.getUser(clerkId);
+    return {
+      email: clerkUser.emailAddresses[0]?.emailAddress ?? null,
+      firstName: clerkUser.firstName ?? null,
+      lastName: clerkUser.lastName ?? null,
+    };
+  } catch (error) {
+    log.warn({ clerkId, err: error }, "clerk user lookup failed");
+    return null;
+  }
+}
+
+/**
+ * Combines what Dobby holds with what Clerk reports, keeping whichever has a
+ * real value.
+ *
+ * This exists because of a specific way a user's name was being destroyed. The
+ * lookup was gated behind `if (!email)` and assigned with `??`, and neither of
+ * those does what it looks like:
+ *
+ *   - `??` only falls back on null/undefined. Clerk returns an *empty string*
+ *     for a blank last name, so `clerkUser.lastName ?? lastName` overwrote a
+ *     real surname with "" and then persisted it. A name typed into Dobby was
+ *     wiped on the way to checkout, which is also the name sent to Bachs — so
+ *     the customer was created nameless.
+ *   - Gating on `!email` meant a user who already had an email stored never had
+ *     their name refreshed from Clerk at all.
+ *
+ * Blank is treated as absent here, and the stored row only wins when Clerk has
+ * nothing to say.
+ */
+export function mergeIdentity(stored: Identity, fromClerk: Partial<Identity> | null): Identity {
+  const usable = (value: string | null | undefined) => {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    return trimmed.length > 0 ? trimmed : null;
+  };
+  return {
+    email: usable(fromClerk?.email) ?? usable(stored.email),
+    firstName: usable(fromClerk?.firstName) ?? usable(stored.firstName),
+    lastName: usable(fromClerk?.lastName) ?? usable(stored.lastName),
+  };
+}
+
 billingRouter.post("/checkout", async (req, res) => {
   const input = z.object({
     interval: z.enum(["month", "year"]).default("month"),
@@ -331,19 +384,10 @@ billingRouter.post("/checkout", async (req, res) => {
     select: { email: true, firstName: true, lastName: true },
   });
 
-  let { email, firstName, lastName } = user;
-  if (!email) {
-    try {
-      const clerkUser = await clerkClient.users.getUser(clerkId);
-      email = clerkUser.emailAddresses[0]?.emailAddress ?? null;
-      firstName = clerkUser.firstName ?? firstName;
-      lastName = clerkUser.lastName ?? lastName;
-      if (email) {
-        await prisma.user.update({ where: { clerkId }, data: { email, firstName, lastName } });
-      }
-    } catch (error) {
-      logger.warn({ clerkId, err: error }, "clerk user lookup failed");
-    }
+  const merged = mergeIdentity(user, await readClerkIdentity(clerkId, logger));
+  let { email, firstName, lastName } = merged;
+  if (email !== user.email || firstName !== user.firstName || lastName !== user.lastName) {
+    await prisma.user.update({ where: { clerkId }, data: { email, firstName, lastName } });
   }
 
   if (!email) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware/errors.js";
 import { verifyBachsSignature } from "./bachs.js";
 import { assertWalletCapacityFor, walletLimitApplies, type PlanRow } from "../middleware/plan.js";
+import { mergeIdentity } from "../routes/billing.js";
 
 /**
  * The subscription re-sync decides whether a customer keeps access they paid
@@ -65,5 +66,34 @@ describe("webhook signature", () => {
     // refuses every event, so the stored status freezes at whatever the last
     // delivery set and a trial never converts.
     expect(verifyBachsSignature({ rawBody: body, signatureV2: "t=1,v1=deadbeef", secret: "" })).toBe(false);
+  });
+});
+describe("mergeIdentity", () => {
+  const stored = { email: "nonyonah@gmail.com", firstName: "Nonso", lastName: "Onah" };
+
+  it("keeps a name typed into Dobby when Clerk reports a blank one", () => {
+    // The regression. Clerk answers with "" for a field a user never filled, and
+    // `??` does not fall back on that, so the surname was overwritten with an
+    // empty string on the way to checkout — which is also what Bachs was sent.
+    expect(mergeIdentity(stored, { firstName: "Nonso", lastName: "" })).toEqual(stored);
+    expect(mergeIdentity(stored, { firstName: "", lastName: "   " })).toEqual(stored);
+  });
+
+  it("takes a real value from Clerk when it has one", () => {
+    expect(mergeIdentity(stored, { firstName: "Chidera", lastName: null }).firstName).toBe("Chidera");
+    expect(mergeIdentity(stored, { firstName: null, lastName: "Onah" }).lastName).toBe("Onah");
+  });
+
+  it("backfills an email Clerk has and Dobby does not", () => {
+    expect(mergeIdentity({ email: null, firstName: "Nonso", lastName: "Onah" }, { email: "n@example.com" }).email)
+      .toBe("n@example.com");
+  });
+
+  it("survives a failed Clerk lookup", () => {
+    expect(mergeIdentity(stored, null)).toEqual(stored);
+  });
+
+  it("treats whitespace as blank rather than as a name", () => {
+    expect(mergeIdentity({ email: "a@b.c", firstName: "  ", lastName: null }, null).firstName).toBeNull();
   });
 });
