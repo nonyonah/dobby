@@ -8,6 +8,9 @@ import { getPrivateObjectBytes, getPrivateObjectText } from "../lib/r2.js";
 import { parseOfxQfx } from "./ofx.js";
 import { categorizeDescriptions, extractReceipt, extractStatementReport } from "../providers/gemini.js";
 import { suggestCategory } from "../lib/categorize.js";
+import { enrichStatement, type EnrichedRow } from "./enrich.js";
+import { matchDeterministic } from "./patterns.js";
+import { resolveTax } from "./enrich.js";
 import { logger } from "../lib/logger.js";
 
 /**
@@ -40,6 +43,7 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
       rules.flatMap((rule) => (rule.categoryId ? [{ matcher: rule.matcher, categoryId: rule.categoryId }] : [])),
     )?.categoryId;
   const keywordMatched = new Set<number>();
+  const patternMatched = new Set<number>();
   const enriched = prepared.map((item, index) => {
     if (!item.proposedData || typeof item.proposedData !== "object" || Array.isArray(item.proposedData)) return item;
     const proposed = item.proposedData as Record<string, unknown>;
@@ -49,6 +53,31 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
     const categoryName = categoryId ? categories.find((category) => category.id === categoryId)?.name : undefined;
     if (categoryId) keywordMatched.add(index);
     return categoryId ? { ...item, proposedData: { ...proposed, categoryId, categoryName } as Prisma.InputJsonValue } : item;
+  });
+
+  // Deterministic narration patterns, after the user's saved rules and before the
+  // model. "Mobile Data |" is not a judgement call: matching it costs nothing,
+  // is exact, and keeps a plainly-worded bank row off the LLM entirely.
+  //
+  // A pattern whose category the user has deleted or renamed does not apply —
+  // the row falls through to the model rather than being forced into a category
+  // the user no longer has.
+  const categoriesByName = new Map(categories.map((category) => [category.name.trim().toLowerCase(), category]));
+  enriched.forEach((item, index) => {
+    if (!item.proposedData || typeof item.proposedData !== "object" || Array.isArray(item.proposedData)) return;
+    const proposed = item.proposedData as Record<string, unknown>;
+    if (typeof proposed.categoryId === "string") return;
+    // Transfers are not categorised. Putting one under a spend category would
+    // put it back into the expense totals it was just removed from.
+    if (proposed.transferSource !== undefined) return;
+    const descriptor = typeof proposed.merchant === "string" ? proposed.merchant : typeof proposed.description === "string" ? proposed.description : undefined;
+    if (!descriptor) return;
+    const match = matchDeterministic(descriptor, String(proposed.type ?? ""));
+    if (!match) return;
+    const category = categoriesByName.get(match.category.toLowerCase());
+    if (!category) return;
+    patternMatched.add(index);
+    item.proposedData = { ...proposed, categoryId: category.id, categoryName: category.name, categoryPattern: match.patternId } as Prisma.InputJsonValue;
   });
   // AI fallback: batch whatever the keyword rules could not match so vague
   // bank-transfer narratives still get a suggestion with honest confidence.
@@ -94,7 +123,12 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
           const target = byIndex.get(suggestion.index);
           if (!categoryId || !target) continue;
           const proposed = target.item.proposedData as Record<string, unknown>;
-          target.item.proposedData = { ...proposed, categoryId, categoryName: suggestion.category } as Prisma.InputJsonValue;
+          target.item.proposedData = {
+            ...proposed,
+            categoryId,
+            categoryName: suggestion.category,
+            ...(suggestion.reason ? { categoryReason: suggestion.reason } : {}),
+          } as Prisma.InputJsonValue;
           aiConfidence.set(target.index, suggestion.confidence);
         }
       }
@@ -113,12 +147,51 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
     if (!item.proposedData || typeof item.proposedData !== "object" || Array.isArray(item.proposedData)) return;
     const proposed = item.proposedData as Record<string, unknown>;
     if (typeof proposed.categoryId === "string" || item.errorMessage) return;
+    // A transfer is not an uncategorised transaction — it is a classified one
+    // that deliberately sits outside income and spending.
+    if (proposed.transferSource !== undefined) return;
     enriched[index] = {
       ...item,
       proposedData: { ...proposed, categoryId: uncategorized.id, categoryName: uncategorized.name } as Prisma.InputJsonValue,
     };
     aiConfidence.set(index, 0.1);
   });
+  // Tax treatment, derived from the category that actually survived — and only
+  // for rows that are income. An expense is not a tax question, and a transfer is
+  // not income at all; both carry null rather than a false.
+  //
+  // An inflow the rules cannot resolve comes back as "ask" and keeps a null
+  // taxable value, so the review queue can put one question to the user instead
+  // of guessing whether someone received a gift or a salary.
+  const [profile] = await Promise.all([
+    prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { taxJurisdiction: true } }),
+  ]);
+  const taxCountry = profile?.taxJurisdiction ?? "NIGERIA";
+  const taxAsks = new Set<number>();
+  enriched.forEach((item, index) => {
+    if (!item.proposedData || typeof item.proposedData !== "object" || Array.isArray(item.proposedData)) return;
+    const proposed = item.proposedData as Record<string, unknown>;
+    if (item.errorMessage) return;
+    const type = String(proposed.type ?? "EXPENSE") as "INCOME" | "EXPENSE" | "TRANSFER";
+    if (type !== "INCOME") return;
+    const categoryName = typeof proposed.categoryName === "string" ? proposed.categoryName : undefined;
+    const tax = resolveTax(type, categoryName, taxCountry);
+    if (!tax) return;
+    // "ask" is a real question the user has to answer, so the flag travels with
+    // the row rather than resolving to a coin-flip. The review queue reads it to
+    // put the question to the user instead of showing a bare null.
+    const needsTaxAnswer = tax.taxTreatment === "ask";
+    item.proposedData = {
+      ...proposed,
+      isTaxable: tax.isTaxable,
+      taxableSource: tax.taxableSource,
+      taxTreatment: tax.taxTreatment,
+      ...(needsTaxAnswer ? { needsTaxAnswer: true } : {}),
+    } as Prisma.InputJsonValue;
+    if (needsTaxAnswer) taxAsks.add(index);
+
+  });
+
   const fingerprints = enriched.map((item) => item.fingerprint);
   const existing = await prisma.transaction.findMany({ where: { ownerClerkId, fingerprint: { in: fingerprints } }, select: { fingerprint: true } });
   const existingFingerprints = new Set(existing.map((item) => item.fingerprint));
@@ -126,6 +199,19 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
     ownerClerkId,
     importId: record.id,
     rowNumber: item.rowNumber,
+    ...(() => {
+      const proposed = item.proposedData && typeof item.proposedData === "object" && !Array.isArray(item.proposedData)
+        ? item.proposedData as Record<string, unknown>
+        : undefined;
+      const subAccount = typeof proposed?.subAccount === "string" ? proposed.subAccount : undefined;
+      const reference = typeof proposed?.reference === "string" ? proposed.reference : undefined;
+      const transferDirection = proposed?.transferDirection === "IN" || proposed?.transferDirection === "OUT" ? proposed.transferDirection : undefined;
+      return {
+        ...(subAccount ? { subAccount } : {}),
+        ...(reference ? { reference } : {}),
+        ...(transferDirection ? { transferDirection } : {}),
+      };
+    })(),
     status: ReviewStatus.PENDING,
     rawData: item.row,
     proposedData: item.proposedData,
@@ -133,9 +219,13 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
     confidence:
       item.errorMessage || existingFingerprints.has(item.fingerprint)
         ? 0
-        : keywordMatched.has(index)
-          ? 0.9
-          : (aiConfidence.get(index) ?? 0.5),
+        : taxAsks.has(index)
+          // An unresolved tax question is not a confident row, whatever else
+          // about it is settled.
+          ? 0.3
+          : keywordMatched.has(index) || patternMatched.has(index)
+            ? 0.9
+            : (aiConfidence.get(index) ?? 0.5),
     errorMessage: item.errorMessage ?? (existingFingerprints.has(item.fingerprint) ? "Duplicate transaction fingerprint." : null),
   }));
 
@@ -490,9 +580,20 @@ export async function settleImportsFor(importIds: Iterable<string>): Promise<voi
   await Promise.all([...new Set(importIds)].map((id) => settleImportIfResolved(id)));
 }
 
-export async function processPdfStatement(ownerClerkId: string, record: { id: string; objectKey: string; originalName?: string | null }) {
+export interface PdfStatementResult {
+  /** True when the file could not be read at all because it needs a password. */
+  encrypted: boolean;
+  rows: number;
+  /** False when a duplicate/short-circuit meant nothing was processed. */
+  processed: boolean;
+}
+
+export async function processPdfStatement(
+  ownerClerkId: string,
+  record: { id: string; objectKey: string; originalName?: string | null },
+): Promise<PdfStatementResult> {
   const bytes = await getPrivateObjectBytes(record.objectKey);
-  if (await shortCircuitIfAlreadyImported(ownerClerkId, record.id, bytes)) return;
+  if (await shortCircuitIfAlreadyImported(ownerClerkId, record.id, bytes)) return { encrypted: false, rows: 0, processed: false };
   const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
   const defaultCurrency = profile?.currency?.toUpperCase() ?? "USD";
   const report = await extractStatementReport({ mimeType: "application/pdf", bytes: bytes.toString("base64") });
@@ -509,22 +610,106 @@ export async function processPdfStatement(ownerClerkId: string, record: { id: st
         "This statement is password-protected, so nothing could be read. Unlock it in your bank app (or print it to a new PDF) and import the unlocked copy.",
     }]);
     logger.info({ importId: record.id }, "password-protected statement queued for the user");
-    return;
+    // Returned rather than swallowed. This function used to return void, so the
+    // email sync counted a locked PDF as a successful import and the message
+    // told the user nothing — the whole failure was invisible outside the
+    // review queue.
+    return { encrypted: true, rows: 0, processed: true };
   }
-  const statementRowSchema = z.object({ date: z.coerce.date(), description: z.string().min(1), amount: z.coerce.number().finite(), balance: z.coerce.number().finite().optional(), page: z.number().int().positive().optional(), currency: z.string().max(12).optional() });
-  const parsedRows = report.transactions.flatMap((item) => {
-    const parsed = statementRowSchema.safeParse(item);
-    return parsed.success ? [parsed.data] : [];
+  const statementRowSchema = z.object({
+    date: z.coerce.date(),
+    description: z.string().min(1),
+    amount: z.coerce.number().finite(),
+    balance: z.coerce.number().finite().optional(),
+    page: z.number().int().positive().optional(),
+    currency: z.string().max(12).optional(),
+    subAccount: z.string().max(60).optional(),
+    reference: z.string().max(80).optional(),
+    debit: z.coerce.number().finite().optional(),
+    credit: z.coerce.number().finite().optional(),
   });
+  const parsedRows: EnrichedRow[] = report.transactions.flatMap((item) => {
+    const parsed = statementRowSchema.safeParse(item);
+    if (!parsed.success) return [];
+    const row = parsed.data;
+    return [{
+      date: row.date.toISOString(),
+      description: row.description,
+      amount: row.amount,
+      ...(row.balance !== undefined ? { balance: row.balance } : {}),
+      ...(row.page !== undefined ? { page: row.page } : {}),
+      ...(row.currency ? { currency: row.currency } : {}),
+      ...(row.subAccount ? { subAccount: row.subAccount } : {}),
+      ...(row.reference ? { reference: row.reference } : {}),
+      ...(row.debit !== undefined ? { debit: Math.abs(row.debit) } : {}),
+      ...(row.credit !== undefined ? { credit: Math.abs(row.credit) } : {}),
+    }];
+  });
+
+  // Sections, transfers and the statement's own totals are resolved together and
+  // across the whole document: a reference only identifies a transfer once both
+  // legs are in hand, and a checksum only means anything once every section has
+  // been totalled.
+  const holder = await prisma.user.findUnique({
+    where: { clerkId: ownerClerkId },
+    select: { firstName: true, lastName: true },
+  });
+  const holderNames = [holder?.firstName, holder?.lastName].filter((part): part is string => Boolean(part && part.trim()));
+  const statement = enrichStatement(parsedRows, { holderNames, ...(report.declaredSummaries ? { declared: report.declaredSummaries } : {}) });
+
   const prepared: PreparedReview[] = [];
 
   if (parsedRows.length > 0) {
-    prepared.push(...parsedRows.map((row, index) => ({
-      row: { date: row.date.toISOString(), description: row.description, amount: row.amount, balance: row.balance, page: row.page, currency: row.currency ?? defaultCurrency },
-      rowNumber: index + 1,
-      fingerprint: fingerprintFor(row.date.toISOString(), row.amount, row.description),
-      proposedData: { type: row.amount >= 0 ? "INCOME" : "EXPENSE", amount: Math.abs(row.amount), currency: row.currency ?? defaultCurrency, description: row.description, occurredAt: row.date.toISOString() },
-    })));
+    prepared.push(...parsedRows.map((row, index) => {
+      const transfer = statement.transfers.get(index);
+      const isTransfer = transfer?.isTransfer === true;
+      const type = isTransfer ? "TRANSFER" : row.amount >= 0 ? "INCOME" : "EXPENSE";
+      return {
+        row: {
+          date: row.date,
+          description: row.description,
+          amount: row.amount,
+          balance: row.balance,
+          page: row.page,
+          currency: row.currency ?? defaultCurrency,
+          ...(row.subAccount ? { subAccount: row.subAccount } : {}),
+          ...(row.reference ? { reference: row.reference } : {}),
+          ...(row.debit !== undefined ? { debit: row.debit } : {}),
+          ...(row.credit !== undefined ? { credit: row.credit } : {}),
+        },
+        rowNumber: index + 1,
+        fingerprint: fingerprintFor(row.date, row.amount, row.description),
+        proposedData: {
+          type,
+          amount: Math.abs(row.amount),
+          currency: row.currency ?? defaultCurrency,
+          description: row.description,
+          occurredAt: row.date,
+          ...(row.subAccount ? { subAccount: row.subAccount } : {}),
+          ...(row.reference ? { reference: row.reference } : {}),
+          // A transfer carries its evidence with it: the user can see *why* it
+          // was treated as one and overrule it in the review queue.
+          ...(isTransfer ? { transferSource: transfer?.source ?? "reference" } : {}),
+          // Both legs of a transfer are TRANSFER, so the type cannot say which
+          // way this one went. The sign of the statement row does.
+          ...(isTransfer ? { transferDirection: row.amount >= 0 ? "IN" : "OUT" } : {}),
+          ...(statement.loanHints.includes(index) ? { loanHint: true } : {}),
+        },
+      };
+    }));
+  }
+
+  // A statement that does not add up is reported to the user rather than
+  // imported quietly. The rows still land in review — they are usually mostly
+  // right — but the difference in money and rows is stated outright.
+  if (statement.checkMessage) {
+    logger.warn({ importId: record.id, checks: statement.checkMessage }, "statement did not reconcile against its own totals");
+    prepared.unshift({
+      row: { reconciliation: (statement.checks ?? []) as unknown as Prisma.InputJsonValue, sections: statement.sections as unknown as Prisma.InputJsonValue },
+      rowNumber: prepared.length + 1,
+      fingerprint: fingerprintFor(undefined, undefined, `statement-check:${statement.checkMessage}`),
+      errorMessage: `This statement does not add up against its own totals — ${statement.checkMessage}. Import it anyway and the difference is listed here.`,
+    });
   }
 
   for (const page of report.failedPages) {
@@ -540,8 +725,21 @@ export async function processPdfStatement(ownerClerkId: string, record: { id: st
     prepared.push({ row: { response: JSON.stringify(report) }, rowNumber: 1, fingerprint: fingerprintFor(undefined, undefined, "PDF statement extraction failed"), errorMessage: "No valid transactions were extracted from the bank statement." });
   }
   if (prepared.length > 10_000) throw new Error("PDF statement exceeds the 10,000-row processing limit.");
-  logger.info({ importId: record.id, transactionCount: parsedRows.length, failedPages: report.failedPages.length }, "completed PDF bank statement job");
+  // Sections and reconciliation verdicts live on the import record so the
+  // approval step can create one account per section without re-reading the PDF.
+  await prisma.transactionImport.update({
+    where: { id: record.id },
+    data: {
+      sectionSummary: statement.sections as unknown as Prisma.InputJsonValue,
+      ...(statement.checks ? { checks: statement.checks as unknown as Prisma.InputJsonValue } : {}),
+    },
+  });
+  logger.info(
+    { importId: record.id, transactionCount: parsedRows.length, failedPages: report.failedPages.length, sections: statement.sections.length, reconciled: statement.checks?.every((check) => check.reconciled) ?? null },
+    "completed PDF bank statement job",
+  );
   await persistReviewItems(ownerClerkId, record, prepared);
+  return { encrypted: false, rows: prepared.length, processed: true };
 }
 
 /**
@@ -555,6 +753,8 @@ export async function processImportRecord(
 ): Promise<{ rowCount: number; reviewCount: number }> {
   if (isPdfImport(record) || isExcelImport(record)) {
     if (isPdfImport(record)) await processPdfStatement(ownerClerkId, { id: record.id, objectKey: record.objectKey, originalName: record.originalName });
+    // `encrypted` is reported through the import row below, not here: the
+    // caller needs the reason, not a boolean it would then have to look up.
     else await processExcelStatement(ownerClerkId, { id: record.id, objectKey: record.objectKey });
     const saved = await prisma.transactionImport.findUnique({ where: { id: record.id }, select: { rowCount: true } });
     const reviewCount = await prisma.transactionReviewItem.count({ where: { importId: record.id, ownerClerkId } });

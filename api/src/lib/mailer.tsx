@@ -5,7 +5,9 @@ import { env } from "../config/env.js";
 import { prisma } from "./prisma.js";
 import { logger } from "./logger.js";
 import { appUrl, formatMoney } from "../emails/links.js";
+import { TRIAL_DAYS, trialEndsAt } from "../middleware/plan.js";
 import { ImportCompleteEmail, ImportFailedEmail } from "../emails/templates/import-complete.js";
+import { TrialStartedEmail } from "../emails/templates/trial-started.js";
 import { MonthlyTaxReminderEmail } from "../emails/templates/tax-reminder.js";
 import { DeadlineReminderEmail } from "../emails/templates/deadline-reminder.js";
 
@@ -171,6 +173,68 @@ export async function notifyImportComplete(
     subject: needsReview
       ? `Dobby: ${summary.rowCount} imported from ${summary.filename}, ${summary.reviewCount} need review`
       : `Dobby: ${summary.rowCount} transactions imported`,
+    html,
+    text: plain,
+  });
+}
+
+/**
+ * The trial clock has just started (or a paid subscription became active).
+ *
+ * Reads the persisted `trialStartedAt` back rather than trusting a date passed
+ * in, so the end date in the email is derived from the same row the plan logic
+ * bills against — if the two ever disagreed the email would be the thing that
+ * is obviously wrong to the customer.
+ */
+export async function notifyTrialStarted(ownerClerkId: string, status: string): Promise<boolean> {
+  const to = await userEmailAddress(ownerClerkId);
+  if (!to) return false;
+  const firstName = await firstNameFor(ownerClerkId);
+
+  let endsOn: string | null = null;
+  try {
+    const row = await prisma.user.findUnique({
+      where: { clerkId: ownerClerkId },
+      select: { trialStartedAt: true, bachsTrialEnd: true, bachsSubscriptionStatus: true },
+    });
+    // Goes through the same helper the plan logic bills against, rather than
+    // repeating the arithmetic here — a Bachs `trial_period` wins over the local
+    // clock, and duplicating that rule is how the two would drift.
+    const end = row
+      ? trialEndsAt({
+          plan: "",
+          trialStartedAt: row.trialStartedAt,
+          bachsTrialEnd: row.bachsTrialEnd,
+          bachsSubscriptionStatus: row.bachsSubscriptionStatus,
+        })
+      : null;
+    endsOn = end
+      ? end.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" })
+      : null;
+  } catch {
+    endsOn = null;
+  }
+
+  const alreadySubscribed = status !== "trialing";
+  const text = [
+    alreadySubscribed
+      ? "Thanks for subscribing — Dobby Pro is active."
+      : `Your ${TRIAL_DAYS}-day Dobby Pro trial has started.`,
+    endsOn ? `It runs until ${endsOn}.` : "Everything in Pro is unlocked straight away.",
+    alreadySubscribed
+      ? "Your card is on file and will be charged at the end of the period. You can cancel any time before then."
+      : "We will remind you before it ends. Your card is not charged until you choose to continue.",
+    "",
+    appUrl("/app"),
+  ].join("\n");
+
+  const { html, text: plain } = await renderMail(
+    <TrialStartedEmail firstName={firstName} days={TRIAL_DAYS} endsOn={endsOn} alreadySubscribed={alreadySubscribed} />,
+    text,
+  );
+  return sendEmail({
+    to,
+    subject: alreadySubscribed ? "Dobby: your subscription is active" : `Dobby: your ${TRIAL_DAYS}-day trial has started`,
     html,
     text: plain,
   });

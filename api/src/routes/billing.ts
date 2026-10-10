@@ -9,6 +9,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createPortalSession, createProCheckout, verifyBachsSignature, type BillingInterval } from "../lib/bachs.js";
 import { computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "../middleware/plan.js";
+import { notifyTrialStarted } from "../lib/mailer.js";
 
 const WEBHOOK_PATH = "/webhook";
 
@@ -64,21 +65,31 @@ async function applySubscription(data: SubscriptionData, eventType: string) {
   }
 
   const status = data.status ?? "active";
+  const paid = PAID_STATUSES.has(status);
+  const trialing = status === "trialing";
   // A live subscription wins, `trialing` is a free period the product grants
   // (so it stays a trial), and anything else falls back to whatever the local
   // signup clock still says (keeps a trial alive through a failed payment).
-  const plan = PAID_STATUSES.has(status)
+  const plan = paid
     ? Plan.ACTIVE
-    : status === "trialing"
+    : trialing
       ? Plan.TRIAL
       : computeLocalPlan(user) === "TRIAL"
         ? Plan.TRIAL
         : Plan.EXPIRED;
 
+  // The trial clock starts with the first card subscription, not with the
+  // account. `trialStartedAt` is null until that moment, so this only fires
+  // once per user however many times Bachs re-sends the event — the guard is
+  // the stored value, not an event-type check, because `subscription.updated`
+  // repeats on every renewal.
+  const startsTrial = (paid || trialing) && !user.trialStartedAt;
+
   await prisma.user.update({
     where: { clerkId: user.clerkId },
     data: {
       plan,
+      ...(startsTrial ? { trialStartedAt: new Date() } : {}),
       bachsCustomerId: data.customer?.id ?? user.bachsCustomerId,
       bachsSubscriptionId: data.subscription_id ?? user.bachsSubscriptionId,
       bachsSubscriptionStatus: status,
@@ -88,7 +99,15 @@ async function applySubscription(data: SubscriptionData, eventType: string) {
     },
   });
 
-  logger.info({ clerkId: user.clerkId, eventType, status, plan }, "bachs subscription applied");
+  logger.info({ clerkId: user.clerkId, eventType, status, plan, startedTrial: startsTrial }, "bachs subscription applied");
+
+  // After the update, so the email can state the real end date rather than
+  // predicting it. Best-effort — a failed notification must not roll back an
+  // entitlement the customer has already paid for.
+  if (startsTrial) {
+    await notifyTrialStarted(user.clerkId, status);
+  }
+
   return true;
 }
 

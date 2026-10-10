@@ -220,14 +220,19 @@ export default async function LandingPage() {
   if (userId) return null;
 
   return (
-    <div id="top" className="min-h-dvh bg-[#080A09]" style={{ ["--background" as string]: "#080A09" }}>
+    // Theme tokens, not fixed hex. This used to pin the whole marketing tree
+    // to near-black with a hard-coded background *and* an inline `--background`
+    // override, so the page ignored the theme entirely — and because the text
+    // classes are all tokens, light mode ended up painting dark text onto that
+    // forced dark ground. The tokens flip with the rest of the app.
+    <div id="top" className="min-h-dvh bg-background">
       <LandingNav />
       <main id="main">
         <Hero />
         <Features />
         <Pricing />
       </main>
-      <footer className="min-h-[216.5px] py-12 sm:h-[216.5px] sm:py-0 bg-[#131517]">
+      <footer className="min-h-[216.5px] py-12 sm:h-[216.5px] sm:py-0 bg-card">
         <Reveal className="mx-auto flex h-full w-full max-w-6xl flex-col items-start justify-center gap-8 px-5 sm:flex-row sm:items-center sm:justify-between sm:px-[60px]">
           <div className="flex flex-col items-start gap-10 sm:gap-[68px]">
             <Link href="/" className="flex items-center gap-2">

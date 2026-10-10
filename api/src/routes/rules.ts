@@ -88,7 +88,11 @@ rulesRouter.post("/reapply", async (req, res) => {
     let count = 0;
     for (;;) {
       const page = await prisma.transaction.findMany({
-        where: { ownerClerkId },
+        // `userOverridden: false` is the whole point of that flag: a row the user
+        // has edited is a decision, not a guess, and re-applying a rule over it
+        // is what made manual corrections appear not to stick. This endpoint
+        // previously walked the entire ledger with no exclusion at all.
+        where: { ownerClerkId, userOverridden: false },
         select: { id: true, description: true, merchant: true },
         orderBy: { id: "asc" },
         take: REAPPLY_BATCH,

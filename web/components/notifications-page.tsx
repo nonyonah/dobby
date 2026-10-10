@@ -130,16 +130,20 @@ export default function NotificationsPage() {
                 <span className="hidden shrink-0 text-[11px] font-medium text-muted-foreground sm:inline">
                   {KIND_LABEL[item.kind]}
                 </span>
-                <Link
-                  href={item.href}
-                  onClick={() => markRead(item.id)}
-                  className="flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1 text-[12px] font-medium text-primary outline-none hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-                >
-                  <CheckIcon /> {item.action}
-                  <span aria-hidden="true" className="inline-flex -rotate-90">
-                    <CaretDownIcon />
-                  </span>
-                </Link>
+                {/* Items with no action (a locked attachment has nothing to
+                    approve) render without a link rather than an empty one. */}
+                {item.action && item.href ? (
+                  <Link
+                    href={item.href}
+                    onClick={() => markRead(item.id)}
+                    className="flex shrink-0 items-center gap-0.5 rounded-md px-2 py-1 text-[12px] font-medium text-primary outline-none hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+                  >
+                    <CheckIcon /> {item.action}
+                    <span aria-hidden="true" className="inline-flex -rotate-90">
+                      <CaretDownIcon />
+                    </span>
+                  </Link>
+                ) : null}
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={

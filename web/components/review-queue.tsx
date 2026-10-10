@@ -55,7 +55,12 @@ export interface ReviewCategoryOption {
 interface ReviewQueueProps {
   rows: TxFull[];
   categories: ReviewCategoryOption[];
-  onApprove: (ids: string[], overrides?: Record<string, string>) => void;
+  /**
+   * `overrides` carries the user's per-row choices: the category, and the answer
+   * to the tax question when a row raised one. Both travel with the approval so
+   * the row lands correct rather than being approved and corrected later.
+   */
+  onApprove: (ids: string[], overrides?: Record<string, string>, taxAnswers?: Record<string, boolean>) => void;
   onDecline: (ids: string[]) => void;
   onEdit: (id: string) => void;
   /** An approval is in flight — approve controls lock with progress copy. A string overrides the label. */
@@ -71,6 +76,10 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
   const busyLabel = typeof busy === "string" ? busy : "Approving…";
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, string>>({});
+  // The tax question is only ever shown for an inflow the rules could not
+  // resolve, so an answer is only ever sent for a row that asked.
+  const [taxAnswers, setTaxAnswers] = useState<Record<string, boolean>>({});
+  const openTaxQuestions = rows.filter((row) => row.needsTaxAnswer && !row.needsManualReview).length;
   const reduce = useReducedMotion() ?? false;
   const allChecked = rows.length > 0 && rows.every((row) => checked.has(row.id));
   const approvableRows = rows.filter((row) => !row.needsManualReview);
@@ -111,9 +120,15 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
     for (const id of approvableIds) {
       if (overrides[id]) selectedOverrides[id] = overrides[id];
     }
-    onApprove(approvableIds, selectedOverrides);
+    const selectedTax = Object.fromEntries(approvableIds.filter((id) => taxAnswers[id] !== undefined).map((id) => [id, taxAnswers[id]!]));
+    onApprove(approvableIds, selectedOverrides, selectedTax);
     setChecked((current) => new Set([...current].filter((id) => !approvableIds.includes(id))));
     setOverrides((current) => {
+      const next = { ...current };
+      for (const id of approvableIds) delete next[id];
+      return next;
+    });
+    setTaxAnswers((current) => {
       const next = { ...current };
       for (const id of approvableIds) delete next[id];
       return next;
@@ -157,6 +172,14 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
         </AlertContent>
         {rows.length > 0 ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2 self-center">
+            {/* Surfaced rather than buried per row: an unanswered tax question
+                silently understates the year's income, and a total is easier to
+                act on than one cell per row. */}
+            {openTaxQuestions > 0 ? (
+              <span className="text-[12px] text-muted-foreground">
+                {openTaxQuestions} {openTaxQuestions === 1 ? "row needs" : "rows need"} a tax answer
+              </span>
+            ) : null}
             <Button variant="ghost" size="small" onClick={() => onDecline(rows.map((row) => row.id))}>Decline all</Button>
             {approvableRows.length > 0 ? (
               <Button variant="primary" size="small" disabled={busy !== false} onClick={() => approve(approvableRows.map((row) => row.id))}>
@@ -195,7 +218,8 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                   const suggestedId = categories.some((c) => c.id === row.categoryId) ? row.categoryId : undefined;
                   return <TableRow key={row.id} id={row.id} data-focused={focusId === row.id ? "true" : undefined} className={`border-b border-line last:border-0 ${focusId === row.id ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""}`}>
                     <TableCell className="px-2 py-3"><input type="checkbox" checked={checked.has(row.id)} onChange={() => toggle(row.id)} aria-label={`Select row: ${row.name}`} className="size-4 accent-primary" /></TableCell>
-                    <TableCell className="px-2 py-3 leading-normal"><span className="block font-medium">{row.name}</span><span className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-muted-foreground"><span>{row.account} · {row.date.slice(5).replace("-", "/")}</span><span className="inline-flex items-center gap-1 md:hidden" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></span></TableCell>
+                    <TableCell className="px-2 py-3 leading-normal"><span className="block font-medium">{row.name}</span><span className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-muted-foreground"><span>{row.account} · {row.date.slice(5).replace("-", "/")}</span><span className="inline-flex items-center gap-1 md:hidden" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></span>{/* A locked file has no category and no amount to judge, so the row
+                        carries its resolution path instead of the usual meta. */}{row.needsUnlocking ? <span className="mt-1 block text-[12px] text-muted-foreground">{row.note}</span> : null}</TableCell>
                     <TableCell className="px-2 py-3">
                       {categories.length > 0 ? (
                         <select
@@ -214,11 +238,44 @@ export function ReviewQueue({ rows, categories, onApprove, onDecline, onEdit, bu
                       ) : (
                         <CategoryChip id={row.categoryId ?? row.category} name={row.categoryName} color={row.categoryColor} />
                       )}
-                      <span className="ml-2 text-[11px] text-muted-foreground">{row.taxable ? "Taxable" : "Non-tax"} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}</span>
+                      <span className="ml-2 text-[11px] text-muted-foreground">
+                        {row.needsTaxAnswer && taxAnswers[row.id] === undefined
+                          ? "Tax: needs your answer"
+                          : `${row.taxable ? "Taxable" : "Non-tax"}`} · {row.parse.confidence}%{overrides[row.id] ? " · edited" : ""}
+                      </span>
+                      {/* One question, one tap. The rules cannot tell a gift from a
+                          salary from a loan repayment, and the user is the only
+                          one who can — so it is asked here rather than guessed at
+                          and corrected later in the tax summary. */}
+                      {row.needsTaxAnswer && !row.needsManualReview ? (
+                        <span className="ml-2 inline-flex items-center gap-1">
+                          <span className="text-[11px] text-muted-foreground">Count as</span>
+                          <Button
+                            variant={taxAnswers[row.id] === true ? "primary" : "ghost"}
+                            size="small"
+                            className="h-6 px-1.5 text-[11px]"
+                            aria-pressed={taxAnswers[row.id] === true}
+                            onClick={() => setTaxAnswers((current) => ({ ...current, [row.id]: true }))}
+                          >
+                            Taxable
+                          </Button>
+                          <Button
+                            variant={taxAnswers[row.id] === false ? "primary" : "ghost"}
+                            size="small"
+                            className="h-6 px-1.5 text-[11px]"
+                            aria-pressed={taxAnswers[row.id] === false}
+                            onClick={() => setTaxAnswers((current) => ({ ...current, [row.id]: false }))}
+                          >
+                            Not taxable
+                          </Button>
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="hidden px-2 py-3 md:table-cell"><span className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground" title={SOURCE_LABEL[row.source]}><SourceIcon />{SOURCE_LABEL[row.source]}</span></TableCell>
                     <TableCell className="px-2 py-3 text-right">
-                      {row.needsManualReview ? (
+                      {row.needsUnlocking ? (
+                        <span className="mono text-[12px] text-muted-foreground">Locked</span>
+                      ) : row.needsManualReview ? (
                         <span className="mono text-[12px] text-muted-foreground">Not extracted</span>
                       ) : (
                         <span className="mono block tabular-nums">

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { Shell } from "@/components/shell";
 import { Segmented } from "@/components/ui/segmented";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -82,10 +81,15 @@ function shortAddress(address: string): string {
 
 function StatCard({ label, value, hint, accent }: { label: string; value: string; hint: string; accent?: string }) {
   return (
-    <Card className="gap-1 p-4 sm:p-5">
-      <p className="m-0 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-      <p className="mono m-0 text-[28px] font-semibold tracking-[-0.02em] text-foreground tabular-nums sm:text-[32px]">{value}</p>
-      <p className="m-0 mt-1 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+    <Card className="gap-0 p-4" aria-label={label}>
+      <section>
+        {/* Matches MoneyStats exactly: the stablecoin tab shows balances with
+            these same sizes, so a figure that is louder here makes the two
+            surfaces read as different products. */}
+        <h2 className="m-0 text-[12px] font-medium text-muted-foreground">{label}</h2>
+        <p className="mono m-0 mt-2 text-lg font-semibold tracking-[-0.02em] text-foreground tabular-nums sm:text-xl">{value}</p>
+      </section>
+      <p className="m-0 mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
         {accent ? <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: accent }} /> : null}
         <span className="truncate">{hint}</span>
       </p>
@@ -220,9 +224,16 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
   // the id is stale (deleted, or from another account).
   const missing = !loading && !balancesFailed && snapshot !== null && wallet === null;
 
+  // No <Shell> here on purpose: `AppShell` in the (app) layout already owns the
+  // sidebar, top bar, collapse toggle and floating support button for every page
+  // in the group. Rendering a second one nested it inside the first produced a
+  // full-height app-in-app — two sidebars, two collapse toggles — which read as
+  // a separate dashboard rather than a page of this one.
   return (
-    <Shell title={wallet?.displayName ?? "Wallet"} active="transactions">
-      <div className="flex flex-col gap-4 p-4 sm:p-6">
+    // The same wrapper every other page uses, so this scrolls in the shell's
+    // one shared container instead of introducing a second scrollbar of its own.
+    <div className="w-full px-6 pt-6 pb-10">
+      <div className="flex flex-col gap-4">
         {missing ? (
           <Card className="p-0">
             <EmptyState
@@ -235,134 +246,134 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
             />
           </Card>
         ) : (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Segmented
-                label="Account type"
-                value={tab}
-                onValueChange={(value) => setTab(value as Tab)}
-                options={[
-                  { value: "wallet", label: "Wallet" },
-                  // Built and intentionally switched off until statement
-                  // review ships — the design is ready, the data is not.
-                  { value: "accounts", label: "Bank accounts", disabled: true },
-                ]}
-              />
-              <Button variant="secondary" size="small" onClick={() => router.push("/settings")}>
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Segmented
+                  label="Account type"
+                  value={tab}
+                  onValueChange={(value) => setTab(value as Tab)}
+                  options={[
+                    { value: "wallet", label: "Wallet" },
+                    // Built and intentionally switched off until statement
+                    // review ships — the design is ready, the data is not.
+                    { value: "accounts", label: "Bank accounts", disabled: true },
+                  ]}
+                />
+                <Button variant="secondary" size="small" onClick={() => router.push("/settings")}>
                 Manage connections
               </Button>
             </div>
 
-            {tab === "accounts" ? (
-              <AccountsTab accounts={snapshot?.accounts ?? []} loading={loading} />
-            ) : (
-              <>
-                {wallet ? (
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
-                      <WalletIcon className="size-4" />
+              {tab === "accounts" ? (
+                <AccountsTab accounts={snapshot?.accounts ?? []} loading={loading} />
+              ) : (
+                <>
+                  {wallet ? (
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                        <WalletIcon className="size-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground">{wallet.displayName}</span>
+                          <ChainLogo
+                            chain={wallet.chain}
+                            className="block size-3.5 shrink-0 rounded-full ring-1 ring-inset ring-foreground/10"
+                          />
+                        </span>
+                        <span className="mono block truncate text-[12px] text-muted-foreground">
+                          {chainLabel(wallet.chain)} · {wallet.address}
+                        </span>
+                      </span>
+                      {wallet.status !== "ok" ? (
+                        <span
+                          className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${wallet.status === "provider_unconfigured" ? "bg-warning-soft text-warning" : "bg-destructive-soft text-destructive"}`}
+                        >
+                          {wallet.status === "provider_unconfigured" ? "Provider not configured" : "Lookup failed"}
+                        </span>
+                      ) : null}
+                  </div>
+                  ) : null}
+
+                  {/* Two cards: what this wallet holds, and in how many assets. */}
+                  {loading ? (
+                    <LoadingRegion label="Loading wallet balances" className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                      <StatSkeleton cols={1} />
+                      <StatSkeleton cols={1} />
+                    </LoadingRegion>
+                  ) : (
+                    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                      <StatCard
+                        label="Total holdings"
+                        value={formatCurrency(display?.amount ?? 0, display?.currency ?? "USD")}
+                        hint={wallet?.status === "ok" ? "Live balance" : "Balance unavailable"}
+                      />
+                      <StatCard
+                        label="Assets"
+                        value={String(assets.length)}
+                        hint={
+                          assets.length > 0
+                            ? assets.slice(0, 3).map((item) => item.name).join(" · ") + (assets.length > 3 ? ` +${assets.length - 3}` : "")
+                            : "Nothing priced yet"
+                        }
+                        accent={assets[0]?.color}
+                      />
+                  </div>
+                  )}
+
+                  {loading ? (
+                    <LoadingRegion label="Loading asset breakdown">
+                      <ChartSkeleton height="h-[220px]" />
+                    </LoadingRegion>
+                  ) : (
+                    <BreakdownPie title="Holdings by asset" items={assets} filterLabel="All assets" />
+                  )}
+
+                  <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+                    <div className="lg:col-span-2">
+                      {summaryState === "loading" ? (
+                        <LoadingRegion label="Loading on-chain activity" className="mb-2">
+                          <TableSkeletonRows rows={4} columns={2} />
+                        </LoadingRegion>
+                      ) : null}
+                      <FlowTable title="Recent activity" typeLabel="On-chain" filterLabel={chainLabel(wallet?.chain ?? "BASE")} rows={rows} signed />
+                  </div>
+
+                    <Card className="gap-0 p-0">
+                      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+  <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Asset detail</span>
+                    <span className="rounded-full border border-line bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {assets.length}
                     </span>
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate text-[15px] font-semibold text-foreground">{wallet.displayName}</span>
-                        <ChainLogo
-                          chain={wallet.chain}
-                          className="block size-3.5 shrink-0 rounded-full ring-1 ring-inset ring-foreground/10"
-                        />
-                      </span>
-                      <span className="mono block truncate text-[12px] text-muted-foreground">
-                        {chainLabel(wallet.chain)} · {wallet.address}
-                      </span>
-                    </span>
-                    {wallet.status !== "ok" ? (
-                      <span
-                        className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${wallet.status === "provider_unconfigured" ? "bg-warning-soft text-warning" : "bg-destructive-soft text-destructive"}`}
-                      >
-                        {wallet.status === "provider_unconfigured" ? "Provider not configured" : "Lookup failed"}
-                      </span>
-                    ) : null}
                   </div>
-                ) : null}
-
-                {/* Two cards: what this wallet holds, and in how many assets. */}
-                {loading ? (
-                  <LoadingRegion label="Loading wallet balances" className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                    <StatSkeleton cols={1} />
-                    <StatSkeleton cols={1} />
-                  </LoadingRegion>
-                ) : (
-                  <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                    <StatCard
-                      label="Total holdings"
-                      value={formatCurrency(display?.amount ?? 0, display?.currency ?? "USD")}
-                      hint={wallet?.status === "ok" ? "Live balance" : "Balance unavailable"}
-                    />
-                    <StatCard
-                      label="Assets"
-                      value={String(assets.length)}
-                      hint={
-                        assets.length > 0
-                          ? assets.slice(0, 3).map((item) => item.name).join(" · ") + (assets.length > 3 ? ` +${assets.length - 3}` : "")
-                          : "Nothing priced yet"
-                      }
-                      accent={assets[0]?.color}
-                    />
-                  </div>
-                )}
-
-                {loading ? (
-                  <LoadingRegion label="Loading asset breakdown">
-                    <ChartSkeleton height="h-[220px]" />
-                  </LoadingRegion>
-                ) : (
-                  <BreakdownPie title="Holdings by asset" items={assets} filterLabel="All assets" />
-                )}
-
-                <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-                  <div className="lg:col-span-2">
-                    {summaryState === "loading" ? (
-                      <LoadingRegion label="Loading on-chain activity" className="mb-2">
-                        <TableSkeletonRows rows={4} columns={2} />
-                      </LoadingRegion>
-                    ) : null}
-                    <FlowTable title="Recent activity" typeLabel="On-chain" filterLabel={chainLabel(wallet?.chain ?? "BASE")} rows={rows} signed />
-                  </div>
-
-                  <Card className="gap-0 p-0">
-                    <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-                      <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">Asset detail</span>
-                      <span className="rounded-full border border-line bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                        {assets.length}
-                      </span>
-                    </div>
-                    <ul className="m-0 list-none p-0">
-                      {assets.map((asset) => {
-                        const share = heldUsd > 0 ? (asset.amount / heldUsd) * 100 : 0;
-                        return (
-                          <li key={asset.id} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
-                            <span aria-hidden="true" className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: asset.color }} />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-[13px] font-medium text-foreground">{asset.name}</span>
-                              <span className="block text-[11px] text-muted-foreground">{share.toFixed(0)}% of holdings</span>
-                            </span>
-                            <span className="mono shrink-0 text-[13px] font-medium text-foreground tabular-nums">{formatUSD(asset.amount)}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {assets.length === 0 && !loading ? (
-                      <p className="m-0 px-4 py-6 text-center text-[13px] text-muted-foreground">
-                        No priced assets in this wallet.
-                      </p>
-                    ) : null}
-                  </Card>
-                </div>
-              </>
-            )}
-          </>
+                  <ul className="m-0 list-none p-0">
+                    {assets.map((asset) => {
+                      const share = heldUsd > 0 ? (asset.amount / heldUsd) * 100 : 0;
+                      return (
+                        <li key={asset.id} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+                          <span aria-hidden="true" className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: asset.color }} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-medium text-foreground">{asset.name}</span>
+                            <span className="block text-[11px] text-muted-foreground">{share.toFixed(0)}% of holdings</span>
+                          </span>
+                          <span className="mono shrink-0 text-[13px] font-medium text-foreground tabular-nums">{formatUSD(asset.amount)}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {assets.length === 0 && !loading ? (
+                    <p className="m-0 px-4 py-6 text-center text-[13px] text-muted-foreground">
+                      No priced assets in this wallet.
+                    </p>
+                  ) : null}
+                </Card>
+              </div>
+                </>
+              )}
+            </>
         )}
       </div>
-    </Shell>
+    </div>
   );
 }
 

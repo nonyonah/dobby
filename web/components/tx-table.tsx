@@ -258,6 +258,11 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     let spent = 0;
     let income = 0;
     for (const t of filtered) {
+      // A transfer is money moving between the user's own pockets. Its sign is
+      // real — one leg is genuinely positive — but counting that leg as income
+      // is exactly what transfer detection exists to prevent, so the type is
+      // checked before the sign is.
+      if (t.kind === "TRANSFER") continue;
       if (t.amount >= 0) income += t.amount;
       else spent += Math.abs(t.amount);
     }

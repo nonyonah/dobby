@@ -1,7 +1,12 @@
 import { prisma } from "../lib/prisma.js";
 import { AppError } from "./errors.js";
 
-/** Length of the free trial granted at sign-up. No payment card is collected. */
+/**
+ * Length of the free trial granted when the user first checks out with a card.
+ * No trial is granted by signing up: `trialStartedAt` stays null until the
+ * Bachs subscription webhook sets it, so an account that never pays still has
+ * its full week waiting.
+ */
 export const TRIAL_DAYS = 7;
 const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 

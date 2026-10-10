@@ -1,0 +1,12 @@
+-- The free trial belongs to the paid card subscription, not to sign-up.
+--
+-- `trialStartedAt` defaulted to `now()`, which started the 7-day clock the
+-- moment the user row was created — so the trial burned down while someone was
+-- still deciding whether they wanted the product, and a user who never opened
+-- checkout still arrived to find it already gone.
+--
+-- New rows now start with NULL ("no trial yet"), and the clock is started by the
+-- Bachs subscription webhook when the first card subscription lands. Existing
+-- rows keep the value they already had: their trial was genuinely consumed, and
+-- rewriting it would hand every current user a fresh week.
+ALTER TABLE "User" ALTER COLUMN "trialStartedAt" DROP DEFAULT;

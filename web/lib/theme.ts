@@ -14,6 +14,46 @@ export const ACCENT_COLORS: Array<{ id: AccentColor; label: string; value: strin
 export const DEFAULT_ACCENT: AccentColor = "brand";
 export const ACCENT_STORAGE_KEY = "dobby-accent-color";
 
+/* -------------------------------------------------------------- theme */
+
+/**
+ * `system` follows the OS and keeps following it live; `light`/`dark` pin the
+ * choice. Default is `system` so a first-time visitor on a light machine sees
+ * the light palette, which is what the OS asked for.
+ */
+export type ThemePreference = "light" | "dark" | "system";
+export type ResolvedTheme = "light" | "dark";
+
+export const THEME_STORAGE_KEY = "dobby-theme";
+/** Fired after a change so other mounted components can re-read the preference. */
+export const THEME_CHANGE_EVENT = "dobby-theme-change";
+
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "light" || value === "dark" || value === "system";
+}
+
+/** The stored preference, or `null` when nothing valid is stored. */
+export function readStoredTheme(): ThemePreference | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return isThemePreference(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function systemPrefersDark(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+/** Turn a preference into the palette that will actually be painted. */
+export function resolveTheme(preference: ThemePreference): ResolvedTheme {
+  if (preference !== "system") return preference;
+  return systemPrefersDark() ? "dark" : "light";
+}
+
 /**
  * The accent saved on this device, or `null` when nothing valid is stored.
  *
@@ -92,6 +132,55 @@ export function applyAccentColor(accent: AccentColor) {
   set("--brand-soft-foreground", tintForeground);
   set("--brand-token", tint);
   set("--brand-token-foreground", tintForeground);
+}
+
+/**
+ * Applies a theme preference to `<html>`.
+ *
+ * Dark is class-driven, never a `prefers-color-scheme` media query: the
+ * `@custom-variant dark` in globals.css and the `.dark { … }` token block are
+ * what every `dark:` utility reads, so this only has to flip that one class.
+ * Adding a media query back would tie every `dark:` utility to the OS again
+ * and silently break an explicit choice.
+ *
+ * The accent is re-applied here on purpose — its shades are derived from
+ * whether `.dark` is present, so without this a light/dark switch leaves tinted
+ * surfaces belonging to the mode just left behind.
+ */
+export function applyTheme(preference: ThemePreference, options: { animate?: boolean } = {}) {
+  if (typeof document === "undefined") return;
+  const resolved = resolveTheme(preference);
+  const mutate = () => {
+    const root = document.documentElement;
+    root.classList.toggle("dark", resolved === "dark");
+    // Legacy HeroUI attribute — nothing reads it now, but the no-flash script
+    // keeps it in step so nothing observing <html> sees a mismatch.
+    root.dataset.theme = resolved;
+    applyAccentColor(readStoredAccent() ?? DEFAULT_ACCENT);
+  };
+  if (options.animate === false) {
+    mutate();
+    return;
+  }
+  withoutTransitions(mutate);
+}
+
+/**
+ * Persists a preference and applies it. `persist: false` applies without
+ * writing, which is what the no-flash boot path and cross-tab sync want.
+ */
+export function setTheme(preference: ThemePreference, options: { animate?: boolean; persist?: boolean } = {}) {
+  if (typeof window !== "undefined" && options.persist !== false) {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, preference);
+    } catch {
+      // storage unavailable — the theme still applies for this page view
+    }
+  }
+  applyTheme(preference, options);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: preference }));
+  }
 }
 
 /* ------------------------------------------------------------------ misc */

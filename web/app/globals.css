@@ -603,3 +603,181 @@ textarea {
     transition: none !important;
   }
 }
+
+/* ------------------------------------------------------------------ tutorial */
+/*
+ * Overrides for driver.js, not a reimplementation of it. driver.css supplies the
+ * mechanics — `position: fixed` on the panel, the z-index above the app shell,
+ * `pointer-events: none` on the page, the arrow geometry and its side classes.
+ * Everything below is presentation only, written against the same custom
+ * properties as the rest of the app, so a theme flip or accent change is picked
+ * up with no JS and no re-render.
+ *
+ * Radius follows the product rule — the panel keeps the conventional
+ * `rounded-lg` because it is a popover, while the controls inside are pills
+ * because they are clicked in place. Only `transform`, `opacity` and `color`
+ * are ever transitioned.
+ *
+ * Loaded after driver.css, so equal specificity resolves to these rules. The
+ * arrow needs `!important` because driver.css sets individual border colours to
+ * transparent per side, and those must keep winning.
+ */
+
+html .driver-popover {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.625rem);
+  box-shadow: 0 8px 24px rgb(23 24 28 / 0.16);
+  padding: 0;
+  max-width: 320px;
+  font-family: inherit;
+  animation: driver-pop-in 200ms var(--ease-out);
+}
+.dark .driver-popover {
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.55);
+}
+
+html .driver-popover-arrow {
+  border-bottom-color: var(--popover) !important;
+  border-top-color: var(--popover) !important;
+}
+
+html .driver-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--popover-foreground);
+  padding: 14px 16px 0 16px;
+  /* Keeps the title clear of the absolutely-positioned close control. */
+  padding-right: 36px;
+  margin: 0;
+}
+
+html .driver-popover-description {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  padding: 6px 16px 0;
+  margin: 0;
+}
+
+html .driver-popover-footer {
+  padding: 14px 16px;
+  margin: 0;
+  gap: 8px;
+}
+
+/* Progress is a text counter ("1 of 6"); driver.js renders no bar. */
+html .driver-popover-progress-text {
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+html .driver-popover-close-btn {
+  background: transparent;
+  border: 0;
+  color: var(--faint);
+  opacity: 0.7;
+  transition: color 150ms var(--ease-out), opacity 150ms var(--ease-out);
+}
+html .driver-popover-close-btn:hover {
+  color: var(--foreground);
+  opacity: 1;
+}
+html .driver-popover-close-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+/* Controls: pills, per the radius rule for things clicked in place. */
+html .driver-popover-footer button {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 8px 14px;
+  border-radius: 50px;
+  cursor: pointer;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
+  transition: color 150ms var(--ease-out), background-color 150ms var(--ease-out),
+    transform 150ms var(--ease-out);
+}
+html .driver-popover-footer button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+html .driver-popover-footer button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+/*
+ * Scoped under the footer on purpose. The generic `html .driver-popover-footer
+ * button` rule is (0,1,2) — one class, two types — while a bare
+ * `html .driver-popover-next-btn` is only (0,1,1), so Next silently inherited
+ * the secondary fill. The `:hover` rule was specific enough to win, which made
+ * it look correct only while hovered. This selector is (0,2,1) and actually wins.
+ */
+html .driver-popover-footer .driver-popover-next-btn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid var(--primary);
+}
+html .driver-popover-footer .driver-popover-next-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 90%, transparent);
+}
+/*
+ * Disabled at 0.4 the label blended down to 2.3–3.2:1 against its own fill —
+ * below AA for the 12px text it carries. 0.7 clears 4.5:1 in both themes while
+ * still reading as inactive next to the enabled button beside it.
+ */
+html .driver-popover-footer button:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* driver.js writes `--driver-animation-duration` onto <body> from `duration`;
+   only the entrance is animated here, so the exit is immediate rather than
+   half-finished. */
+html .driver-fade .driver-overlay {
+  animation: driver-fade-in var(--driver-animation-duration, 260ms) var(--ease-out);
+}
+html .driver-popover.driver-popover-leaving {
+  animation: driver-pop-out 140ms var(--ease-out) forwards;
+}
+
+@keyframes driver-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes driver-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+@keyframes driver-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html .driver-popover,
+  html .driver-fade .driver-overlay {
+    animation: none !important;
+  }
+}

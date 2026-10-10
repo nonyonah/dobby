@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { convertCurrencyAmount } from "../providers/frankfurter.js";
+import { logger } from "../lib/logger.js";
 
 export const transactionsRouter = Router();
 transactionsRouter.use(requireAuth);
@@ -21,8 +22,15 @@ const transactionSchema = z.object({
   assetSymbol: z.string().trim().max(32).toUpperCase().nullable().optional(),
   externalId: z.string().trim().max(160).nullable().optional(),
   fingerprint: z.string().trim().max(255).nullable().optional(),
+  // Bank transaction reference. A string with no numeric coercion on purpose:
+  // real references carry leading zeros, and parsing them as numbers drops
+  // those zeros, which silently breaks transfer pairing on exactly the rows
+  // that depend on it.
+  reference: z.string().trim().max(120).nullable().optional(),
+  /** Section of a multi-account statement this row came from. */
+  subAccount: z.string().trim().max(80).nullable().optional(),
   isRecurring: z.boolean().optional(),
-  isTaxable: z.boolean().optional(),
+  isTaxable: z.boolean().nullable().optional(),
   // Which liability an income row attracts: UK Class 1 vs Class 4 NI, US
   // self-employment tax. Left off entirely for non-income rows.
   incomeSource: z.nativeEnum(IncomeSource).nullable().optional(),
@@ -93,6 +101,12 @@ transactionsRouter.get("/", async (req, res) => {
     isRecurring: true,
     isTaxable: true,
     needsReview: true,
+    // Carried so the ledger can show which statement section a row came from
+    // and which way a transfer moved, rather than a bare sign.
+    subAccount: true,
+    reference: true,
+    transferSource: true,
+    transferDirection: true,
     account: { select: { name: true } },
     category: { select: { id: true, name: true, color: true } },
   } as const;
@@ -184,6 +198,13 @@ transactionsRouter.patch("/:id", async (req, res) => {
     res.status(400).json({ error: { code: "INVALID_RELATION", message: relationError } });
     return;
   }
+  // Any of these is the user making a decision about the row. Recording it once,
+  // here, is what lets every automated pass skip the row afterwards — rules
+  // re-apply was walking the whole ledger with no exclusion and silently
+  // reverting manual edits.
+  const DECISION_FIELDS = ["type", "categoryId", "isTaxable", "amount", "description", "subAccount", "reference"] as const;
+  const isDecision = DECISION_FIELDS.some((field) => input[field] !== undefined);
+
   const updateData: Prisma.TransactionUncheckedUpdateInput = {
     ...input,
     metadata: input.metadata === null ? Prisma.JsonNull : (input.metadata as Prisma.InputJsonValue | undefined),
@@ -191,12 +212,18 @@ transactionsRouter.patch("/:id", async (req, res) => {
     ...(input.incomeSource !== undefined
       ? { incomeSource: (input.type ?? existing.type) === "INCOME" ? input.incomeSource : null }
       : {}),
+    // A taxable value the user set outranks anything the tax module would
+    // derive, so its provenance changes with it.
+    ...(input.isTaxable !== undefined ? { taxableSource: "user" as const } : {}),
+    ...(isDecision ? { userOverridden: true } : {}),
   };
   const transaction = await prisma.transaction.update({
     where: { id: existing.id },
     data: updateData,
     include: { account: true, category: true },
   });
+
+  logger.info({ transactionId: transaction.id, userOverridden: isDecision }, "transaction updated by user");
   res.json({ data: transaction });
 });
 

@@ -1,12 +1,21 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { ClerkProvider } from "@clerk/nextjs";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import { Inter } from "next/font/google";
-import { AccentSync } from "@/components/accent-sync";
+import { ThemeSync } from "@/components/theme-sync";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { UserbackProvider } from "@/components/userback";
 import { AnchoredToastProvider, ToastProvider } from "@/components/ui/toast";
 import { Analytics } from "@vercel/analytics/next";
+// driver.css carries the functional baseline the library depends on:
+// `position: fixed` on the popover (driver.js writes `left/top/right/bottom`
+// inline and they do nothing without it), the z-index above the app shell,
+// `pointer-events: none` on the page so the tour is modal, and the arrow
+// geometry. Those are mechanics, not style, so they are imported rather than
+// reimplemented. Imported before globals.css so the token-based overrides at the
+// bottom of globals.css win on equal specificity.
+import "driver.js/dist/driver.css";
 import "./globals.css";
 
 const inter = Inter({
@@ -32,13 +41,23 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider appearance={clerkAppearance}>
-      {/* Permanent dark mode. The class and the HeroUI attribute are stamped
-          here at render time — no stored preference, no inline script, no
-          first-paint flash: the server sends the page already dark. */}
-      <html lang="en" className={`${inter.variable} h-full antialiased dark`} data-theme="dark">
+      {/* Dark is class-driven, not a media query, so the palette ships light by
+          default and the script above decides the real one before paint. */}
+      <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
         <body className="relative min-h-full flex flex-col">
+          {/* Must be `next/script`, not a raw <script> element: React never
+              executes a <script> rendered inside a component on the client
+              ("Encountered a script tag while rendering React component"), so
+              the raw version silently never ran. beforeInteractive puts it in
+              the document head during SSR, ahead of first paint. */}
+          <Script id="dobby-theme-boot" strategy="beforeInteractive">
+            {`(function(){try{var k="dobby-theme",s=localStorage.getItem(k);
+var d=s==="dark"||(s!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);
+var r=document.documentElement;
+r.classList.toggle("dark",d);r.dataset.theme=d?"dark":"light";}catch(e){}})();`}
+          </Script>
           <UserbackProvider>
-          <AccentSync />
+          <ThemeSync />
         <PageViewTracker />
           {/* coss toasts are mounted by their providers rather than by a
               separate <Toaster/>, so they wrap the app instead of sitting

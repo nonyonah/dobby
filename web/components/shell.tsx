@@ -13,9 +13,24 @@ import { openUserback, useUserbackWidget } from "./userback";
 
 const SIDEBAR_KEY = "rift-sidebar-collapsed";
 
+/**
+ * Which nav row reads as active. `wallets` has no row on purpose — a wallet is
+ * a detail view under the sidebar's Connected accounts tree, not a top-level
+ * destination — so it highlights nothing in the main nav.
+ */
+export type ShellActive =
+  | "dashboard"
+  | "transactions"
+  | "insights"
+  | "budget"
+  | "goals"
+  | "settings"
+  | "notifications"
+  | "wallets";
+
 interface ShellProps {
   title: string;
-  active: "dashboard" | "transactions" | "insights" | "budget" | "goals" | "settings" | "notifications" | "wallets";
+  active: ShellActive;
   children: ReactNode;
 }
 

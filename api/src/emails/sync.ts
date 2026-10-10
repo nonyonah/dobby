@@ -31,6 +31,16 @@ import { EmailProviderClient, type EmailProvider, type RawAttachment, type RawMe
  */
 const DEFAULT_LIMIT = 60;
 const MAX_LIMIT = 250;
+
+/**
+ * Shown when an attached PDF could not be read because it is password-locked.
+ *
+ * The instruction is the only one that can work: Dobby never asks for the
+ * password and cannot read the file, so the copy has to send the user back to
+ * their mail app to download an unlocked copy and import it directly.
+ */
+export const LOCKED_ATTACHMENT_DETAIL =
+  "This attachment is password-locked, so nothing could be read. Open it in your email, download or print an unlocked copy, then import that file here.";
 /** Hard ceiling on messages examined, so a steady-state re-sync stays cheap. */
 const MAX_EXAMINED = 400;
 /** Stop digging after this many consecutive windows that yield nothing new. */
@@ -259,6 +269,34 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
       const importId = await storeAttachment(ownerClerkId, file.filename, file.mimeType, file.bytes, contentHash);
       const duplicateRows = await countDuplicateRows(ownerClerkId, importId);
       const totalRows = await prisma.transactionReviewItem.count({ where: { ownerClerkId, importId } });
+
+      // A locked PDF produces a review row that carries no proposedData, and
+      // nothing was imported. Counting that as "imported" told the user their
+      // statement had been added while in fact nothing was read — so it is
+      // reported as a failure with an instruction instead.
+      const lockedRow = await prisma.transactionReviewItem.findFirst({
+        where: { ownerClerkId, importId, rawData: { path: ["needsPassword"], equals: true } },
+        select: { id: true },
+      });
+      if (lockedRow) {
+        counts.failed += 1;
+        await recordEmailImport({
+          ownerClerkId,
+          provider,
+          messageId: full.id,
+          subject: full.subject,
+          fromAddress: full.from,
+          receivedAt: full.receivedAt,
+          kind,
+          contentHash,
+          status: "failed",
+          detail: LOCKED_ATTACHMENT_DETAIL,
+          importId,
+        });
+        await saveJob();
+        continue;
+      }
+
       // A statement or receipt whose every row already exists is a duplicate
       // artifact, not a new import — that is what the user needs to be told.
       const fullyDuplicate = totalRows > 0 && duplicateRows === totalRows;

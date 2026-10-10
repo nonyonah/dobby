@@ -92,6 +92,24 @@ export interface TxFull {
   displayCurrency?: string;
   currency?: string;
   needsManualReview?: boolean;
+  /**
+   * The row is a password-locked attachment rather than a parse failure. Such a
+   * row can never be approved here — the user has to unlock the file in their
+   * mail app and import an unlocked copy — so the UI shows the instruction and
+   * withholds every approval affordance.
+   */
+  needsUnlocking?: boolean;
+  /**
+   * An inflow the tax rules could not resolve. Shown as a question rather than
+   * a null flag, because the honest answer is "I don't know" and the user is
+   * the only one who can supply it.
+   */
+  needsTaxAnswer?: boolean;
+  /** Why a row was treated as a transfer, shown so the verdict can be checked. */
+  transferSource?: "reference" | "pattern" | "name" | null;
+  transferDirection?: "IN" | "OUT" | null;
+  /** The statement section this row came from, e.g. "Wallet". */
+  subAccount?: string | null;
   category: string;
   categoryId?: string;
   categoryName?: string;

@@ -8,6 +8,11 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum TransferDirection {
+  IN
+  OUT
+}
+
 enum AccountType {
   BANK
   CASH
@@ -91,95 +96,98 @@ enum Plan {
 }
 
 model User {
-  clerkId              String                   @id
-  email                String?
-  firstName            String?
-  lastName             String?
-  imageUrl             String?
-  plan                 Plan                     @default(TRIAL)
-  trialStartedAt       DateTime?                @default(now())
-  bachsCustomerId      String?                  @unique
-  bachsSubscriptionId  String?                  @unique
+  clerkId                 String                  @id
+  email                   String?
+  firstName               String?
+  lastName                String?
+  imageUrl                String?
+  plan                    Plan                    @default(TRIAL)
+  // Null until the user starts their first Bachs card subscription. The trial
+  // is tied to checkout, not to sign-up, so an account that never pays still has
+  // its full week waiting for it.
+  trialStartedAt          DateTime?
+  bachsCustomerId         String?                 @unique
+  bachsSubscriptionId     String?                 @unique
   bachsSubscriptionStatus String?
-  bachsTrialEnd         DateTime?
-  bachsCurrentPeriodEnd DateTime?
-  bachsCancelAtPeriodEnd Boolean                @default(false)
-  planExpiresAt          DateTime?
-  onboardedAt          DateTime?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-  profile              Profile?
-  taxProfile           TaxProfile?
-  accounts             Account[]
-  wallets              WalletAccount[]
-  transactions         Transaction[]
-  imports              TransactionImport[]
-  reviewItems          TransactionReviewItem[]
-  categories           Category[]
-  categorizationRules  CategorizationRule[]
-  budgets              Budget[]
-  goals                Goal[]
-  goalContributions    GoalContribution[]
-  integrationConnections IntegrationConnection[]
-  auditEvents          AuditEvent[]
-  emailSyncJobs        EmailSyncJob[]
-  emailImports         EmailImport[]
-  reminderLogs         ReminderLog[]
-  payments             Payment[]
+  bachsTrialEnd           DateTime?
+  bachsCurrentPeriodEnd   DateTime?
+  bachsCancelAtPeriodEnd  Boolean                 @default(false)
+  planExpiresAt           DateTime?
+  onboardedAt             DateTime?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  profile                 Profile?
+  taxProfile              TaxProfile?
+  accounts                Account[]
+  wallets                 WalletAccount[]
+  transactions            Transaction[]
+  imports                 TransactionImport[]
+  reviewItems             TransactionReviewItem[]
+  categories              Category[]
+  categorizationRules     CategorizationRule[]
+  budgets                 Budget[]
+  goals                   Goal[]
+  goalContributions       GoalContribution[]
+  integrationConnections  IntegrationConnection[]
+  auditEvents             AuditEvent[]
+  emailSyncJobs           EmailSyncJob[]
+  emailImports            EmailImport[]
+  reminderLogs            ReminderLog[]
+  payments                Payment[]
 
   @@index([email])
   @@index([plan])
 }
 
 model Profile {
-  clerkId        String   @id
-  currency       String   @default("USD")
-  country        String?
+  clerkId         String   @id
+  currency        String   @default("USD")
+  country         String?
   taxJurisdiction String?
-  theme          String?
-  accentColor    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  user           User     @relation(fields: [clerkId], references: [clerkId], onDelete: Cascade)
+  theme           String?
+  accentColor     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [clerkId], references: [clerkId], onDelete: Cascade)
 }
 
 model TaxProfile {
-  id                    String   @id @default(cuid())
-  ownerClerkId          String   @unique
-  country               TaxCountry @default(NIGERIA)
-  taxYear               Int
-  estimatedTaxOwed      Decimal  @default(0) @db.Decimal(19, 4)
-  taxableIncome         Decimal  @default(0) @db.Decimal(19, 4)
-  deductionsCaptured   Json?
+  id                 String             @id @default(cuid())
+  ownerClerkId       String             @unique
+  country            TaxCountry         @default(NIGERIA)
+  taxYear            Int
+  estimatedTaxOwed   Decimal            @default(0) @db.Decimal(19, 4)
+  taxableIncome      Decimal            @default(0) @db.Decimal(19, 4)
+  deductionsCaptured Json?
   /// Jurisdiction-specific switches the tax module needs but no other feature uses:
   /// "resident"/"non-resident" (Kenya has a separate non-resident table), a region
   /// flag (Scotland uses different UK income tax bands), and an age band. Stored as
   /// a band rather than a date of birth because SARS rebates are all we need from it
   /// and it avoids collecting a DOB the product has no other use for.
-  residencyStatus   String?
-  region            String?
-  ageBand           String?
-  lastCalculatedAt     DateTime?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  owner                 User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
-  checklistItems        TaxChecklistItem[]
+  residencyStatus    String?
+  region             String?
+  ageBand            String?
+  lastCalculatedAt   DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  owner              User               @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  checklistItems     TaxChecklistItem[]
 }
 
 model TaxChecklistItem {
-  id            String             @id @default(cuid())
-  taxProfileId  String
+  id           String             @id @default(cuid())
+  taxProfileId String
   /// Each jurisdiction has its own filing checklist, so items are scoped to the
   /// country that owns them. Switching jurisdiction must not discard progress on
   /// the previous one — a UK user researching Kenya and switching back has still
   /// done the UK work.
-  country       TaxCountry
-  key           String
-  label         String
-  status        TaxChecklistStatus @default(OUTSTANDING)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  taxProfile    TaxProfile         @relation(fields: [taxProfileId], references: [id], onDelete: Cascade)
+  country      TaxCountry
+  key          String
+  label        String
+  status       TaxChecklistStatus @default(OUTSTANDING)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  taxProfile   TaxProfile         @relation(fields: [taxProfileId], references: [id], onDelete: Cascade)
 
   @@unique([taxProfileId, country, key])
   @@index([taxProfileId, country, status])
@@ -209,20 +217,20 @@ model ReminderLog {
  * (txRef) shared by checkout, verify, and webhook fulfillment.
  */
 model Payment {
-  id              String    @id @default(cuid())
-  ownerClerkId    String
-  provider        String    @default("flutterwave")
-  txRef           String    @unique
-  providerTxId    String?
-  plan            String    // "month" | "year"
-  amount          Decimal   @db.Decimal(19, 4)
-  currency        String    @default("NGN")
-  status          String    @default("pending") // pending | paid | failed
-  paidAt          DateTime?
-  periodEndsAt    DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  owner           User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  id           String    @id @default(cuid())
+  ownerClerkId String
+  provider     String    @default("flutterwave")
+  txRef        String    @unique
+  providerTxId String?
+  plan         String // "month" | "year"
+  amount       Decimal   @db.Decimal(19, 4)
+  currency     String    @default("NGN")
+  status       String    @default("pending") // pending | paid | failed
+  paidAt       DateTime?
+  periodEndsAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  owner        User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@index([ownerClerkId, status])
   @@index([providerTxId])
@@ -264,18 +272,18 @@ model WalletAccount {
 }
 
 model Category {
-  id           String        @id @default(cuid())
-  ownerClerkId String
-  name         String
-  color        String?
-  isTaxable    Boolean       @default(false)
-  isArchived   Boolean       @default(false)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  owner        User          @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
-  transactions Transaction[]
+  id                  String               @id @default(cuid())
+  ownerClerkId        String
+  name                String
+  color               String?
+  isTaxable           Boolean              @default(false)
+  isArchived          Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  owner               User                 @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  transactions        Transaction[]
   categorizationRules CategorizationRule[]
-  budgets      Budget[]
+  budgets             Budget[]
 
   @@unique([ownerClerkId, name])
   @@index([ownerClerkId, isArchived])
@@ -308,17 +316,17 @@ enum GoalStatus {
 }
 
 model Goal {
-  id           String       @id @default(cuid())
-  ownerClerkId String
-  name         String
-  targetAmount Decimal      @db.Decimal(19, 4)
-  currency     String       @default("USD")
-  deadline     DateTime?
-  status       GoalStatus   @default(ACTIVE)
-  archivedAt   DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  owner        User         @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  id            String             @id @default(cuid())
+  ownerClerkId  String
+  name          String
+  targetAmount  Decimal            @db.Decimal(19, 4)
+  currency      String             @default("USD")
+  deadline      DateTime?
+  status        GoalStatus         @default(ACTIVE)
+  archivedAt    DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  owner         User               @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
   contributions GoalContribution[]
 
   @@index([ownerClerkId, status, deadline])
@@ -354,94 +362,127 @@ model CategorizationRule {
 }
 
 model Transaction {
-  id              String          @id @default(cuid())
-  ownerClerkId    String
-  accountId       String?
-  categoryId      String?
-  type            TransactionType
-  amount          Decimal         @db.Decimal(19, 4)
-  currency        String          @default("USD")
-  description     String
-  merchant        String?
-  occurredAt      DateTime
-  source          String?
-  assetSymbol     String?
-  externalId      String?
-  fingerprint     String?
-  isRecurring     Boolean         @default(false)
-  isTaxable       Boolean         @default(false)
-  incomeSource    IncomeSource?
-  needsReview     Boolean         @default(false)
-  metadata        Json?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  owner           User            @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
-  account         Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  import          TransactionImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
-  importId        String?
+  id             String             @id @default(cuid())
+  ownerClerkId   String
+  accountId      String?
+  categoryId     String?
+  type           TransactionType
+  amount         Decimal            @db.Decimal(19, 4)
+  currency       String             @default("USD")
+  description    String
+  merchant       String?
+  occurredAt     DateTime
+  source         String?
+  assetSymbol    String?
+  externalId     String?
+  fingerprint    String?
+  isRecurring    Boolean            @default(false)
+  /// Only INCOME carries a value. EXPENSE and TRANSFER are null by definition,
+  /// and an ambiguous inflow stays null until the user answers. `taxableSource`
+  /// records whether the answer came from the country's tax module or the user.
+  isTaxable      Boolean?
+  taxableSource  String?
+  /// Cached verdict of taxTreatment(): "taxable" | "not_taxable" | "ask".
+  taxTreatment   String?
+  /// True once the user has edited this row. Every automated pass — rules
+  /// re-apply, future re-categorisation — must skip these.
+  userOverridden Boolean            @default(false)
+  /// Bank transaction reference. The join key for transfer pairing; TEXT
+  /// because real references carry leading zeros.
+  reference      String?
+  /// Which section of a multi-account statement this row came from.
+  subAccount     String?
+  /// Why a transfer verdict was reached: "reference" | "pattern" | "name".
+  transferSource String?
+  /// Which way the money went. A transfer has no INCOME/EXPENSE type to carry
+  /// the sign, so without this the two legs of one movement are indistinguishable
+  /// and net worth double-counts the whole amount as an outflow.
+  transferDirection TransferDirection?
+  incomeSource   IncomeSource?
+  needsReview    Boolean            @default(false)
+  metadata       Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  owner          User               @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  account        Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  category       Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  import         TransactionImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  importId       String?
 
   @@index([ownerClerkId, occurredAt])
   @@index([ownerClerkId, categoryId, occurredAt])
   @@index([ownerClerkId, fingerprint])
+  @@index([ownerClerkId, reference])
+  @@index([ownerClerkId, userOverridden])
   @@index([importId])
 }
 
 model TransactionImport {
-  id           String       @id @default(cuid())
-  ownerClerkId String
-  type         ImportType
-  status       ImportStatus @default(CREATED)
-  objectKey    String?
-  originalName String?
+  id             String                  @id @default(cuid())
+  ownerClerkId   String
+  type           ImportType
+  status         ImportStatus            @default(CREATED)
+  objectKey      String?
+  originalName   String?
   /// sha256 of the uploaded bytes. A statement already imported under this hash
   /// is recognised and skipped, which is what stops a re-upload from paying for
   /// a second extraction — the expensive part, and the part that runs into the
   /// provider's rate limit.
-  contentHash  String?
-  rowCount     Int?
-  errorMessage String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  owner        User         @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
-  transactions Transaction[]
-  reviewItems  TransactionReviewItem[]
+  contentHash    String?
+  rowCount       Int?
+  /// One entry per section when a single document carries several accounts,
+  /// holding the totals the document itself declared.
+  sectionSummary Json?
+  /// Result of reconciling parsed rows against those declared totals. A section
+  /// that does not reconcile must not import silently.
+  checks         Json?
+  errorMessage   String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  owner          User                    @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  transactions   Transaction[]
+  reviewItems    TransactionReviewItem[]
 
   @@index([ownerClerkId, status, createdAt])
   @@index([ownerClerkId, contentHash])
 }
 
 model TransactionReviewItem {
-  id              String       @id @default(cuid())
-  ownerClerkId    String
-  importId        String
-  rowNumber       Int
-  status          ReviewStatus @default(PENDING)
-  rawData         Json
-  proposedData    Json?
-  fingerprint     String?
-  confidence      Decimal?     @db.Decimal(5, 4)
-  errorMessage    String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  owner           User         @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
-  import          TransactionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  id           String            @id @default(cuid())
+  ownerClerkId String
+  importId     String
+  rowNumber    Int
+  status       ReviewStatus      @default(PENDING)
+  rawData      Json
+  proposedData Json?
+  fingerprint  String?
+  /// Bank transaction reference — the pairing key for transfers. TEXT, because
+  /// real references carry leading zeros and a numeric parse would drop them.
+  reference    String?
+  /// Section label when one statement carries several accounts.
+  subAccount   String?
+  confidence   Decimal?          @db.Decimal(5, 4)
+  errorMessage String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  owner        User              @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  import       TransactionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
 
   @@unique([importId, rowNumber])
   @@index([ownerClerkId, status, createdAt])
 }
 
 model IntegrationConnection {
-  id           String   @id @default(cuid())
-  ownerClerkId String
-  provider     String
-  status       String   @default("disconnected")
+  id             String    @id @default(cuid())
+  ownerClerkId   String
+  provider       String
+  status         String    @default("disconnected")
   providerUserId String?
-  metadata     Json?
-  lastSyncedAt DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  metadata       Json?
+  lastSyncedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  owner          User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@unique([ownerClerkId, provider])
 }
@@ -473,20 +514,20 @@ model EmailSyncJob {
 /// re-syncs idempotent: the same message is never imported twice, and a
 /// re-sent copy of the same file (same bytes) is reported as a duplicate.
 model EmailImport {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   ownerClerkId String
   provider     String
   messageId    String
   subject      String?
   fromAddress  String?
   receivedAt   DateTime?
-  kind         String   // statement | receipt | alert
-  contentHash  String   @default("") // sha256 of the attachment bytes; "" for alert emails
-  status       String   // imported | duplicate | skipped | failed
+  kind         String // statement | receipt | alert
+  contentHash  String    @default("") // sha256 of the attachment bytes; "" for alert emails
+  status       String // imported | duplicate | skipped | failed
   detail       String?
   importId     String?
-  createdAt    DateTime @default(now())
-  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  owner        User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@unique([ownerClerkId, provider, messageId])
   @@index([ownerClerkId, createdAt])
@@ -499,21 +540,21 @@ model EmailImport {
  * endpoints (no secrets); sender rules carry first-party evidence only.
  */
 model Bank {
-  id        String   @id @default(cuid())
-  country   String   // "NG" | "US"
-  name      String
-  slug      String?
-  code      String?  // NUBAN/NIBSS institution code (NG)
-  longcode  String?  // 9-digit branch sort code (NG)
-  cert      String?  // FDIC certificate number (US)
-  city      String?
-  state     String?  // STALP (US)
-  website   String?  // FDIC WEBADDR or known corporate domain, for sender matching
-  active    Boolean  @default(true)
-  source    String   // "paystack" | "fdic"
-  sourceId  String?  // Paystack id or FDIC CERT
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String           @id @default(cuid())
+  country     String // "NG" | "US"
+  name        String
+  slug        String?
+  code        String? // NUBAN/NIBSS institution code (NG)
+  longcode    String? // 9-digit branch sort code (NG)
+  cert        String? // FDIC certificate number (US)
+  city        String?
+  state       String? // STALP (US)
+  website     String? // FDIC WEBADDR or known corporate domain, for sender matching
+  active      Boolean          @default(true)
+  source      String // "paystack" | "fdic"
+  sourceId    String? // Paystack id or FDIC CERT
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   senderRules BankSenderRule[]
 
   @@unique([source, sourceId])
@@ -525,8 +566,8 @@ model BankSenderRule {
   id        String   @id @default(cuid())
   bankId    String
   bank      Bank     @relation(fields: [bankId], references: [id], onDelete: Cascade)
-  matchType String   // "domain" (suffix of From address) | "exact" (full address) | "name" (bank-name keyword)
-  pattern   String   // lowercase: domain, address, or keyword
+  matchType String // "domain" (suffix of From address) | "exact" (full address) | "name" (bank-name keyword)
+  pattern   String // lowercase: domain, address, or keyword
   verified  Boolean  @default(false) // true = first-party evidence (bank page or real email)
   createdAt DateTime @default(now())
 
@@ -534,13 +575,15 @@ model BankSenderRule {
   @@index([matchType, pattern])
 }
 
-/** Verified merchant/subscription senders (receipts, card charges). */
+/**
+ * Verified merchant/subscription senders (receipts, card charges).
+ */
 model MerchantRule {
   id        String   @id @default(cuid())
   merchant  String
   category  String?
-  matchType String   // "domain" | "exact" | "subject"
-  pattern   String   // lowercase
+  matchType String // "domain" | "exact" | "subject"
+  pattern   String // lowercase
   verified  Boolean  @default(false)
   createdAt DateTime @default(now())
 
@@ -557,7 +600,7 @@ model AuditEvent {
   requestId    String?
   metadata     Json?
   createdAt    DateTime @default(now())
-  owner        User    @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@index([ownerClerkId, createdAt])
 }

@@ -15,6 +15,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { ACCENT_COLORS, ACCENT_STORAGE_KEY, DEFAULT_ACCENT, applyAccentColor, readStoredAccent, withoutTransitions, type AccentColor } from "@/lib/theme";
+import { ThemeSegmented } from "@/components/theme-control";
+import { TutorialToggle, useTutorial } from "@/components/tutorial/tutorial-provider";
 import { readStoredCurrency, setAppCurrency, writeStoredCurrency } from "@/lib/format";
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
@@ -372,7 +374,12 @@ export function SettingsPage() {
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<Record<string, SyncState>>({});
   const [duplicateEmails, setDuplicateEmails] = useState<EmailImportRow[]>([]);
+  /* Messages Dobby could not read at all — a password-locked PDF, mostly.
+     They get no Review action because there is nothing to review: the user
+     has to fetch an unlocked copy from their mail app themselves. */
+  const [lockedEmails, setLockedEmails] = useState<EmailImportRow[]>([]);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [lockedOpen, setLockedOpen] = useState(false);
   // Which duplicate batch the user has dismissed. Keyed by count, not a bare
   // boolean, so dismissing the current batch does not also hide the next one.
   const [dismissedDuplicates, setDismissedDuplicates] = useState<number | null>(null);
@@ -389,6 +396,7 @@ export function SettingsPage() {
     : null;
   const [fullName, setFullName] = useState("");
   const { openCheckout, busy: checkoutBusy, refreshOptions } = useUpgrade();
+  const { enabled: tutorialEnabled, reset: resetTutorialAndRun } = useTutorial();
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
@@ -549,15 +557,22 @@ export function SettingsPage() {
     if (job.duplicateRows > 0) parts.push(`${job.duplicateRows} duplicate transactions`);
     if (job.failed > 0) parts.push(`${job.failed} failed`);
     let duplicates: EmailImportRow[] = [];
-    try {
-      duplicates = job.duplicates > 0
-        ? (await api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25")).data
-        : [];
-    } catch {
-      duplicates = [];
-    }
+    // Fetched together: a locked PDF used to be invisible here — the run
+    // reported a failure count, but nothing ever showed which message or why.
+    let locked: EmailImportRow[] = [];
+    const [dupResult, lockedResult] = await Promise.allSettled([
+      job.duplicates > 0
+        ? api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25")
+        : Promise.resolve({ data: [] as EmailImportRow[] }),
+      job.failed > 0
+        ? api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=failed&take=25")
+        : Promise.resolve({ data: [] as EmailImportRow[] }),
+    ]);
+    if (dupResult.status === "fulfilled") duplicates = dupResult.value.data;
+    if (lockedResult.status === "fulfilled") locked = lockedResult.value.data;
     if (!mountedRef.current) return;
     setDuplicateEmails(duplicates);
+    setLockedEmails(locked);
     markSyncDone(provider, parts.join(" · "));
     toast.success(
       job.imported === 0 && job.duplicates === 0
@@ -584,10 +599,11 @@ export function SettingsPage() {
     let cancelled = false;
     const load = async () => {
       // Everything below is independent — fetch it in one round trip.
-      const [walletResult, providerResult, duplicateResult, jobResult, billingResult] = await Promise.allSettled([
+      const [walletResult, providerResult, duplicateResult, lockedResult, jobResult, billingResult] = await Promise.allSettled([
         api.get<{ data: Array<{ id: string; chain: string; address: string; displayName: string; color: string }> }>("/v1/wallets"),
         api.get<{ data: Array<{ provider: string; status: string; live: boolean }> }>("/v1/integrations"),
         api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25"),
+        api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=failed&take=25"),
         api.get<{ data: Array<SyncJob & { provider: string; id: string }> }>("/v1/emails/sync"),
         api.get<{ data: { subscription: BillingSubscription | null } }>("/v1/billing"),
       ]);
@@ -615,6 +631,7 @@ export function SettingsPage() {
       }
 
       if (duplicateResult.status === "fulfilled") setDuplicateEmails(duplicateResult.value.data);
+      if (lockedResult.status === "fulfilled") setLockedEmails(lockedResult.value.data);
       if (billingResult.status === "fulfilled") {
         setSubscription(billingResult.value.data.subscription ?? null);
       }
@@ -860,6 +877,26 @@ export function SettingsPage() {
                 </button>
               </Alert>
             ) : null}
+            {lockedEmails.length > 0 ? (
+              /* Persists rather than being dismissible: this is the only place
+                 the user learns a statement was locked and therefore never
+                 imported. The duplicates notice above can be dismissed because
+                 nothing was lost; here, data is missing. */
+              <Alert status="error" className="mb-2 gap-2 px-2.5 py-1.5 text-[12px]">
+                <AlertIndicator className="[&_svg]:size-3.5">
+                  <HugeiconsIcon icon={AlertIcon} strokeWidth={2} size={14} />
+                </AlertIndicator>
+                <AlertContent>
+                  <AlertTitle className="text-[12px]">
+                    {lockedEmails.length} {lockedEmails.length === 1 ? "message needs" : "messages need"} unlocking
+                  </AlertTitle>
+                  <AlertDescription className="text-[11px]">
+                    Password-locked, so nothing could be read. Download an unlocked copy from your email and import it here.
+                  </AlertDescription>
+                </AlertContent>
+                <Button variant="secondary" size="small" onClick={() => setLockedOpen(true)}>See how to fix</Button>
+              </Alert>
+            ) : null}
             {PROVIDER_ROWS.map((row) => {
               const status = providers[row.id]?.status ?? "disconnected";
               const connected = status === "connected";
@@ -912,6 +949,25 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Preferences">
+            <div data-tour="settings-preferences">
+            {/* Theme is device-local, so it renders straight away rather than
+                waiting on /v1/me like the profile-backed rows below it. */}
+            <Row label="Theme" description="Follows your system setting unless you choose one."><ThemeSegmented /></Row>
+            <Row
+              label="Product tutorial"
+              description={
+                tutorialEnabled
+                  ? "A short tour of the main screens. Switch it off to stop it appearing, or run it again from here."
+                  : "Currently switched off — the tour will not appear on its own. Run it once to switch it back on."
+              }
+            >
+              <div className="flex items-center gap-2">
+                <TutorialToggle />
+                <Button variant="secondary" size="small" onClick={resetTutorialAndRun}>
+                  Run again
+                </Button>
+              </div>
+            </Row>
             {/* Every control here is prefilled from /v1/me. Showing them before it
                 lands means showing a default the user may not have chosen. */}
             {planLoading ? (
@@ -931,6 +987,7 @@ export function SettingsPage() {
             }} /></Row>
               </>
             )}
+          </div>
           </Section>
 
           <Section label="Categories & rules">
@@ -1026,6 +1083,32 @@ export function SettingsPage() {
           </Section>
         </div>
       </div>
+      <Dialog open={lockedOpen} onOpenChange={setLockedOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Messages that need unlocking</DialogTitle>
+            <DialogDescription>
+              Dobby never asks for a bank password, so it cannot open these files. Open the message in
+              your email, download or print an unlocked copy of the statement, then import that file
+              directly. Nothing is lost \u2014 the original email is still in your inbox.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="m-0 max-h-[50vh] list-none space-y-2 overflow-y-auto p-0">
+            {lockedEmails.map((row) => (
+              <li key={row.id} className="rounded-lg border border-line px-3 py-2">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="m-0 truncate text-[13px] font-medium text-foreground">{row.subject || "(no subject)"}</p>
+                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{KIND_LABELS[row.kind] ?? row.kind}</span>
+                </div>
+                <p className="m-0 mt-0.5 truncate text-[12px] text-muted-foreground">
+                  {row.fromAddress || "Unknown sender"}{row.receivedAt ? ` \u00b7 ${new Date(row.receivedAt).toLocaleDateString()}` : ""}
+                </p>
+                {row.detail ? <p className="m-0 mt-1 text-[12px] text-muted-foreground">{row.detail}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
       <Dialog open={duplicatesOpen} onOpenChange={setDuplicatesOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>

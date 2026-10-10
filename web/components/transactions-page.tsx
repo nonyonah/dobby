@@ -33,6 +33,15 @@ import { Segmented } from "@/components/ui/segmented";
  * stalled chunk fails only its own rows instead of aborting everything. */
 const APPROVE_CHUNK = 25;
 
+/**
+ * Shown on a password-locked attachment. Dobby never asks for the password and
+ * cannot read the file, so this row has exactly one route to resolution:
+ * download an unlocked copy from the mail app and import it directly. That is
+ * why the row carries no Approve action — there is nothing to approve here.
+ */
+const LOCKED_ATTACHMENT_NOTE =
+  "Password-locked — open the email and download an unlocked copy, then import it here.";
+
 type ApiTransaction = {
   id: string;
   description: string;
@@ -46,6 +55,10 @@ type ApiTransaction = {
   source?: string | null;
   isTaxable: boolean;
   needsReview: boolean;
+  subAccount?: string | null;
+  reference?: string | null;
+  transferSource?: string | null;
+  transferDirection?: string | null;
   account?: { name: string } | null;
   category?: { id: string; name: string; color?: string | null } | null;
 };
@@ -58,7 +71,13 @@ type ApiReview = {
   errorMessage?: string | null;
   displayAmount?: number;
   displayCurrency?: string;
-  proposedData?: { type?: string; amount?: number; currency?: string; categoryId?: string; categoryName?: string; description?: string; occurredAt?: string } | null;
+  needsPassword?: boolean;
+  /** Derived server-side: the tax rules could not resolve this inflow. */
+  needsTaxAnswer?: boolean;
+  transferSource?: string | null;
+  transferDirection?: string | null;
+  subAccount?: string | null;
+  proposedData?: { type?: string; amount?: number; currency?: string; categoryId?: string; categoryName?: string; description?: string; occurredAt?: string; isTaxable?: boolean | null } | null;
 };
 
 function categoryId(name?: string | null) {
@@ -87,6 +106,9 @@ function mapTransaction(item: ApiTransaction): TxFull {
     categoryColor: item.category?.color ?? null,
     kind: item.type,
     taxable: item.isTaxable,
+    transferSource: item.transferSource === "reference" || item.transferSource === "pattern" || item.transferSource === "name" ? item.transferSource : null,
+    transferDirection: item.transferDirection === "IN" || item.transferDirection === "OUT" ? item.transferDirection : null,
+    subAccount: item.subAccount ?? null,
     source: sourceId(item.source),
     parse: { state: item.needsReview ? "review" : "parsed" },
     note: "",
@@ -99,24 +121,43 @@ function mapReview(item: ApiReview): TxFull {
   const rawDescription = typeof raw.description === "string" ? raw.description : typeof raw.merchant === "string" ? raw.merchant : undefined;
   const rawDate = typeof raw.date === "string" ? raw.date : undefined;
   const amount = Number(item.displayAmount ?? proposed?.amount ?? raw.amount ?? raw.total ?? 0);
+  // A locked attachment carries no proposedData and no `needsReview` flag, so
+  // the old expression rendered it as an ordinary approvable row — with a
+  // working-looking Approve button that failed server-side every time it was
+  // pressed. It is a row the user has to act on outside Dobby.
+  const locked = item.needsPassword === true;
+  const filename = typeof raw.filename === "string" ? raw.filename : null;
   return {
     id: item.id,
-    name: proposed?.description || (raw.needsReview && typeof raw.page === "number" ? `Statement page ${raw.page} needs review` : rawDescription || "Imported transaction"),
-    account: "Imported",
+    name: proposed?.description
+      || (locked ? `${filename ?? "Attachment"} is locked` : raw.needsReview && typeof raw.page === "number" ? `Statement page ${raw.page} needs review` : rawDescription || "Imported transaction"),
+    account: locked ? "Locked attachment" : "Imported",
     date: (proposed?.occurredAt || rawDate || new Date().toISOString()).slice(0, 10),
     amount: proposed?.type === "INCOME" ? Math.abs(amount) : -Math.abs(amount),
     sourceAmount: Number(proposed?.amount ?? raw.amount ?? raw.total ?? 0),
     currency: proposed?.currency ?? (typeof raw.currency === "string" ? raw.currency : undefined),
     displayCurrency: item.displayCurrency,
-    needsManualReview: Boolean(raw.needsReview && !proposed),
+    needsManualReview: locked || Boolean(raw.needsReview && !proposed),
+    needsUnlocking: locked,
+    // The server derived this rather than asking the model, and flags it as an
+    // open question when the rules could not settle it.
+    needsTaxAnswer: item.needsTaxAnswer === true,
+    // Narrowed rather than cast: the API field is a string, and an unknown
+    // value is better dropped than passed through into the union.
+    transferSource: item.transferSource === "reference" || item.transferSource === "pattern" || item.transferSource === "name" ? item.transferSource : null,
+    transferDirection: item.transferDirection === "IN" || item.transferDirection === "OUT" ? item.transferDirection : null,
+    subAccount: item.subAccount ?? (typeof raw.subAccount === "string" ? raw.subAccount : null),
     category: categoryId(item.proposedData?.categoryName),
     categoryId: item.proposedData?.categoryId,
     categoryName: item.proposedData?.categoryName ?? undefined,
-    kind: proposed?.type === "INCOME" ? "INCOME" : "EXPENSE",
-    taxable: false,
+    // A transfer keeps its own type all the way to the table, where it is
+    // excluded from income and spending. Collapsing it to EXPENSE here would put
+    // it back in the totals it was just removed from.
+    kind: proposed?.type === "TRANSFER" ? "TRANSFER" : proposed?.type === "INCOME" ? "INCOME" : "EXPENSE",
+    taxable: proposed?.isTaxable === true,
     source: "manual",
     parse: { state: "review", confidence: 90 },
-    note: item.errorMessage || `Import row ${item.rowNumber}`, 
+    note: locked ? LOCKED_ATTACHMENT_NOTE : item.errorMessage || `Import row ${item.rowNumber}`,
   };
 }
 
@@ -294,7 +335,7 @@ function TransactionsInner() {
     }
   };
 
-  const approveReview = async (ids: string[], overrides: Record<string, string> = {}) => {
+  const approveReview = async (ids: string[], overrides: Record<string, string> = {}, taxAnswers: Record<string, boolean> = {}) => {
     setApproving(true);
     const approved: string[] = [];
     const duplicates: string[] = [];
@@ -305,7 +346,14 @@ function TransactionsInner() {
       try {
         const response = await api.post<{ data: { approved: string[]; duplicates: string[]; failed: Array<{ id: string; message: string }> } }>(
           "/v1/reviews/approve-many",
-          { items: chunk.map((id) => ({ id, ...(overrides[id] ? { categoryId: overrides[id] } : {}) })) },
+          // The category and the tax answer ride along with the approval, so the
+          // row lands correct rather than being approved on a null and corrected
+          // later — which is what made manual edits look like they had not saved.
+          { items: chunk.map((id) => ({
+            id,
+            ...(overrides[id] ? { categoryId: overrides[id] } : {}),
+            ...(taxAnswers[id] !== undefined ? { isTaxable: taxAnswers[id] } : {}),
+          })) },
           { timeoutMs: 120_000 },
         );
         approved.push(...response.data.approved);
@@ -395,7 +443,7 @@ function TransactionsInner() {
   return (
     <>
       <div className="w-full px-6 pt-6 pb-10">
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div data-tour="transactions-views" className="mb-4 flex items-center justify-between gap-3">
           <Segmented
             label="Transaction views"
             value={effectiveView}

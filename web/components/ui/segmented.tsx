@@ -30,9 +30,31 @@ export interface SegmentedProps<T extends string> {
   /** Accessible name for the group, e.g. "Transaction views". */
   label: string;
   className?: string;
+  /**
+   * Allow horizontal scrolling when the row is wider than its container. Keep
+   * it on for long tab sets; turn it off for a couple of short options, which
+   * would otherwise be clipped with no scrollbar to reveal them.
+   */
+  scrollable?: boolean;
 }
 
-export function Segmented<T extends string>({ options, value, onValueChange, label, className }: SegmentedProps<T>) {
+export function Segmented<T extends string>({
+  options,
+  value,
+  onValueChange,
+  label,
+  className,
+  scrollable = true,
+}: SegmentedProps<T>) {
+  // A short set (two or three options) must never clip: the scroll wrapper
+  // hides its scrollbar, so an overflowed option simply disappears — and
+  // clicking a sibling focuses it, which makes the browser scroll that one into
+  // view and push the next one out with no affordance to scroll back. Set
+  // `scrollable={false}` wherever the row is guaranteed to fit.
+  const wrapperClass = scrollable
+    ? "-mx-1 min-w-0 max-w-full overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    : "shrink-0";
+
   return (
     // The row is deliberately still containerless, but the scroll wrapper is
     // what keeps a long option set from widening the page: segments are
@@ -41,7 +63,7 @@ export function Segmented<T extends string>({ options, value, onValueChange, lab
     // sideways. The negative margin + padding let the selected pill and its
     // focus ring sit flush while still clearing the ring when scrolled to the
     // very first or last option.
-    <div className="-mx-1 min-w-0 max-w-full overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className={wrapperClass}>
       <div role="tablist" aria-label={label} className={cn("inline-flex items-center gap-1", className)}>
         {options.map((option) => {
           const selected = option.value === value;

@@ -344,7 +344,7 @@ export default function InsightsPage() {
   return (
     <>
       <div className="w-full px-6 pt-6 pb-10">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div data-tour="insights-sections" className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <Segmented
             label="Insights section"
             value={section}

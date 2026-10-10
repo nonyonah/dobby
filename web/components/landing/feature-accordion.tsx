@@ -51,7 +51,7 @@ export function FeatureAccordion() {
             <AccordionItem
               key={item.title}
               value={String(index)}
-              className="overflow-hidden rounded-[4px] bg-[#131517]"
+              className="overflow-hidden rounded-[4px] bg-card"
             >
               <div className="min-w-0 flex-1">
                 <AccordionTrigger className="h-[57.5px] pl-[20px] pr-5 py-0 text-[16px] font-normal text-foreground">

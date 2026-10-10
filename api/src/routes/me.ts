@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { computeEffectivePlan, trialEndsAt } from "../middleware/plan.js";
 import { taxCountryForJurisdiction } from "../tax/registry.js";
+import { DEFAULT_CATEGORIES, LEGACY_CATEGORY_RENAMES } from "../lib/default-categories.js";
 
 export const meRouter = Router();
 
@@ -36,10 +37,37 @@ meRouter.get("/", async (req, res) => {
     prisma.category.count({ where: { ownerClerkId: clerkId } }),
   ]);
   if (categoryCount === 0) {
+    // Seeded from the shared list rather than inline, because the deterministic
+    // statement patterns and the tax table both name these categories. An inline
+    // copy drifted from them: "Phone & Data" and "Cash withdrawal" were being
+    // matched by patterns against a set the user did not have, so every one of
+    // those rows fell through to Uncategorized.
     await prisma.category.createMany({
-      data: ["Housing", "Groceries", "Utilities", "Transport", "Dining", "Shopping", "Education", "Income", "Investments", "Other", "Uncategorized"].map((name) => ({ ownerClerkId: clerkId, name })),
+      data: DEFAULT_CATEGORIES.map((name) => ({ ownerClerkId: clerkId, name })),
       skipDuplicates: true,
     });
+  }
+
+  // Existing accounts are brought forward rather than abandoned: the old generic
+  // names are renamed in place so their history follows, and any default the
+  // account is missing is added alongside. Without this, a user created before
+  // the statement patterns existed has no "Phone & Data" to match into, and
+  // every one of those rows lands in Uncategorized.
+  //
+  // "Income" is deliberately not renamed. It became three distinct categories,
+  // and guessing where a user's old income rows belong would move real money
+  // between reports.
+  if (categoryCount > 0) {
+    const existing = await prisma.category.findMany({ where: { ownerClerkId: clerkId }, select: { id: true, name: true } });
+    const byName = new Map(existing.map((category) => [category.name.trim().toLowerCase(), category.id]));
+    const operations = Object.entries(LEGACY_CATEGORY_RENAMES)
+      .filter(([from, to]) => byName.has(from) && !byName.has(to))
+      .map(([from, to]) => prisma.category.update({ where: { id: byName.get(from)! }, data: { name: to } }));
+    const missing = DEFAULT_CATEGORIES.filter((name) => !byName.has(name.toLowerCase()));
+    if (missing.length > 0) {
+      operations.push(...missing.map((name) => prisma.category.create({ data: { ownerClerkId: clerkId, name } })));
+    }
+    if (operations.length > 0) await prisma.$transaction(operations);
   }
 
   // Report the plan as the trial clock resolves it, and persist EXPIRED the

@@ -1,4 +1,4 @@
-import { Prisma, ReviewStatus, TransactionType } from "@prisma/client";
+import { AccountType, Prisma, ReviewStatus, TransactionType } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -18,6 +18,21 @@ const proposedTransactionSchema = z.object({
   description: z.string().min(1).max(240),
   occurredAt: z.coerce.date(),
   merchant: z.string().max(160).nullable().optional(),
+  /**
+   * Transfer verdict. A suggestion the user may disagree with, so the source
+   * travels with it and the row stays overridable.
+   */
+  transferSource: z.enum(["reference", "pattern", "name"]).optional(),
+  /** Which way this leg went. Without it both legs look identical. */
+  transferDirection: z.enum(["IN", "OUT"]).optional(),
+  /** The statement section this row belongs to, used to resolve its account. */
+  subAccount: z.string().trim().min(1).max(60).optional(),
+  reference: z.string().trim().min(1).max(80).optional(),
+  /** Derived from the country's tax module, never asked of the model. */
+  taxTreatment: z.enum(["taxable", "not_taxable", "ask"]).optional(),
+  /** Absent on expense and transfer rows, which carry no taxable value. */
+  isTaxable: z.boolean().nullable().optional(),
+  taxableSource: z.enum(["rule", "user"]).optional(),
 });
 
 reviewsRouter.get("/", async (req, res) => {
@@ -44,12 +59,39 @@ reviewsRouter.get("/", async (req, res) => {
     const sourceCurrency = sourceCurrencyOf(item);
     const sourceAmount = Number(proposed?.amount ?? 0);
     const displayAmount = sourceAmount * (factors.get(sourceCurrency) ?? 1);
-    return { ...item, displayAmount, displayCurrency: activeCurrency, sourceCurrency };
+    // `needsPassword` was written by the extractor and then read by nobody, so
+    // the client had to infer "locked" from the wording of an error message.
+    // Surfaced as a real flag, the UI can decide what to show and what to hide
+    // without depending on prose staying put.
+    const raw = item.rawData && typeof item.rawData === "object" && !Array.isArray(item.rawData)
+      ? item.rawData as { needsPassword?: boolean }
+      : undefined;
+    const proposal = item.proposedData && typeof item.proposedData === "object" && !Array.isArray(item.proposedData)
+      ? item.proposedData as { taxTreatment?: string; needsTaxAnswer?: boolean; transferSource?: string; transferDirection?: string; subAccount?: string }
+      : undefined;
+    return {
+      ...item,
+      displayAmount,
+      displayCurrency: activeCurrency,
+      sourceCurrency,
+      needsPassword: raw?.needsPassword === true,
+      // Derived, not asked of the model: the row carries its own open question.
+      needsTaxAnswer: proposal?.needsTaxAnswer === true && proposal.taxTreatment === "ask",
+      transferSource: proposal?.transferSource,
+      transferDirection: proposal?.transferDirection,
+      subAccount: proposal?.subAccount,
+    };
   });
   res.json({ data });
 });
 
-type ApproveInput = { id: string; categoryId?: string | null };
+/**
+ * `isTaxable` is accepted here because an inflow the rules could not resolve
+ * arrives in the review queue as one question ("was this income, a gift, or a
+ * loan?"). The user answers it while approving, rather than approving a
+ * coin-flip and discovering it later in the tax summary.
+ */
+type ApproveInput = { id: string; categoryId?: string | null; isTaxable?: boolean | null };
 type ApproveResult =
   | { id: string; ok: true; duplicate: boolean }
   | { id: string; ok: false; code: string; message: string };
@@ -86,7 +128,10 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
       results.push({ id: input.id, ok: false, code: "REVIEW_ITEM_INVALID", message: "This row has no valid proposed transaction." });
       continue;
     }
-    const categoryId = input.categoryId ?? proposed.data.categoryId;
+    // A transfer is not categorised. Both legs are TRANSFER by type, and giving
+    // one a spend category would put it straight back into the expense totals
+    // that transfer detection exists to keep it out of.
+    const categoryId = proposed.data.type === TransactionType.TRANSFER ? undefined : input.categoryId ?? proposed.data.categoryId;
     // Everything below touches the database — one slow query must fail only
     // its own row, never abort the whole batch.
     try {
@@ -122,6 +167,14 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
         }
       }
       const origin = await prisma.transactionImport.findFirst({ where: { id: item.importId, ownerClerkId }, select: { type: true } });
+      // One account per statement section. A statement that prints a Wallet
+      // table and a Savings table is two accounts, and filing the Savings
+      // movement under Wallet is how a transfer quietly becomes a withdrawal
+      // from money the user does not have.
+      const section = item.subAccount ?? proposed.data.subAccount;
+      const accountId = section
+        ? await accountIdForSection(ownerClerkId, section, sourceCurrency)
+        : undefined;
       const transactionData: Prisma.TransactionUncheckedCreateInput = {
         ownerClerkId,
         type: proposed.data.type,
@@ -134,6 +187,22 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
         fingerprint: item.fingerprint,
         source: origin?.type === "RECEIPT" ? "receipt" : "statement",
         needsReview: false,
+        // Section label and bank reference have to survive approval. Without
+        // them a row loses which account it belonged to and can never be paired
+        // as half of a transfer.
+        ...(accountId ? { accountId } : {}),
+        ...(section ? { subAccount: section } : {}),
+        ...(item.reference ?? proposed.data.reference ? { reference: item.reference ?? proposed.data.reference } : {}),
+        ...(proposed.data.transferSource ? { transferSource: proposed.data.transferSource } : {}),
+        ...(proposed.data.transferDirection ? { transferDirection: proposed.data.transferDirection } : {}),
+        ...(proposed.data.taxTreatment ? { taxTreatment: proposed.data.taxTreatment } : {}),
+        // An explicit answer from the user wins over anything derived: it is
+        // recorded as theirs, so no later rule pass can silently overturn it.
+        ...(input.isTaxable !== undefined
+          ? { isTaxable: input.isTaxable, taxableSource: "user" as const, taxTreatment: input.isTaxable ? "taxable" as const : "not_taxable" as const }
+          : proposed.data.isTaxable !== undefined
+            ? { isTaxable: proposed.data.isTaxable, taxableSource: proposed.data.taxableSource ?? "rule" }
+            : {}),
       };
       await prisma.transaction.create({ data: transactionData });
       await prisma.transactionReviewItem.update({ where: { id: item.id }, data: { status: ReviewStatus.APPROVED } });
@@ -146,9 +215,46 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
   return results;
 }
 
+/** Section label -> account id, cached for the life of one request. */
+const sectionAccounts = new Map<string, string>();
+
+/**
+ * Resolves a statement's account heading to a real Account, creating it once.
+ *
+ * Cached across the batch so a fourteen-row Wallet section creates one account
+ * rather than fourteen. The lookup is name-scoped to the owner and the
+ * currency, so importing a statement in naira cannot silently reuse a dollar
+ * account of the same name.
+ */
+async function accountIdForSection(ownerClerkId: string, section: string, currency: string): Promise<string | undefined> {
+  const name = section.trim();
+  if (!name) return undefined;
+  const key = `${name.toLowerCase()}|${currency.toLowerCase()}`;
+  const cached = sectionAccounts.get(key);
+  if (cached) return cached;
+
+  const existing = await prisma.account.findFirst({ where: { ownerClerkId, name: { equals: name, mode: "insensitive" } }, select: { id: true } });
+  const account = existing ?? await prisma.account.create({
+    data: { ownerClerkId, name, type: accountTypeForSection(name), currency },
+    select: { id: true },
+  });
+  sectionAccounts.set(key, account.id);
+  return account.id;
+}
+
+/** Best guess at what kind of account a heading names. */
+function accountTypeForSection(name: string): AccountType {
+  const text = name.toLowerCase();
+  if (/saving|investment|oreach|owealth|fixed/.test(text)) return AccountType.INVESTMENT;
+  if (/cash/.test(text)) return AccountType.CASH;
+  if (/card|credit/.test(text)) return AccountType.CREDIT_CARD;
+  if (/wallet/.test(text)) return AccountType.WALLET;
+  return AccountType.BANK;
+}
+
 reviewsRouter.post("/approve-many", async (req, res) => {
   const input = z
-    .object({ items: z.array(z.object({ id: z.string().min(1), categoryId: z.string().trim().min(1).max(80).nullable().optional() })).min(1).max(200) })
+    .object({ items: z.array(z.object({ id: z.string().min(1), categoryId: z.string().trim().min(1).max(80).nullable().optional(), isTaxable: z.boolean().nullable().optional() })).min(1).max(200) })
     .parse(req.body);
   const ownerClerkId = req.auth!.userId;
   const results = await runExclusive(`reviews-approve:${ownerClerkId}`, () => approveReviewItems(ownerClerkId, input.items));
@@ -160,9 +266,12 @@ reviewsRouter.post("/approve-many", async (req, res) => {
 
 reviewsRouter.post("/:id/approve", async (req, res) => {
   const ownerClerkId = req.auth!.userId;
-  const override = z.object({ categoryId: z.string().trim().min(1).max(80).nullable().optional() }).parse(req.body);
+  const override = z.object({
+    categoryId: z.string().trim().min(1).max(80).nullable().optional(),
+    isTaxable: z.boolean().nullable().optional(),
+  }).parse(req.body);
   const [result] = await runExclusive(`reviews-approve:${ownerClerkId}`, () =>
-    approveReviewItems(ownerClerkId, [{ id: req.params.id, categoryId: override.categoryId }]),
+    approveReviewItems(ownerClerkId, [{ id: req.params.id, categoryId: override.categoryId, isTaxable: override.isTaxable }]),
   );
   if (!result || !result.ok) {
     const code = result && !result.ok ? result.code : "REVIEW_ITEM_NOT_FOUND";

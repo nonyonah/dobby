@@ -32,8 +32,13 @@ export interface AttentionItem {
   kind: "review" | "tax";
   title: string;
   sub: string;
-  action: string;
-  href: string;
+  /**
+   * Deliberately optional. A password-locked attachment has nothing the user
+   * can decide inside Dobby, so the item is still surfaced — the user has to be
+   * told — but with no action button attached to it.
+   */
+  action?: string;
+  href?: string;
 }
 
 type ReviewRow = {
@@ -45,14 +50,27 @@ type ReviewRow = {
   rawData?: { description?: string; merchant?: string; filename?: string; page?: number } | null;
   displayAmount?: number | null;
   displayCurrency?: string | null;
+  needsPassword?: boolean;
   import?: { originalName?: string | null } | null;
 };
+
+/** Text used for a locked attachment wherever it is surfaced. */
+const LOCKED_HINT = "Log into your email, download an unlocked copy, then import it here.";
+
+/** True for rows that are a locked file rather than a parse failure. */
+function isLocked(row: ReviewRow): boolean {
+  // Flag first, regex second. Rows created before `needsPassword` was surfaced
+  // still carry the old wording, so the message check stays as a fallback —
+  // but nothing new depends on the wording holding still.
+  if (row.needsPassword) return true;
+  return /password-protected|unlock it|locked/i.test(row.errorMessage ?? "");
+}
 
 /** Plain-language reason a review row needs the user. Null = nothing actionable. */
 function reviewReason(row: ReviewRow): string | null {
   const message = row.errorMessage ?? "";
   if (/duplicate transaction fingerprint/i.test(message)) return null;
-  if (/password-protected|unlock it/i.test(message)) return "Statement is locked — unlock the file and import it again";
+  if (isLocked(row)) return LOCKED_HINT;
   if (/could not be extracted|no valid transactions|manually/i.test(message)) return "Couldn't read this file — check it or decline it";
   const proposed = row.proposedData;
   if (proposed && !proposed.categoryId) return "Choose a category so it counts toward your totals";
@@ -106,6 +124,17 @@ export function useAttention() {
       const reviewItems: AttentionItem[] = reviews.data.slice(0, 20).flatMap((item) => {
         const sub = reviewReason(item);
         if (!sub) return [];
+        // Locked rows are surfaced with the instruction and nothing else. The
+        // Review link used to be attached to every review row, which pointed at
+        // an Approve button that could only ever fail.
+        if (isLocked(item)) {
+          return [{
+            id: `review-${item.id}`,
+            kind: "review" as const,
+            title: reviewTitle(item),
+            sub,
+          }];
+        }
         return [{
           id: `review-${item.id}`,
           kind: "review" as const,

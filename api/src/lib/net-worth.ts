@@ -82,6 +82,21 @@ async function fetchBalances(chain: Chain, address: string): Promise<Array<{ sym
  * rather than inventing a number for them. CNGN is Nigeria's stablecoin, so
  * it is priced off the naira rate like any other NGN amount.
  */
+/**
+ * Signed contribution of one grouped row to an account balance.
+ *
+ * A transfer is signed by `transferDirection` rather than by its type: both legs
+ * of a movement are TRANSFER, so the type alone cannot say which account lost
+ * the money and which gained it. Rows that predate the field have no direction
+ * and are treated as outflows — the conservative reading, since an unknown
+ * direction nets to zero across the pair anyway.
+ */
+export function signedFor(type: string, direction: string | null, magnitude: number): number {
+  if (type === "INCOME") return magnitude;
+  if (type === "TRANSFER") return direction === "IN" ? magnitude : -magnitude;
+  return -magnitude;
+}
+
 export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWorthSnapshot> {
   const [wallets, accounts, grouped] = await Promise.all([
     prisma.walletAccount.findMany({
@@ -90,7 +105,7 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
     }),
     prisma.account.findMany({ where: { ownerClerkId, isActive: true }, orderBy: { createdAt: "asc" } }),
     prisma.transaction.groupBy({
-      by: ["accountId", "type", "currency"],
+      by: ["accountId", "type", "currency", "transferDirection"],
       where: { ownerClerkId },
       _sum: { amount: true },
     }),
@@ -162,7 +177,11 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
         ? (magnitude * txRate) / accountRate
         : txCurrency === accountCurrency ? magnitude : null;
       if (converted === null) continue;
-      balance += row.type === "INCOME" ? converted : -converted;
+      // A transfer moves money between pockets the user owns, so it has to be
+      // counted — in the right direction on each account. Counting both legs as
+      // outflows (which is what "anything that is not INCOME" did) subtracted the
+      // movement twice and shrank net worth by the whole transfer.
+      balance += signedFor(row.type, row.transferDirection, converted);
     }
     const balanceUsd = accountRate === null ? null : balance * accountRate;
     accountsSnapshot.push({
@@ -183,7 +202,7 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
     if (row.accountId) continue;
     const txCurrency = (row.currency ?? "USD").toUpperCase();
     const magnitude = Math.abs(Number(row._sum.amount ?? 0));
-    unassigned.set(txCurrency, (unassigned.get(txCurrency) ?? 0) + (row.type === "INCOME" ? magnitude : -magnitude));
+    unassigned.set(txCurrency, (unassigned.get(txCurrency) ?? 0) + signedFor(row.type, row.transferDirection, magnitude));
   }
   for (const [txCurrency, balance] of unassigned) {
     const rate = rateToUsd(txCurrency);

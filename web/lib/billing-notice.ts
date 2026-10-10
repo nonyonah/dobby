@@ -43,6 +43,17 @@ export function deriveBillingNotice(input: BillingNoticeInput): BillingNotice | 
   const { plan, trialEndsAt, subscription, now, formatDate } = input;
 
   if (plan === "EXPIRED") {
+    // No trial end date means the trial was never started, not that it ran out.
+    // The clock only begins at checkout now, so this is the normal state for a
+    // new account and telling them it "has ended" would be a lie.
+    if (!trialEndsAt) {
+      return {
+        status: "warning",
+        title: "Start your free trial",
+        body: "Begin a 7-day trial of Pro — email auto-fetch, stablecoin wallets, proactive AI flags and tax advisory. Your card is not charged until you choose to continue.",
+        action: "renew",
+      };
+    }
     return {
       status: "danger",
       title: "Your free trial has ended",
