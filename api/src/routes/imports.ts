@@ -6,6 +6,7 @@ import { prisma } from "../lib/prisma.js";
 import { createUploadUrl, storePrivateObject } from "../lib/r2.js";
 import { findCompletedImportByHash, isPdfImport, processImportRecord, processPdfStatement } from "../imports/pipeline.js";
 import { notifyImportComplete } from "../lib/mailer.js";
+import { MIN_FIRST_IMPORT_TRANSACTIONS } from "../jobs/first-import-summary.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 
@@ -17,6 +18,28 @@ const presignSchema = z.object({
   type: z.nativeEnum(ImportType).default(ImportType.CSV),
   contentType: z.enum(["text/csv", "text/plain", "application/vnd.ms-excel", "application/ofx", "application/x-ofx", "application/qfx", "application/pdf", "image/jpeg", "image/png", "image/webp"]),
 });
+
+/**
+ * Whether this import is the one that should get the month-in-review email.
+ *
+ * The first successful import of an account is summarised instead of being
+ * acknowledged, so exactly one of the two emails goes out for it — sending both
+ * would open with a month overview and then immediately follow it with a file
+ * receipt for the same event.
+ *
+ * Anything thin, or already handled, falls back to the ordinary email: hence the
+ * transaction floor, and the check that no summary has gone out yet.
+ */
+async function claimsFirstImportSummary(ownerClerkId: string, importId: string, rowCount: number): Promise<boolean> {
+  if (rowCount < MIN_FIRST_IMPORT_TRANSACTIONS) return false;
+  const record = await prisma.transactionImport.findUnique({ where: { id: importId }, select: { createdAt: true } });
+  if (!record) return false;
+  const [earlier, user] = await Promise.all([
+    prisma.transactionImport.count({ where: { ownerClerkId, createdAt: { lt: record.createdAt } } }),
+    prisma.user.findUnique({ where: { clerkId: ownerClerkId }, select: { firstImportSummarySentAt: true } }),
+  ]);
+  return earlier === 0 && user?.firstImportSummarySentAt === null;
+}
 
 importsRouter.get("/", async (req, res) => {
   const imports = await prisma.transactionImport.findMany({
@@ -106,6 +129,8 @@ importsRouter.post("/:id/process", async (req, res) => {
           prisma.transactionReviewItem.count({ where: { importId: record.id, ownerClerkId } }),
         ]);
         const rowCount = saved?.rowCount ?? reviewCount;
+        // The first import is summarised later instead; see claimsFirstImportSummary.
+        if (await claimsFirstImportSummary(ownerClerkId, record.id, rowCount)) return;
         await notifyImportComplete(ownerClerkId, { filename, rowCount, reviewCount });
       })
       .catch(async (error) => {
@@ -119,7 +144,9 @@ importsRouter.post("/:id/process", async (req, res) => {
   }
   try {
     const { rowCount, reviewCount } = await processImportRecord(ownerClerkId, { ...record, objectKey });
-    void notifyImportComplete(ownerClerkId, { filename, rowCount, reviewCount });
+    if (!(await claimsFirstImportSummary(ownerClerkId, record.id, rowCount))) {
+      void notifyImportComplete(ownerClerkId, { filename, rowCount, reviewCount });
+    }
     res.json({ data: { importId: record.id, rowCount, reviewCount } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Import processing failed.";

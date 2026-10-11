@@ -34,13 +34,22 @@ export type EntitlementRow = {
 };
 
 /**
- * Length of the free trial, in days.
+ * Length of the free trial, in days. No card, no subscription — the trial is a
+ * window in our own database and ends on its own.
  *
- * One constant, read from here by everything that starts a trial — the API
- * action, the onboarding copy and the tests. Exported so no caller hardcodes it
- * and drifts.
+ * One constant. Everything that grants, reports or describes a trial reads it
+ * here, so no caller hardcodes a number and drifts from the rest.
  */
-export const TRIAL_DAYS = 7;
+export const TRIAL_DAYS = 14;
+
+/**
+ * Documents Composio may fetch while an account is on trial.
+ *
+ * Cost control, not entitlement: every email pulled is a per-document charge we
+ * pay, and an unbounded trial is an unbounded bill. Paying accounts are not
+ * capped by this — they are not on our dime.
+ */
+export const TRIAL_EMAIL_FETCH_LIMIT = 50;
 
 /** When the trial granted to a user starting now would end. */
 export function trialWindowFrom(start: Date = new Date()): { trialStartedAt: Date; trialEndsAt: Date } {

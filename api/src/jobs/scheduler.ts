@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { runMonthlyTaxReminder } from "./monthly-tax-reminder.js";
 import { runFilingDeadlineReminders } from "./filing-deadline-reminder.js";
+import { runFirstImportSummaries } from "./first-import-summary.js";
 
 const TIMEZONE = "UTC";
 
@@ -38,7 +39,12 @@ export function startScheduler() {
   const tasks = [
     cron.schedule("0 9 1 * *", logged("monthly-tax-reminder", () => runMonthlyTaxReminder()), { timezone: TIMEZONE }),
     cron.schedule("0 9 * * *", logged("filing-deadline-reminder", () => runFilingDeadlineReminders()), { timezone: TIMEZONE }),
+    // Every five minutes rather than daily: the first-import email waits out a
+    // ten-minute delay so a batch of files uploads is summarised together, and a
+    // daily tick would deliver it hours late. The sweep is a single indexed
+    // claim per due account, so the extra runs cost one query apiece.
+    cron.schedule("*/5 * * * *", logged("first-import-summary", () => runFirstImportSummaries()), { timezone: TIMEZONE }),
   ];
-  logger.info({ timezone: TIMEZONE }, "job scheduler started: monthly tax digest + daily filing-deadline check");
+  logger.info({ timezone: TIMEZONE }, "job scheduler started: monthly tax digest, daily filing-deadline check, first-import summary sweep");
   return () => tasks.forEach((task) => task.stop());
 }

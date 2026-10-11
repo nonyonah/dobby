@@ -113,6 +113,10 @@ model User {
   /// Stored, not derived from trialStartedAt + a constant: changing the length
   /// must not silently move a window a user is already inside.
   trialEndsAt             DateTime?              @map("trial_ends_at")
+  /// Set once the first-import summary has gone. Doubles as the idempotency
+  /// key: a second import must never send it again, and a second sweep of the
+  /// job must not send it twice.
+  firstImportSummarySentAt DateTime?
   bachsCustomerId         String?                 @unique
   bachsSubscriptionId     String?                 @unique
   bachsSubscriptionStatus String?
@@ -145,6 +149,7 @@ model User {
   @@index([email])
   @@index([planStatus])
   @@index([trialEndsAt])
+  @@index([firstImportSummarySentAt])
 }
 
 model Profile {

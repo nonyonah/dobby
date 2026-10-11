@@ -5,6 +5,10 @@ import { env } from "../config/env.js";
 import { prisma } from "./prisma.js";
 import { logger } from "./logger.js";
 import { appUrl, formatMoney } from "../emails/links.js";
+import { MonthInReviewEmail } from "../emails/templates/month-in-review.js";
+import { buildInsightsSummary } from "./transaction-summary.js";
+import { getConversionFactors } from "../providers/frankfurter.js";
+import { getTaxRules } from "../tax/registry.js";
 import { TRIAL_DAYS } from "../middleware/plan.js";
 import { ImportCompleteEmail, ImportFailedEmail } from "../emails/templates/import-complete.js";
 import { TrialStartedEmail } from "../emails/templates/trial-started.js";
@@ -176,6 +180,135 @@ export async function notifyImportComplete(
     html,
     text: plain,
   });
+}
+
+/**
+ * The first-import month in review — sent once, a few minutes after a user's
+ * first import finishes.
+ *
+ * Every figure comes from `buildInsightsSummary`, the same call the Insights
+ * overview and cash flow use. Writing a second calculation here would be the
+ * kind of drift that ends with the email disagreeing with the screen the user
+ * is reading, and neither of them would be obviously wrong.
+ */
+export async function sendMonthInReviewNotification(input: {
+  ownerClerkId: string;
+  /** When to summarise up to. The import's own window, or a full calendar month. */
+  from: Date;
+  to: Date;
+}): Promise<boolean> {
+  const to_address = await userEmailAddress(input.ownerClerkId);
+  if (!to_address) return false;
+  const firstName = await firstNameFor(input.ownerClerkId);
+  const summary = await buildInsightsSummary(input.ownerClerkId, input.from, input.to);
+
+  const { currency, totals, spendingByCategory } = summary;
+  // Uncategorized is excluded from the top three on purpose: it is our failure
+  // to categorise, not a spending category, and leading with it would report it
+  // as the largest thing they spent.
+  const topCategories = spendingByCategory
+    .filter((category) => category.categoryId !== null && !/^uncategorized$/i.test(category.name))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 3)
+    .map((category) => ({ name: category.name, amount: formatMoney(category.amount, currency) }));
+
+  const uncategorized = spendingByCategory.find(
+    (category) => category.categoryId === null || /^uncategorized$/i.test(category.name),
+  );
+  const unreviewed = totals.uncategorizedIncome + totals.uncategorizedExpenses > 0;
+  const needsReview = await countNeedingReview(input.ownerClerkId, input.from, input.to);
+
+  // Only when the user actually has a tax module for their country — an estimate
+  // with no jurisdiction behind it is a guess dressed as a number.
+  const taxProfile = await prisma.taxProfile.findUnique({
+    where: { ownerClerkId: input.ownerClerkId },
+    select: { country: true, estimatedTaxOwed: true },
+  });
+  // Each jurisdiction states its own currency, as it does everywhere else in
+  // the tax module; an estimate converted into the wrong symbol is worse than
+  // no estimate at all.
+  const taxCurrency = taxProfile ? getTaxRules(taxProfile.country).currency : currency;
+  const taxFactors = taxCurrency === currency ? null : await getConversionFactors([currency], taxCurrency);
+  const taxAmount =
+    taxProfile && taxProfile.estimatedTaxOwed
+      ? Number(taxProfile.estimatedTaxOwed) * (taxFactors?.get(currency.toUpperCase()) ?? 1)
+      : null;
+
+  const period = periodLabel(input.from, input.to);
+  const net = totals.net;
+  const text = [
+    `Here is your ${period}.`,
+    `Out: ${formatMoney(totals.expenses, currency)}. In: ${formatMoney(totals.income, currency)}. Net: ${formatMoney(net, currency)}.`,
+    ...topCategories.map((category) => `${category.name}: ${category.amount}`),
+    unreviewed ? "Some money is still uncategorized, so these totals can move." : "",
+    needsReview > 0 ? `${needsReview} waiting for you.` : "",
+    taxAmount !== null ? `Estimated tax so far: ${formatMoney(taxAmount, taxCurrency)} (an estimate, not advice).` : "",
+    appUrl("/insights"),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const { html, text: plain } = await renderMail(
+    <MonthInReviewEmail
+      firstName={firstName}
+      period={period}
+      currency={currency}
+      spent={formatMoney(totals.expenses, currency)}
+      income={formatMoney(totals.income, currency)}
+      net={formatMoney(net, currency)}
+      topCategories={topCategories}
+      needsReviewCount={needsReview}
+      uncategorizedLabel={uncategorized ? "Uncategorized" : null}
+      tax={taxAmount !== null ? { amount: formatMoney(taxAmount, taxCurrency), hasUnreviewedInflows: unreviewed } : null}
+    />,
+    text,
+  );
+
+  await sendEmail({
+    to: to_address,
+    subject: `Your ${period} in review: ${formatMoney(totals.expenses, currency)} out, ${formatMoney(totals.income, currency)} in`,
+    html,
+    text: plain,
+  });
+  return true;
+}
+
+/**
+ * Rows still waiting on the user: uncategorized, or flagged for review.
+ *
+ * Counted directly rather than inferred from the totals, because the button
+ * copy says "Review N transactions" and that N has to be the number of rows the
+ * queue will actually show.
+ */
+async function countNeedingReview(ownerClerkId: string, from: Date, to: Date): Promise<number> {
+  const uncategorized = await prisma.category.findMany({
+    where: { ownerClerkId, name: { equals: "uncategorized", mode: "insensitive" } },
+    select: { id: true },
+  });
+  const ids = uncategorized.map((category) => category.id);
+  return prisma.transaction.count({
+    where: {
+      ownerClerkId,
+      occurredAt: { gte: from, lt: to },
+      OR: [{ needsReview: true }, ...(ids.length > 0 ? [{ categoryId: { in: ids } }] : [])],
+    },
+  });
+}
+
+/**
+ * "June 2026" for a full calendar month, "27 Jun - 26 Jul" for a partial one.
+ *
+ * A statement that covers part of a month is labelled by its own dates rather
+ * than by the month it happened to fall in — calling a fortnight "June" would be
+ * the kind of small untruth that makes the whole email feel unreliable.
+ */
+function periodLabel(from: Date, to: Date): string {
+  const sameMonth = from.getUTCMonth() === to.getUTCMonth() && from.getUTCFullYear() === to.getUTCFullYear();
+  if (sameMonth && from.getUTCDate() === 1) {
+    return from.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+  }
+  const day = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  return `${day.format(from)} - ${day.format(to)}`;
 }
 
 /**

@@ -23,7 +23,7 @@ const PRICE: Record<Interval, { amount: string; cadence: string; note: string }>
   year: {
     amount: "$36",
     cadence: "per year",
-    note: "Billed yearly — 10% off monthly, with a 7-day free trial.",
+    note: "Billed yearly — 10% off monthly, with a 14-day free trial.",
   },
 };
 
@@ -113,7 +113,7 @@ export function PricingCard() {
         <div className="flex items-center justify-between gap-3">
           <p className="m-0 text-[14px] font-semibold text-foreground">Dobby Pro</p>
           <span className="inline-flex items-center rounded-full border border-line bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-            7-day free trial
+            14-day free trial
           </span>
         </div>
 
@@ -145,7 +145,7 @@ export function PricingCard() {
             href="/sign-up"
             className="inline-flex h-10 items-center justify-center rounded-[50px] bg-primary px-5 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
-            Start Pro — 7-day trial
+            Start Pro — 14-day trial
           </Link>
           <p className="m-0 text-center text-[12px] text-faint">No card required to start.</p>
         </div>

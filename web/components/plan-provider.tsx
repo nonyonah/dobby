@@ -1,10 +1,11 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { setTrialDays } from "@/lib/error-guidance";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 
-/** Effective plan: inside the 7-day trial, a paid subscriber, or lapsed (view-only). */
+/** Effective plan: inside the free trial, a paid subscriber, or lapsed (view-only). */
 /** Kept so callers that switch on it still work; access comes from `isPro`. */
 export type Plan = "TRIAL" | "ACTIVE" | "EXPIRED";
 
@@ -23,6 +24,7 @@ export type MeData = {
   onboardedAt?: string | null;
   firstName?: string | null;
   entitlement?: unknown;
+  trialDays?: number;
   lastName?: string | null;
   email?: string | null;
   profile?: MeProfile | null;
@@ -35,6 +37,8 @@ type PlanContextValue = {
   isPro: boolean;
   /** Trial lapsed — everything stays visible, writes are paused. */
   expired: boolean;
+  /** Whole days left in the trial, null when there is no live trial. */
+  trialDaysLeft: number | null;
   /** When the trial ends (ISO), when known. */
   trialEndsAt: string | null;
   loading: boolean;
@@ -48,6 +52,7 @@ const PlanContext = createContext<PlanContextValue>({
   plan: null,
   isPro: false,
   expired: false,
+  trialDaysLeft: null,
   trialEndsAt: null,
   loading: true,
   me: null,
@@ -111,6 +116,8 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
         // rule, which is how an account could be offered an upgrade by the UI
         // while the API granted the same feature for free.
         setEntitlement(readEntitlement(response.data.entitlement));
+        // The server owns the trial length; copy reads it rather than restating it.
+        setTrialDays(response.data.trialDays);
         setPlan(readPlan(response.data.plan));
         setTrialEndsAt(response.data.trialEndsAt ?? null);
         setMe(response.data);
@@ -140,12 +147,13 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       // From the server's answer, never from the status string.
       isPro: entitlement.isPro,
       expired: !entitlement.isPro && loaded,
+      trialDaysLeft: entitlement.trialDaysLeft,
       trialEndsAt,
       loading,
       me,
       refresh,
     }),
-    [plan, entitlement, trialEndsAt, loading, me, refresh],
+    [plan, entitlement, trialEndsAt, loading, loaded, me, refresh],
   );
 
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;

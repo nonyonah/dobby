@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { entitlementSelect, getEntitlement } from "../lib/entitlement.js";
+import { TRIAL_DAYS, entitlementSelect, getEntitlement } from "../lib/entitlement.js";
 import { taxCountryForJurisdiction } from "../tax/registry.js";
 import { DEFAULT_CATEGORIES, LEGACY_CATEGORY_RENAMES } from "../lib/default-categories.js";
 
@@ -85,6 +85,7 @@ meRouter.get("/", async (req, res) => {
       plan: entitlement.isPro ? (entitlement.status === "trial" ? "TRIAL" : "ACTIVE") : "EXPIRED",
       trialEndsAt: entitlement.trialEndsAt,
       trialDaysLeft: entitlement.trialDaysLeft,
+      trialDays: TRIAL_DAYS,
     },
   });
 });

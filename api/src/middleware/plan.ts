@@ -106,6 +106,19 @@ export async function assertPro(userId: string | undefined, feature: string): Pr
 
   if (getEntitlement(user).isPro) return;
 
+  // Never started a trial: the trial begins the first time someone reaches for
+  // a Pro feature, so this is the moment to offer it. Deliberately a different
+  // code from an expired trial — the answer here is "start", not "pay", and a
+  // client that shows an upgrade prompt here has charged the user a week of
+  // trial to satisfy their curiosity.
+  if (user.trialStartedAt === null) {
+    throw new AppError(
+      403,
+      `${feature} is part of Dobby Pro. Start your ${TRIAL_DAYS}-day free trial — no card, nothing to cancel.`,
+      "TRIAL_NOT_STARTED",
+    );
+  }
+
   throw new AppError(
     403,
     `${feature} is paused — your ${TRIAL_DAYS}-day free trial has ended. Everything you have already imported stays visible and untouched; upgrade to Dobby Pro to pick up where you left off.`,

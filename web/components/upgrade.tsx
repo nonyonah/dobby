@@ -335,7 +335,7 @@ export function StartTrialButton({ className, size = "small" }: { className?: st
         // Re-read entitlement rather than assuming it changed: the server owns
         // the window, and the client only renders what it is told.
         refresh();
-        toast.success("Your 7-day free trial has started — no card needed.");
+        toast.success("Your 14-day free trial has started — no card needed.");
       } else {
         refresh();
       }

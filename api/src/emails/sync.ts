@@ -19,6 +19,7 @@ import { logger } from "../lib/logger.js";
 import { classifyEmail, extensionKind } from "./classify.js";
 import { loadSenderDirectory, describeSender, type SenderDirectory } from "./bank-directory.js";
 import { preparsedAlert } from "./alerts.js";
+import { TRIAL_EMAIL_FETCH_LIMIT, entitlementSelect, getEntitlement } from "../lib/entitlement.js";
 import { EmailProviderClient, type EmailProvider, type RawAttachment, type RawMessage } from "./providers.js";
 
 /** Cap per run so one inbox cannot turn a sync into a marathon. */
@@ -57,6 +58,8 @@ export type SyncCounts = {
   duplicateRows: number;
   skipped: number;
   failed: number;
+  /** Stopped early because a trial account hit its fetch ceiling. */
+  cappedByTrial?: boolean;
 };
 
 const ATTACHMENT_PRIORITY: Record<"statement" | "receipt", string[]> = {
@@ -143,7 +146,7 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
   const lookbackDays = Math.min(Math.max(options.lookbackDays ?? DEFAULT_LOOKBACK_DAYS, 1), MAX_LOOKBACK_DAYS);
   const limit = Math.min(Math.max(options.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
   const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
-  const counts: SyncCounts = { scanned: 0, imported: 0, duplicates: 0, duplicateRows: 0, skipped: 0, failed: 0 };
+  const counts: SyncCounts = { scanned: 0, imported: 0, duplicates: 0, duplicateRows: 0, skipped: 0, failed: 0, cappedByTrial: false };
   const alertRows: PreparedReview[] = [];
 
   const adapter = new EmailProviderClient(provider, ownerClerkId);
@@ -162,13 +165,34 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
   const now = new Date();
   let examined = 0;
   let idleWindows = 0;
+
+  // Cost ceiling for accounts on trial.
+  //
+  // Every document pulled from Composio is a charge we absorb, and a trial is
+  // unlimited in time by design — so without a ceiling one mailbox is an
+  // unbounded bill. Paying accounts are not capped: the trial exists to prove
+  // the feature is worth paying for, and stopping it halfway is the one way to
+  // guarantee it isn't.
+  //
+  // Counted per run, across every window, so a long lookback cannot sidestep it
+  // by fetching fifty at a time.
+  const trialUser = await prisma.user.findUnique({ where: { clerkId: ownerClerkId }, select: entitlementSelect });
+  const onTrial = getEntitlement(trialUser).isPro && trialUser?.bachsSubscriptionStatus !== "active" && trialUser?.bachsSubscriptionStatus !== "past_due";
+  const fetchCap = onTrial ? TRIAL_EMAIL_FETCH_LIMIT : MAX_EXAMINED;
+  let cappedByTrial = false;
+
   for (
     let windowEnd = now;
-    windowEnd > since && counts.scanned < limit && examined < MAX_EXAMINED && idleWindows < IDLE_WINDOWS;
+    windowEnd > since && counts.scanned < limit && examined < fetchCap && idleWindows < IDLE_WINDOWS;
     windowEnd = new Date(windowEnd.getTime() - WINDOW_MS)
   ) {
     const windowStart = new Date(Math.max(since.getTime(), windowEnd.getTime() - WINDOW_MS));
-    const messages = await adapter.search(windowStart, Math.min(MAX_EXAMINED - examined, 50), windowEnd);
+    const room = Math.min(fetchCap - examined, 50);
+    if (room <= 0) {
+      cappedByTrial = onTrial;
+      break;
+    }
+    const messages = await adapter.search(windowStart, room, windowEnd);
     let freshInWindow = 0;
 
   for (const message of messages) {
@@ -342,6 +366,11 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
   // A window that produced nothing new means we have drained this depth of the
   // mailbox. Two in a row and there is no point paying for another search.
   idleWindows = freshInWindow === 0 ? idleWindows + 1 : 0;
+  }
+
+  if (cappedByTrial) {
+    counts.cappedByTrial = true;
+    logger.info({ ownerClerkId, examined, cap: fetchCap }, "email fetch capped for a trial account");
   }
 
   if (alertRows.length > 0) {

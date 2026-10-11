@@ -21,14 +21,14 @@ const liveTrial = { trialStartedAt: new Date(now.getTime() - DAY), trialEndsAt: 
 
 describe("trial window", () => {
   it("runs for the configured length", () => {
-    expect(TRIAL_DAYS).toBe(7);
+    expect(TRIAL_DAYS).toBe(14);
     const { trialStartedAt, trialEndsAt } = trialWindowFrom(now);
     expect(trialEndsAt!.getTime() - trialStartedAt.getTime()).toBe(TRIAL_DAYS * DAY);
   });
 
   it("measures from the given instant, not the device clock", () => {
     const { trialEndsAt } = trialWindowFrom(now);
-    expect(trialEndsAt!.toISOString()).toBe("2026-10-27T12:00:00.000Z");
+    expect(trialEndsAt!.toISOString()).toBe("2026-11-03T12:00:00.000Z");
   });
 });
 

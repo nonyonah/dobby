@@ -21,6 +21,7 @@ import { readStoredCurrency, setAppCurrency, writeStoredCurrency } from "@/lib/f
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES, FREE_WALLET_LIMIT } from "@/lib/features";
+import { TrialPill } from "@/components/trial-pill";
 import { BILLING_COUNTRIES, COUNTRY_OPTIONS, CURRENCIES, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS } from "@/lib/countries";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { deriveBillingNotice } from "@/lib/billing-notice";
@@ -1005,6 +1006,9 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Plan">
+            {/* After a trial lapses the dashboard goes quiet, so Settings is where
+                the one remaining nudge lives — never a modal, never a countdown. */}
+            <TrialPill className="mb-2" />
             {billingNotice ? (
               <Alert status={billingNotice.status}>
                 <AlertIndicator>
@@ -1055,9 +1059,9 @@ export function SettingsPage() {
                       ? `Your subscription ends ${formatDate(subscription.currentPeriodEnd)} — pick a plan to keep Dobby Pro running.`
                       : "Your subscription has ended — pick a plan to keep Dobby Pro running."
                     : plan === "EXPIRED"
-                      ? "Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a 7-day free trial."
+                      ? "Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a 14-day free trial."
                       : plan === "TRIAL"
-                        ? "Keep every feature without interruption when your trial ends. Both plans start with a 7-day free trial."
+                        ? "Keep every feature without interruption when your trial ends. Both plans start with a 14-day free trial."
                         : "Unlocks email auto-fetch, unlimited wallets, net worth, proactive flags, and monthly reminders."
                 }
               >

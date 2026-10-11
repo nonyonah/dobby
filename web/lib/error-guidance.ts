@@ -46,6 +46,18 @@ const GENERIC: Record<ErrorContext, string> = {
 /** Codes the user can fix themselves, or that are worth explaining at all. */
 function byCode(code: string | null, context: ErrorContext): ErrorGuidance | null {
   switch (code) {
+    case "TRIAL_NOT_STARTED":
+      // Not a paywall. The trial begins the first time someone reaches for a Pro
+      // feature, so this is the moment to offer it — and saying "your trial has
+      // ended" here would be a lie, because they have not had one yet.
+      return {
+        title: "Start your free trial",
+        steps: [
+          `${trialLabel()} of Pro, no card and nothing to cancel. It starts the moment you tap, and you keep everything you import either way.`,
+        ],
+        action: { label: `Start ${trialLabel()} free trial`, href: "/settings" },
+        retryable: false,
+      };
     case "UPGRADE_REQUIRED":
       return {
         title: "Your free trial has ended",
@@ -203,6 +215,21 @@ const CONTEXT_STEPS: Record<ErrorContext, string[]> = {
  * Turns any thrown value into prescriptive copy. Falls back to a short plain
  * message so genuine bugs never get a confident wrong explanation.
  */
+/**
+ * Trial length, for copy only.
+ *
+ * The API owns the real number (`TRIAL_DAYS` in `api/src/lib/entitlement.ts`)
+ * and sends it through `/v1/me`; `PlanProvider` hands it here. The fallback is
+ * only what shows in the moment before that read lands, which is why it is not
+ * simply a constant: a hardcoded 14 would quietly disagree with the server the
+ * day the length changes.
+ */
+let trialDays = 14;
+export function setTrialDays(days: number | null | undefined) {
+  if (typeof days === "number" && Number.isFinite(days) && days > 0) trialDays = Math.round(days);
+}
+const trialLabel = () => `${trialDays}-day`;
+
 export function guidanceFor(error: unknown, context: ErrorContext = "load"): ErrorGuidance {
   const code = error instanceof ApiError ? error.code : null;
   const mapped = byCode(code, context);
