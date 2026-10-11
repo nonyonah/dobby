@@ -159,7 +159,7 @@ function QuickCreate({ onCreate }: { onCreate: (kind: "import" | "budget" | "goa
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="secondary" size="icon-sm" aria-label="Create new" title="Create new" className="shrink-0">
+          <Button variant="secondary" size="icon-sm" aria-label="Create new" title="Create new" data-tour="quick-create" className="shrink-0">
             <PlusIcon />
           </Button>
         }

@@ -65,6 +65,19 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: "Drop in a bank statement or a CSV and Dobby reads it, sorts it and checks it adds up — so nothing goes missing quietly.",
   },
   {
+    /**
+     * The plus in the sidebar is where importing actually starts — the Import
+     * button on the transactions page is the second door to the same dialog.
+     * No `href`: it lives in the sidebar, so it is already on screen wherever
+     * the previous step left off.
+     */
+    anchor: "quick-create",
+    side: "right",
+    align: "end",
+    title: "Add anything, anywhere",
+    body: "That plus opens the same import — statements, receipts, budgets, goals — without leaving the page you are on.",
+  },
+  {
     href: "/insights",
     anchor: "insights-sections",
     side: "bottom",

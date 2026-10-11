@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeftIcon, ArrowRightIcon, FileUpIcon, MailIcon, WalletIcon } from "@hugeicons/core-free-icons";
+import { ArrowRightIcon } from "@hugeicons/core-free-icons";
 import { PlanProvider, usePlan } from "@/components/plan-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,13 +12,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import { useApi } from "@/hooks/use-api";
-import { QuickCreateModals } from "@/components/quick-create-modals";
-import { WalletConnectModal } from "@/components/settings/wallet-connect-modal";
-import { cn } from "cn";
-import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 import { BrandLogo } from "@/components/ui/brand-logo";
-
-const STEP_KEY = "dobby-onboarding-step";
 
 const COUNTRIES = [
   { value: "nigeria", label: "🇳🇬 Nigeria", iso: "NG", currency: "NGN", jurisdiction: "nigeria" },
@@ -28,34 +22,11 @@ const COUNTRIES = [
 const controlClass =
   "h-9 w-full rounded-lg border border-input bg-card px-3 text-[13px] text-foreground shadow-[0_0_0_0.5px_rgb(0_0_0/0.09),0_3px_6px_-2px_rgb(0_0_0/0.02),0_1px_1px_rgb(0_0_0/0.04)] outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring border-line bg-muted";
 
-type Step = 1 | 2;
-
-type Statuses = { statement: boolean; email: boolean; wallet: boolean };
-
 function BrandMark() {
   return <BrandLogo size={34} />;
 }
 
-function Progress({ step }: { step: Step }) {
-  return (
-    <div className="mb-5 flex items-center gap-3">
-      <div className="flex flex-1 gap-1.5">
-        {[1, 2].map((index) => (
-          <span
-            key={index}
-            className={cn("h-1 flex-1 rounded-full transition-colors", index <= step ? "" : "bg-line")}
-            style={index <= step ? { background: "var(--brand)" } : undefined}
-          />
-        ))}
-      </div>
-      <span className="text-[11px] font-medium tracking-[0.04em] text-muted-foreground uppercase">
-        Step {step} of 2
-      </span>
-    </div>
-  );
-}
-
-function ProfileStep({ onContinue }: { onContinue: () => void }) {
+function ProfileStep({ onFinish }: { onFinish: () => void }) {
   const api = useApi();
   const { me, loading: planLoading } = usePlan();
   const { user } = useUser();
@@ -80,7 +51,7 @@ function ProfileStep({ onContinue }: { onContinue: () => void }) {
 
   const selected = COUNTRIES.find((entry) => entry.value === country) ?? COUNTRIES[0];
 
-  const continueToConnections = async () => {
+  const finish = async () => {
     const parts = fullName.trim().split(/\s+/);
     const firstName = parts[0];
     const lastName = parts.slice(1).join(" ");
@@ -96,9 +67,12 @@ function ProfileStep({ onContinue }: { onContinue: () => void }) {
         country: selected.iso,
         ...(selected.currency ? { currency: selected.currency } : {}),
         taxJurisdiction: selected.jurisdiction,
+        // Saved with the profile rather than in a follow-up call, so the gate
+        // cannot bounce the user back here between the two.
+        onboarded: true,
       });
       window.localStorage.setItem("dobby-tax-jurisdiction", selected.jurisdiction);
-      onContinue();
+      onFinish();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save your profile. Try again.");
     } finally {
@@ -128,7 +102,7 @@ function ProfileStep({ onContinue }: { onContinue: () => void }) {
             autoComplete="name"
             className={controlClass}
             onKeyDown={(event) => {
-              if (event.key === "Enter") void continueToConnections();
+              if (event.key === "Enter") void finish();
             }}
           />
         </div>
@@ -154,7 +128,7 @@ function ProfileStep({ onContinue }: { onContinue: () => void }) {
       </div>
 
       <div className="mt-6 flex items-center justify-end gap-2">
-        <Button variant="primary" onClick={() => void continueToConnections()} disabled={busy}>
+        <Button variant="primary" onClick={() => void finish()} disabled={busy}>
           Continue {busy ? "…" : <HugeiconsIcon icon={ArrowRightIcon}  />}
         </Button>
       </div>
@@ -162,208 +136,18 @@ function ProfileStep({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-function ConnectStep() {
-  const router = useRouter();
-  const api = useApi();
-  const { plan, loading: planLoading } = usePlan();
-  const [statuses, setStatuses] = useState<Statuses | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [walletOpen, setWalletOpen] = useState(false);
-  const [connectingEmail, setConnectingEmail] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const refreshStatuses = async () => {
-    try {
-      const [imports, integrations, wallets] = await Promise.all([
-        api.get<{ data: unknown[] }>("/v1/imports"),
-        api.get<{ data: Array<{ status: string }> }>("/v1/integrations"),
-        api.get<{ data: unknown[] }>("/v1/wallets"),
-      ]);
-      setStatuses({
-        statement: imports.data.length > 0,
-        email: integrations.data.some((item) => item.status === "connected"),
-        wallet: wallets.data.length > 0,
-      });
-    } catch {
-      setStatuses({ statement: false, email: false, wallet: false });
-    }
-  };
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void refreshStatuses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const connectEmail = async () => {
-    setConnectingEmail(true);
-    const popup = window.open("about:blank", "dobby-connect", "width=520,height=680");
-    try {
-      const response = await api.post<{ data: { redirectUrl: string } }>("/v1/integrations/gmail/connect", {});
-      if (popup && !popup.closed) {
-        popup.location.href = response.data.redirectUrl;
-      } else {
-        window.location.href = response.data.redirectUrl;
-        return;
-      }
-      for (let attempt = 0; attempt < 40; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        if (popup && popup.closed) break;
-        try {
-          const status = await api.post<{ data: { status: string } }>("/v1/integrations/gmail/refresh", {});
-          if (status.data.status === "connected") break;
-        } catch {
-          // Keep polling while the popup is open.
-        }
-      }
-      if (popup && !popup.closed) popup.close();
-      await refreshStatuses();
-      // Kicking off the first sync here means transactions arrive without the
-      // user having to find Sync in Settings; failures surface there instead.
-      try {
-        await api.post<{ data: { jobId: string } }>("/v1/emails/sync", { provider: "gmail" });
-        toast.success("Email connected — importing statements, receipts, and bank alerts now.");
-      } catch {
-        toast.success("Email connected — open Settings and sync to import transactions.");
-      }
-    } catch (error) {
-      const guidance = guidanceFor(error, "email");
-      toast.error(guidance.title, { description: guidanceText(guidance) });
-    } finally {
-      setConnectingEmail(false);
-    }
-  };
-
-  const finish = async (skipped: boolean) => {
-    setBusy(true);
-    try {
-      await api.patch("/v1/me", { onboarded: true });
-    } catch {
-      // Never strand the user on onboarding if the final save fails.
-    }
-    sessionStorage.removeItem(STEP_KEY);
-    if (skipped) toast.info("You can connect your data any time from Settings.");
-    router.replace("/");
-  };
-
-  const rows = [
-    {
-      id: "statement",
-      icon: FileUpIcon,
-      title: "Upload a statement",
-      description: "Import a bank or wallet statement (CSV, OFX, PDF).",
-      done: statuses?.statement ?? false,
-      action: () => setImportOpen(true),
-    },
-    {
-      id: "email",
-      icon: MailIcon,
-      title: "Connect your email",
-      description: "Auto-import transactions from Gmail or Outlook.",
-      done: statuses?.email ?? false,
-      action: () => void connectEmail(),
-      busy: connectingEmail,
-    },
-    {
-      id: "wallet",
-      icon: WalletIcon,
-      title: "Add a stablecoin address",
-      description: "Track USDC balances and net worth on Base or Solana.",
-      done: statuses?.wallet ?? false,
-      action: () => setWalletOpen(true),
-    },
-  ];
-
-  return (
-    <>
-      <div className="mb-1">
-        <h1 className="text-[17px] font-semibold tracking-[-0.01em] text-foreground">Connect your data</h1>
-        <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
-          Bring in your transactions so Dobby can categorize them. Anything you skip can be added later in Settings.
-        </p>
-      </div>
-
-      <ul className="mt-5 space-y-2">
-        {rows.map((row) => (
-          <li key={row.id}>
-            <button
-              type="button"
-              onClick={row.action}
-              disabled={row.busy || planLoading}
-              className="flex w-full items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 text-left outline-none transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-60"
-            >
-              <span
-                className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-muted-foreground"
-                aria-hidden="true"
-              >
-                {/* Phosphor icons were components, so this row was <row.icon />
-                    and inherited its size from the font. Hugeicons exports data
-                    plus a renderer, so the size is now stated: 16px, what 1em
-                    resolved to in that box. */}
-                <HugeiconsIcon icon={row.icon} size={16} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-foreground">{row.title}</span>
-                  <span
-                    className={cn(
-                      "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                      row.busy
-                        ? "border-primary/40 bg-primary/10 text-primary"
-                        : row.done
-                          ? "border-success/40 bg-success-soft text-success"
-                          : "border-warning/40 bg-warning-soft text-warning",
-                    )}
-                  >
-                    {row.busy ? "Working…" : row.done ? "Done" : "Pending"}
-                  </span>
-                </span>
-                <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{row.description}</span>
-              </span>
-              <HugeiconsIcon icon={ArrowRightIcon} className="size-4 shrink-0 text-faint" aria-hidden="true"  />
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      <div className="mt-6 flex items-center justify-between gap-2">
-        <Button variant="ghost" onClick={() => void finish(true)} disabled={busy || statuses === null}>
-          Skip for now
-        </Button>
-        <Button variant="primary" onClick={() => void finish(false)} disabled={busy || statuses === null}>
-          Go to dashboard {busy ? "…" : <HugeiconsIcon icon={ArrowRightIcon}  />}
-        </Button>
-      </div>
-
-      {plan === "TRIAL" ? (
-        <p className="mt-4 text-center text-[12px] text-muted-foreground">
-          Every feature is unlocked during your 7-day free trial — no card required.
-        </p>
-      ) : null}
-
-      <QuickCreateModals
-        kind={importOpen ? "import" : null}
-        onClose={() => {
-          setImportOpen(false);
-          void refreshStatuses();
-        }}
-      />
-      <WalletConnectModal
-        open={walletOpen}
-        onOpenChange={setWalletOpen}
-        onConnected={() => {
-          void refreshStatuses();
-        }}
-      />
-    </>
-  );
-}
-
+/**
+ * One card: name and country.
+ *
+ * The connections that used to be the second step live in the Get started pill
+ * in the top bar, so this screen asks only for what cannot be worked out later
+ * and then hands the user to the dashboard. Finishing here is what marks the
+ * account onboarded, which is what the gate and the pill both read.
+ */
 function OnboardingFlow() {
   const router = useRouter();
   const { isLoaded, isSignedIn } = useAuth();
   const { me, loading } = usePlan();
-  const [step, setStep] = useState<Step | null>(null);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -372,25 +156,10 @@ function OnboardingFlow() {
       return;
     }
     if (loading) return;
-
     if (me?.onboardedAt) {
       router.replace("/");
-      return;
     }
-    // Resume where the user left off: profile first, unless it is already saved.
-    const stored = sessionStorage.getItem(STEP_KEY);
-    const resumeAtStep2 =
-      stored === "2" || (stored !== "1" && Boolean(me?.firstName && me.profile?.country));
-    // The starting step depends on async profile/onboarding state that only
-    // exists once /v1/me resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setStep(resumeAtStep2 ? 2 : 1);
   }, [isLoaded, isSignedIn, loading, me, router]);
-
-  const goBack = () => {
-    sessionStorage.setItem(STEP_KEY, "1");
-    setStep(1);
-  };
 
   return (
     <div className="relative flex min-h-dvh w-full items-center justify-center bg-background px-4 py-10">
@@ -400,44 +169,25 @@ function OnboardingFlow() {
       </div>
 
       <div className="w-full max-w-[440px]">
-        {step === null ? (
-          <div className="space-y-4" aria-hidden="true">
+        {/* Shown until the profile resolves. A blank page here is what made
+            signup look broken on a phone. */}
+        {loading ? (
+          <div className="space-y-4" role="status" aria-label="Loading">
             <div className="h-40 animate-pulse rounded-2xl bg-muted" />
           </div>
         ) : (
-          <>
-            {step === 2 ? (
-              <button
-                type="button"
-                onClick={goBack}
-                className="mb-3 inline-flex w-fit items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground dark:text-muted-foreground dark:hover:text-white"
-              >
-                <HugeiconsIcon icon={ArrowLeftIcon} size={14}  /> Back
-              </button>
-            ) : null}
-            <Progress step={step} />
-            <Card className="py-0">
-              <CardContent className="p-6">
-                {step === 1 ? (
-                  <ProfileStep
-                    onContinue={() => {
-                      sessionStorage.setItem(STEP_KEY, "2");
-                      setStep(2);
-                    }}
-                  />
-                ) : (
-                  <ConnectStep />
-                )}
-              </CardContent>
-            </Card>
-          </>
+          <Card className="py-0">
+            <CardContent className="p-6">
+              <ProfileStep onFinish={() => router.replace("/")} />
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
   );
 }
 
-/** Two-step onboarding: profile (name + tax jurisdiction), then data connections. */
+/** Onboarding: the profile card, then the dashboard where the Get started pill lives. */
 export function Onboarding() {
   return (
     <PlanProvider>

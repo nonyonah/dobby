@@ -2,19 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { CheckmarkCircle01Icon, FileUpIcon, MailIcon, WalletIcon } from "@hugeicons/core-free-icons";
+import { CancelIcon, CheckmarkCircle01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogClose,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogPopup,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogClose, DialogFooter, DialogPopup, DialogTitle } from "@/components/ui/dialog";
 import { Progress, ProgressTrack } from "@/components/ui/progress";
 import { QuickCreateModals } from "@/components/quick-create-modals";
 import { WalletConnectModal } from "@/components/settings/wallet-connect-modal";
@@ -37,9 +28,7 @@ type Statuses = { statement: boolean; email: boolean; wallet: boolean };
 
 type Task = {
   id: keyof Statuses;
-  icon: typeof FileUpIcon;
   title: string;
-  description: string;
   done: boolean;
 };
 
@@ -114,7 +103,6 @@ function TaskList({ tasks, onAction, busyId }: { tasks: Task[]; onAction: (task:
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[13px] font-medium text-foreground">{task.title}</span>
-              <span className="mt-0.5 block text-[12px] leading-5 text-muted-foreground">{task.description}</span>
             </span>
             <span className="shrink-0 self-center">
               {task.done ? (
@@ -178,23 +166,17 @@ export function GetStarted() {
   const tasks: Task[] = [
     {
       id: "statement",
-      icon: FileUpIcon,
       title: "Upload a statement",
-      description: "Import a bank or wallet statement (CSV, OFX, PDF).",
       done: resolved.statement,
     },
     {
       id: "email",
-      icon: MailIcon,
       title: "Connect your email",
-      description: "Auto-import transactions from Gmail or Outlook.",
       done: resolved.email,
     },
     {
       id: "wallet",
-      icon: WalletIcon,
       title: "Add a stablecoin address",
-      description: "Track USDC balances and net worth on Base or Solana.",
       done: resolved.wallet,
     },
   ];
@@ -283,8 +265,10 @@ export function GetStarted() {
       {visible ? (
         <div
           className={cn(
-            "mb-4 flex justify-start transition-[opacity,transform] duration-300 ease-out",
-            mounted ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
+            // Compact for the top bar: the page title truncates, so the pill
+            // holds its width and drops its label first on narrow screens.
+            "flex shrink-0 items-center transition-[opacity,transform] duration-300 ease-out",
+            mounted ? "translate-y-0 opacity-100" : "-translate-y-0.5 opacity-0",
           )}
         >
           <button
@@ -296,10 +280,11 @@ export function GetStarted() {
               "text-[13px] font-medium text-foreground",
               "outline-none transition-colors duration-150 hover:bg-secondary",
               "focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2",
+              "h-7 px-2.5 sm:px-3.5",
             )}
           >
             <ProgressRing percent={percent} className="text-primary" />
-            <span>{allDone ? "You're all set" : "Get started"}</span>
+            <span className="hidden sm:inline">{allDone ? "You're all set" : "Get started"}</span>
             <span className="text-[12px] tabular-nums text-muted-foreground">
               {doneCount}/{total}
             </span>
@@ -307,45 +292,49 @@ export function GetStarted() {
         </div>
       ) : null}
 
-      {/* Desktop: a dialog. Small screens: the same content as a bottom sheet,
-          because a centred dialog at this height pushes its own action off the
-          bottom of a phone screen. */}
-      <div className="hidden sm:block">
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogPopup className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Get started</DialogTitle>
-              <DialogDescription>
-                Connect a data source and Dobby starts sorting your money on its own.
-              </DialogDescription>
-            </DialogHeader>
-            {body}
-            <DialogFooter>
-              <DialogClose render={<Button variant="ghost" size="small" onClick={() => void dismiss()}>
-                Dismiss
-              </Button>} />
-            </DialogFooter>
-          </DialogPopup>
-        </Dialog>
-      </div>
-      <div className="sm:hidden">
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="bottom" className="max-h-[85dvh] gap-0 p-0">
-            <SheetHeader className="p-5 pb-3">
-              <SheetTitle>Get started</SheetTitle>
-              <SheetDescription>
-                Connect a data source and Dobby starts sorting your money on its own.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="flex-1 overflow-y-auto px-5 pb-3">{body}</div>
-            <SheetFooter className="px-5 pb-5">
-              <Button variant="ghost" size="small" className="w-full" onClick={() => void dismiss()}>
-                Dismiss
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
-      </div>
+      {/* A floating panel pinned to the bottom-right rather than a centred
+          dialog. It is a short checklist, not a decision the user has to make
+          before carrying on, so it should sit beside the work instead of
+          covering it. The viewport is re-placed to get there; the backdrop is
+          cleared because dimming the whole page for this size reads as a
+          blocking modal, which it is not. */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogPopup
+          showCloseButton={false}
+          backdropClassName="bg-transparent"
+          viewportClassName="grid-rows-1 justify-items-end items-end p-0"
+          className={cn(
+            // Anchored, not centred: override the popup's row placement and
+            // origin so the panel opens from the corner it lives in.
+            "row-start-1 m-3 w-[min(26rem,calc(100vw-1.5rem))] max-w-none origin-bottom-right",
+            "max-h-[min(32rem,calc(100dvh-1.5rem))] rounded-[10px] p-0",
+            // The base class ties the inner highlight ring to --radius-2xl;
+            // leaving it would draw a 2xl ring inside a 10px panel.
+            "before:rounded-[9px]",
+          )}
+        >
+          <div className="flex items-start justify-between gap-3 px-4 pt-4">
+            <DialogTitle className="text-[14px]">Get started</DialogTitle>
+            <DialogClose
+              render={
+                <Button variant="ghost" size="icon-sm" aria-label="Close" className="-mr-1 -mt-1 shrink-0">
+                  <HugeiconsIcon icon={CancelIcon} size={14} aria-hidden="true" />
+                </Button>
+              }
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-3">{body}</div>
+          <DialogFooter className="px-4 pb-4 pt-0">
+            <DialogClose
+              render={
+                <Button variant="ghost" size="small" className="px-0 text-muted-foreground hover:text-foreground" onClick={() => void dismiss()}>
+                  Dismiss
+                </Button>
+              }
+            />
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
 
       <QuickCreateModals
         kind={importOpen ? "import" : null}

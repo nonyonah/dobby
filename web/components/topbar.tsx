@@ -5,6 +5,7 @@ import { useClerk } from "@clerk/nextjs";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SignOut } from "@hugeicons/core-free-icons";
 import { SidebarTrigger } from "./ui/sidebar";
+import { GetStarted } from "@/components/onboarding/get-started";
 
 import { Button } from "./ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
@@ -27,6 +28,10 @@ export function TopBar({ title }: { title: string }) {
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {/* Setup pill sits immediately before log out: it is the last thing
+              left to do, so it belongs at the end of the bar rather than in the
+              content, where it was one scroll away from being missed. */}
+          <GetStarted />
           {/* Notifications moved into the sidebar; the bell's slot is now log
               out, and the footer holds Help. */}
           <Button

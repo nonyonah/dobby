@@ -28,7 +28,6 @@ import { useApi } from "@/hooks/use-api";
 import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, getAppCurrency } from "@/lib/format";
 import { FEATURES } from "@/lib/features";
-import { GetStarted } from "@/components/onboarding/get-started";
 
 type ColumnId = "left" | "right";
 
@@ -251,8 +250,7 @@ export function Dashboard() {
   const right = columns.right.filter(visible);
 
   return (
-    <div className="w-full px-4 pt-6 pb-10 sm:px-6">
-      <GetStarted />
+    <div className="w-full px-6 pt-6 pb-10">
       <div className="mb-4 flex items-center justify-between gap-3">
         <HomeGreeting />
         <Popover open={customize} onOpenChange={setCustomize}><PopoverTrigger render={<Button variant="ghost" size="small" aria-expanded={customize}>Customize</Button>} /><PopoverContent align="end" className="w-52 gap-1 p-1.5"><p className="px-2 py-1 text-[12px] font-medium text-muted-foreground">Dashboard cards</p>{cards.map(({ id, label }) => <button key={id} type="button" aria-pressed={visible(id)} onClick={() => toggle(id)} className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-[13px] hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">{label}<span aria-hidden="true" className={visible(id) ? "text-primary" : "text-muted-foreground"}>{visible(id) ? "✓" : ""}</span></button>)}<div className="my-1 border-t border-soft-line" /><button type="button" onClick={() => setHidden([])} className="w-full rounded-md px-2 py-2 text-left text-[13px] text-primary hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">Reset layout</button></PopoverContent></Popover>

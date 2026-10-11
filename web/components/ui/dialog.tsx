@@ -68,20 +68,32 @@ export function DialogPopup({
   bottomStickOnMobile = true,
   closeProps,
   portalProps,
+  viewportClassName,
+  backdropClassName,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
   bottomStickOnMobile?: boolean;
   closeProps?: DialogPrimitive.Close.Props;
   portalProps?: DialogPrimitive.Portal.Props;
+  /**
+   * Re-places the popup inside the viewport, for panels that are not centred
+   * dialogs. The viewport centres by default; overriding it here keeps that
+   * behaviour intact for every other call site while letting a floating panel
+   * anchor itself to a corner.
+   */
+  viewportClassName?: string;
+  /** Re-tints the backdrop, for the same reason. */
+  backdropClassName?: string;
 }): React.ReactElement {
   return (
     <DialogPortal {...portalProps}>
-      <DialogBackdrop />
+      <DialogBackdrop className={backdropClassName} />
       <DialogViewport
         className={cn(
           bottomStickOnMobile &&
             "max-sm:grid-rows-[1fr_auto] max-sm:p-0 max-sm:pt-12",
+          viewportClassName,
         )}
       >
         <DialogPrimitive.Popup
