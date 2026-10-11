@@ -1,8 +1,7 @@
-import { Plan } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { mailConfigured, sendMonthlyTaxNotification } from "../lib/mailer.js";
 import { getTaxRules } from "../tax/registry.js";
-import { computeEffectivePlan } from "../middleware/plan.js";
+import { getEntitlement } from "../lib/entitlement.js";
 
 /**
  * Monthly tax reminder.
@@ -17,11 +16,15 @@ export async function runMonthlyTaxReminder(now = new Date()) {
   // Monthly email reminders are a paid feature: active subscribers and anyone
   // still inside the free trial get them; lapsed trials are filtered out below.
   const profiles = await prisma.taxProfile.findMany({
-    where: { owner: { plan: { in: [Plan.TRIAL, Plan.ACTIVE] } } },
+    // No status filter in SQL. Entitlement is time-dependent — the trial is a
+    // window, not a value — so asking the database for `plan in (TRIAL, ACTIVE)`
+    // would mail anyone whose stored status is stale and skip anyone whose
+    // window is still open. The rows are few; the rule is applied in one place.
+    where: { owner: { email: { not: null } } },
     include: { owner: true, checklistItems: true },
   });
   const monthMark = now.getMonth() + 1;
-  const candidates = profiles.filter((profile) => profile.owner.email && computeEffectivePlan(profile.owner) !== "EXPIRED");
+  const candidates = profiles.filter((profile) => profile.owner.email && getEntitlement(profile.owner, now).isPro);
   if (candidates.length === 0) return { sent: 0 };
 
   const alreadySent = await prisma.reminderLog.findMany({

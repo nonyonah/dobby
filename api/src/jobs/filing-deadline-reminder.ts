@@ -1,9 +1,8 @@
-import { Plan } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { mailConfigured, sendDeadlineNotification } from "../lib/mailer.js";
 import { getTaxRules } from "../tax/registry.js";
 import { logger } from "../lib/logger.js";
-import { computeEffectivePlan } from "../middleware/plan.js";
+import { getEntitlement } from "../lib/entitlement.js";
 import { jurisdictionLabel } from "./monthly-tax-reminder.js";
 
 export const DEADLINE_MARKS = [30, 14, 7, 1] as const;
@@ -84,14 +83,18 @@ export function deadlineEmail(input: {
 export async function runFilingDeadlineReminders(now = new Date()) {
   if (!mailConfigured()) return { sent: 0, skipped: "RESEND_NOT_CONFIGURED" as const };
   const profiles = await prisma.taxProfile.findMany({
-    where: { owner: { plan: { in: [Plan.TRIAL, Plan.ACTIVE] } } },
+    // No status filter in SQL. Entitlement is time-dependent — the trial is a
+    // window, not a value — so asking the database for `plan in (TRIAL, ACTIVE)`
+    // would mail anyone whose stored status is stale and skip anyone whose
+    // window is still open. The rows are few; the rule is applied in one place.
+    where: { owner: { email: { not: null } } },
     include: { owner: true, checklistItems: true },
   });
   let sent = 0;
   let skipped = 0;
   const candidates: Array<{ profile: (typeof profiles)[number]; mark: number; daysLeft: number; deadline: string }> = [];
   for (const profile of profiles) {
-    if (!profile.owner.email || computeEffectivePlan(profile.owner) === "EXPIRED") {
+    if (!profile.owner.email || !getEntitlement(profile.owner, now).isPro) {
       skipped += 1;
       continue;
     }

@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
-import { computeEffectivePlan, trialEndsAt } from "../middleware/plan.js";
+import { entitlementSelect, getEntitlement } from "../lib/entitlement.js";
 import { taxCountryForJurisdiction } from "../tax/registry.js";
 import { DEFAULT_CATEGORIES, LEGACY_CATEGORY_RENAMES } from "../lib/default-categories.js";
 
@@ -70,14 +70,23 @@ meRouter.get("/", async (req, res) => {
     if (operations.length > 0) await prisma.$transaction(operations);
   }
 
-  // Report the plan as the trial clock resolves it, and persist EXPIRED the
-  // first time a lapsed trial is seen so the stored enum catches up.
-  const effective = computeEffectivePlan(user);
-  if (effective === "EXPIRED" && user.plan !== "EXPIRED") {
-    await prisma.user.update({ where: { clerkId }, data: { plan: "EXPIRED" } }).catch(() => undefined);
-  }
+  // Entitlement is computed, never written back. Persisting the answer here
+  // meant a read could downgrade an account — and it had no reason to, since
+  // `getEntitlement` already accounts for the passage of time on every call.
+  const entitlement = getEntitlement(
+    await prisma.user.findUnique({ where: { clerkId }, select: entitlementSelect }),
+  );
 
-  res.json({ data: { ...user, plan: effective, trialEndsAt: trialEndsAt(user) } });
+  res.json({
+    data: {
+      ...user,
+      entitlement,
+      // Kept for older clients; new ones read `entitlement` directly.
+      plan: entitlement.isPro ? (entitlement.status === "trial" ? "TRIAL" : "ACTIVE") : "EXPIRED",
+      trialEndsAt: entitlement.trialEndsAt,
+      trialDaysLeft: entitlement.trialDaysLeft,
+    },
+  });
 });
 
 meRouter.patch("/", async (req, res) => {

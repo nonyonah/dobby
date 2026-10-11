@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { clerkClient } from "@clerk/express";
-import { Plan } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { env } from "../config/env.js";
@@ -8,7 +7,8 @@ import { AppError } from "../middleware/errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
 import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createPortalSession, createProCheckout, retrieveSubscriptionOrNull, verifyBachsSignature, type BillingInterval, type SubscriptionState } from "../lib/bachs.js";
-import { computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "../middleware/plan.js";
+import { loadEffectivePlan } from "../middleware/plan.js";
+import { entitlementSelect, getEntitlement, trialWindowFrom, type EntitlementRow } from "../lib/entitlement.js";
 import { notifyTrialStarted } from "../lib/mailer.js";
 
 const WEBHOOK_PATH = "/webhook";
@@ -64,32 +64,16 @@ async function applySubscription(data: SubscriptionData, eventType: string) {
     return false;
   }
 
+  // Bachs no longer knows about trials — the trial is ours now — so every
+  // subscription event here is money, and the status is derived from what the
+  // subscription is doing rather than mapped onto a trial/active pair.
   const status = data.status ?? "active";
-  const paid = PAID_STATUSES.has(status);
-  const trialing = status === "trialing";
-  // A live subscription wins, `trialing` is a free period the product grants
-  // (so it stays a trial), and anything else falls back to whatever the local
-  // signup clock still says (keeps a trial alive through a failed payment).
-  const plan = paid
-    ? Plan.ACTIVE
-    : trialing
-      ? Plan.TRIAL
-      : computeLocalPlan(user) === "TRIAL"
-        ? Plan.TRIAL
-        : Plan.EXPIRED;
-
-  // The trial clock starts with the first card subscription, not with the
-  // account. `trialStartedAt` is null until that moment, so this only fires
-  // once per user however many times Bachs re-sends the event — the guard is
-  // the stored value, not an event-type check, because `subscription.updated`
-  // repeats on every renewal.
-  const startsTrial = (paid || trialing) && !user.trialStartedAt;
+  const plan = statusForSubscription(user, status);
 
   await prisma.user.update({
     where: { clerkId: user.clerkId },
     data: {
-      plan,
-      ...(startsTrial ? { trialStartedAt: new Date() } : {}),
+      planStatus: plan,
       bachsCustomerId: data.customer?.id ?? user.bachsCustomerId,
       bachsSubscriptionId: data.subscription_id ?? user.bachsSubscriptionId,
       bachsSubscriptionStatus: status,
@@ -99,16 +83,26 @@ async function applySubscription(data: SubscriptionData, eventType: string) {
     },
   });
 
-  logger.info({ clerkId: user.clerkId, eventType, status, plan, startedTrial: startsTrial }, "bachs subscription applied");
-
-  // After the update, so the email can state the real end date rather than
-  // predicting it. Best-effort — a failed notification must not roll back an
-  // entitlement the customer has already paid for.
-  if (startsTrial) {
-    await notifyTrialStarted(user.clerkId, status);
-  }
+  // Idempotent by construction: the write is a plain assignment of the event's
+  // own state, so replaying the same event twice lands on the same row. The
+  // entitlement is re-read afterwards rather than recomputed here, so a replay
+  // cannot hand out a second trial.
+  const entitlement = getEntitlement(
+    await prisma.user.findUnique({ where: { clerkId: user.clerkId }, select: entitlementSelect }),
+  );
+  logger.info({ clerkId: user.clerkId, eventType, status, plan, isPro: entitlement.isPro }, "bachs subscription applied");
 
   return true;
+}
+
+/** The stored status for a subscription in this state. */
+function statusForSubscription(user: EntitlementRow, status: string) {
+  if (status === "past_due") return "past_due" as const;
+  if (status === "canceled") return "canceled" as const;
+  if (status === "unpaid") return "past_due" as const;
+  // A payment that came through always outranks whatever the stored value was:
+  // the customer has money in, and `getEntitlement` decides access from that.
+  return "pro" as const;
 }
 
 async function cancelSubscription(data: SubscriptionData) {
@@ -121,9 +115,10 @@ async function cancelSubscription(data: SubscriptionData) {
   await prisma.user.update({
     where: { clerkId: user.clerkId },
     data: {
-      // A cancelled subscription falls back to the signup trial clock — never
-      // force-expire an account whose trial is still running.
-      plan: isTrialLive(user.trialStartedAt) ? Plan.TRIAL : Plan.EXPIRED,
+      // A cancel stops the subscription; it does not touch a trial window the
+      // user started themselves, so `planStatus` records the subscription and
+      // `getEntitlement` still answers from the trial if one is running.
+      planStatus: data.cancel_at_period_end ? "pro" : "canceled",
       bachsSubscriptionStatus: "canceled",
       // Mirrors how it actually ended. Hard-coding true here made an
       // immediately-cancelled subscription look like it was still winding down.
@@ -185,8 +180,10 @@ billingWebhookRouter.post(WEBHOOK_PATH, async (req, res) => {
       logger.info({ eventId: event.id, eventType: event.type }, "bachs webhook handled by the subscription events");
   }
 
-  // Always acknowledge: Bachs retries unacknowledged deliveries, and an event we
-  // cannot attribute is not made right by replaying it.
+  // Always acknowledge, and only after the row is written. Bachs retries
+  // unacknowledged deliveries, so a slow handler turns one event into a queue
+  // of duplicates; every write above is an assignment of the event's own state,
+  // so applying the same event twice lands on the same row.
   res.json({ received: true });
 });
 
@@ -197,9 +194,8 @@ billingRouter.use(requireAuth);
 const SETTLED_STATUSES = new Set(["active", "trialing", "past_due"]);
 
 /** The user columns the billing read and the re-sync both need. */
-type BillingRow = {
+type BillingRow = EntitlementRow & {
   clerkId: string;
-  plan: Plan;
   trialStartedAt: Date | null;
   bachsCustomerId: string | null;
   bachsSubscriptionId: string | null;
@@ -212,8 +208,7 @@ type BillingRow = {
 
 const billingRowSelect = {
   clerkId: true,
-  plan: true,
-  trialStartedAt: true,
+  ...entitlementSelect,
   bachsCustomerId: true,
   bachsSubscriptionId: true,
   bachsSubscriptionStatus: true,
@@ -285,10 +280,10 @@ async function reconcileSubscription(user: BillingRow | null): Promise<BillingRo
       ...(live.status === "trialing" && live.trial_end ? { bachsTrialEnd: new Date(live.trial_end) } : {}),
       ...(live.current_period_end ? { bachsCurrentPeriodEnd: new Date(live.current_period_end) } : {}),
       ...(typeof live.cancel_at_period_end === "boolean" ? { bachsCancelAtPeriodEnd: live.cancel_at_period_end } : {}),
-      // A trial that has become a paid subscription starts the local clock if it
-      // never did, so a lapsed signup window cannot immediately EXPIRE an
-      // account that is genuinely paying.
-      ...(paid && !user.trialStartedAt ? { trialStartedAt: new Date(), plan: Plan.ACTIVE } : {}),
+      // A payment is Pro on its own terms. It never starts a trial: the trial is
+      // started deliberately by the user, and a subscription must not hand out a
+      // second window the user never asked for.
+      ...(paid ? { planStatus: "pro" as const } : {}),
     },
     select: billingRowSelect,
   });
@@ -299,10 +294,15 @@ billingRouter.get("/", async (req, res) => {
     await prisma.user.findUnique({ where: { clerkId: req.auth!.userId }, select: billingRowSelect }),
   );
 
+  const entitlement = getEntitlement(user);
   res.json({
     data: {
-      plan: user ? computeEffectivePlan(user) : "TRIAL",
-      trialEndsAt: user ? trialEndsAt(user) : null,
+      // Sent as-is so the client renders the server's answer rather than
+      // re-deriving one from a status string — which is how it used to decide
+      // on its own that a trial user was not Pro.
+      entitlement,
+      plan: entitlement.isPro ? (entitlement.status === "trial" ? "TRIAL" : "ACTIVE") : "EXPIRED",
+      trialEndsAt: entitlement.trialEndsAt,
       configured: billingConfigured(),
       planExpiresAt: user?.planExpiresAt ?? null,
       subscription: user?.bachsSubscriptionId
@@ -370,6 +370,64 @@ export function mergeIdentity(stored: Identity, fromClerk: Partial<Identity> | n
   };
 }
 
+/**
+ * Starts the free trial. No card, no checkout.
+ *
+ * The trial used to be Bachs' `trial` on the product, which meant a signed-up
+ * user held a live subscription before paying anything and every checkout
+ * billed $0.00 first. Starting it here makes it a deliberate act with nothing
+ * attached to it.
+ *
+ * Two guards: one trial per account, ever, and a verified email first. The
+ * second is the one that matters — an unverified address is free to create, so
+ * without it the trial is just a free Pro tier handed to anyone willing to
+ * type a throwaway address.
+ */
+billingRouter.post("/trial", async (req, res) => {
+  const clerkId = req.auth!.userId;
+  const user = await prisma.user.findUnique({ where: { clerkId }, select: { ...entitlementSelect, trialStartedAt: true } });
+  if (!user) throw new AppError(404, "No account found.", "USER_NOT_FOUND");
+
+  // Refuses rather than restarting: a second call must never hand out a fresh
+  // window, including from a retry after a network failure.
+  if (user.trialStartedAt) {
+    const entitlement = getEntitlement(user);
+    res.json({ data: { started: false, reason: "ALREADY_STARTED" as const, entitlement } });
+    return;
+  }
+
+  // Verified address, checked against Clerk — our own row only records that an
+  // address exists, not that anyone proved they own it.
+  try {
+    const clerkUser = await clerkClient.users.getUser(clerkId);
+    const verified = clerkUser.emailAddresses.some(
+      (address) => address.emailAddress === (user as { email?: string | null }).email || address.verification?.status === "verified",
+    );
+    if (!verified) {
+      throw new AppError(
+        403,
+        "Verify your email address before starting the free trial.",
+        "EMAIL_NOT_VERIFIED",
+      );
+    }
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    logger.warn({ clerkId, err: error }, "clerk verification check failed");
+    throw new AppError(503, "Could not verify your email. Try again in a moment.", "VERIFICATION_UNAVAILABLE");
+  }
+
+  const { trialStartedAt, trialEndsAt } = trialWindowFrom();
+  await prisma.user.update({
+    where: { clerkId },
+    data: { trialStartedAt, trialEndsAt, planStatus: "trial" },
+    select: entitlementSelect,
+  });
+
+  const entitlement = getEntitlement({ ...user, trialStartedAt, trialEndsAt, planStatus: "trial" });
+  await notifyTrialStarted(clerkId, "trial").catch(() => undefined);
+  res.status(201).json({ data: { started: true, entitlement } });
+});
+
 billingRouter.post("/checkout", async (req, res) => {
   const input = z.object({
     interval: z.enum(["month", "year"]).default("month"),
@@ -392,6 +450,24 @@ billingRouter.post("/checkout", async (req, res) => {
 
   if (!email) {
     throw new AppError(400, "Add an email address to your account before upgrading.", "EMAIL_REQUIRED");
+  }
+
+  // Already paying: hand them the portal instead of minting a second
+  // subscription. Two checkouts means two renewals, and the second one charges a
+  // card the customer never expected to be charged again.
+  const existing = await prisma.user.findUnique({ where: { clerkId }, select: { ...entitlementSelect, bachsCustomerId: true } });
+  const entitlement = getEntitlement(existing);
+  const status = existing?.bachsSubscriptionStatus ?? "";
+  const alreadyPaying =
+    (status === "active" || status === "past_due" || status === "trialing") &&
+    (entitlement.isPro || status === "trialing");
+  if (alreadyPaying) {
+    if (!existing?.bachsCustomerId) {
+      throw new AppError(409, "This account already has a subscription. Contact support to change it.", "ALREADY_SUBSCRIBED");
+    }
+    const portal = await createPortalSession(existing.bachsCustomerId);
+    res.status(200).json({ data: { alreadySubscribed: true, portalUrl: portal.url, checkoutId: null, url: null } });
+    return;
   }
 
   const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;

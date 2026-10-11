@@ -89,10 +89,12 @@ enum TaxChecklistStatus {
 
 // TRIAL = inside the 14-day free trial, ACTIVE = paid subscriber,
 // EXPIRED = trial lapsed with no active subscription (view-only).
-enum Plan {
-  TRIAL
-  ACTIVE
-  EXPIRED
+enum PlanStatus {
+  free
+  trial
+  pro
+  past_due
+  canceled
 }
 
 model User {
@@ -101,11 +103,16 @@ model User {
   firstName               String?
   lastName                String?
   imageUrl                String?
-  plan                    Plan                    @default(TRIAL)
+  /// The one status column. Everything that decides access reads this through
+  /// `getEntitlement`, so there is no second place to keep in step.
+  planStatus              PlanStatus              @default(free) @map("plan_status")
   // Null until the user starts their first Bachs card subscription. The trial
   // is tied to checkout, not to sign-up, so an account that never pays still has
   // its full week waiting for it.
   trialStartedAt          DateTime?
+  /// Stored, not derived from trialStartedAt + a constant: changing the length
+  /// must not silently move a window a user is already inside.
+  trialEndsAt             DateTime?              @map("trial_ends_at")
   bachsCustomerId         String?                 @unique
   bachsSubscriptionId     String?                 @unique
   bachsSubscriptionStatus String?
@@ -136,7 +143,8 @@ model User {
   payments                Payment[]
 
   @@index([email])
-  @@index([plan])
+  @@index([planStatus])
+  @@index([trialEndsAt])
 }
 
 model Profile {

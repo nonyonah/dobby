@@ -8,7 +8,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 const state = {
   user: null as null | {
-    plan: string;
     trialStartedAt: Date | null;
     bachsSubscriptionStatus?: string | null;
     bachsTrialEnd?: Date | null;
@@ -34,9 +33,9 @@ const daysAgo = (days: number) => new Date(Date.now() - days * DAY);
 
 import { FREE_WALLET_LIMIT, assertWalletCapacity } from "./plan.js";
 
-const expiredUser = { plan: "EXPIRED", trialStartedAt: daysAgo(60) };
-const trialUser = { plan: "TRIAL", trialStartedAt: daysAgo(2) };
-const proUser = { plan: "TRIAL", trialStartedAt: daysAgo(60), bachsSubscriptionStatus: "active" };
+const expiredUser = { planStatus: "free" as const, trialStartedAt: daysAgo(60), trialEndsAt: daysAgo(53), bachsSubscriptionStatus: null, bachsCurrentPeriodEnd: null, bachsCancelAtPeriodEnd: false, planExpiresAt: null };
+const trialUser = { planStatus: "trial" as const, trialStartedAt: daysAgo(2), trialEndsAt: new Date(Date.now() + 5 * 86_400_000), bachsSubscriptionStatus: null, bachsCurrentPeriodEnd: null, bachsCancelAtPeriodEnd: false, planExpiresAt: null };
+const proUser = { planStatus: "pro" as const, trialStartedAt: daysAgo(60), trialEndsAt: daysAgo(53), bachsSubscriptionStatus: "active", bachsCurrentPeriodEnd: null, bachsCancelAtPeriodEnd: false, planExpiresAt: null };
 
 describe("assertWalletCapacity", () => {
   beforeEach(() => {

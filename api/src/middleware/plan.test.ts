@@ -1,121 +1,117 @@
 import { describe, expect, it } from "vitest";
-import { TRIAL_DAYS, computeEffectivePlan, computeLocalPlan, isTrialLive, trialEndsAt } from "./plan.js";
+import { TRIAL_DAYS, getEntitlement, trialWindowFrom, type EntitlementRow } from "../lib/entitlement.js";
 
-describe("isTrialLive", () => {
-  it("is true inside the window and false outside it", () => {
-    expect(isTrialLive(daysAgo(2))).toBe(true);
-    expect(isTrialLive(daysAgo(TRIAL_DAYS + 1))).toBe(false);
-    expect(isTrialLive(null)).toBe(false);
+const DAY = 86_400_000;
+const now = new Date("2026-10-20T12:00:00.000Z");
+
+function user(overrides: Partial<EntitlementRow> = {}): EntitlementRow {
+  return {
+    planStatus: "free",
+    trialStartedAt: null,
+    trialEndsAt: null,
+    bachsSubscriptionStatus: null,
+    bachsCurrentPeriodEnd: null,
+    bachsCancelAtPeriodEnd: false,
+    planExpiresAt: null,
+    ...overrides,
+  };
+}
+
+const liveTrial = { trialStartedAt: new Date(now.getTime() - DAY), trialEndsAt: new Date(now.getTime() + 3 * DAY) };
+
+describe("trial window", () => {
+  it("runs for the configured length", () => {
+    expect(TRIAL_DAYS).toBe(7);
+    const { trialStartedAt, trialEndsAt } = trialWindowFrom(now);
+    expect(trialEndsAt!.getTime() - trialStartedAt.getTime()).toBe(TRIAL_DAYS * DAY);
+  });
+
+  it("measures from the given instant, not the device clock", () => {
+    const { trialEndsAt } = trialWindowFrom(now);
+    expect(trialEndsAt!.toISOString()).toBe("2026-10-27T12:00:00.000Z");
   });
 });
 
-const DAY = 24 * 60 * 60 * 1000;
-const daysAgo = (days: number) => new Date(Date.now() - days * DAY);
-const inDays = (days: number) => new Date(Date.now() + days * DAY);
-
-describe("computeLocalPlan", () => {
-  it("keeps a fresh signup window on TRIAL", () => {
-    expect(computeLocalPlan({ plan: "TRIAL", trialStartedAt: daysAgo(2) })).toBe("TRIAL");
+describe("getEntitlement", () => {
+  it("grants Pro inside a live trial window", () => {
+    const entitlement = getEntitlement(user({ planStatus: "trial", ...liveTrial }), now);
+    expect(entitlement.isPro).toBe(true);
+    expect(entitlement.status).toBe("trial");
+    expect(entitlement.trialDaysLeft).toBe(3);
   });
 
-  it("expires a window that has run past 7 days", () => {
-    expect(computeLocalPlan({ plan: "TRIAL", trialStartedAt: daysAgo(TRIAL_DAYS + 1) })).toBe("EXPIRED");
-  });
-
-  it("never revives stored ACTIVE or EXPIRED", () => {
-    expect(computeLocalPlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60) })).toBe("ACTIVE");
-    expect(computeLocalPlan({ plan: "EXPIRED", trialStartedAt: daysAgo(1) })).toBe("EXPIRED");
-  });
-
-  it("fails closed when the row has no trial clock", () => {
-    expect(computeLocalPlan({ plan: "TRIAL", trialStartedAt: null })).toBe("EXPIRED");
-  });
-});
-
-describe("computeEffectivePlan with a Bachs subscription", () => {
-  it("treats an active or past-due subscription as Pro even after the signup window", () => {
-    const row = { plan: "TRIAL", trialStartedAt: daysAgo(TRIAL_DAYS + 5) };
-    expect(computeEffectivePlan({ ...row, bachsSubscriptionStatus: "active" })).toBe("ACTIVE");
-    expect(computeEffectivePlan({ ...row, bachsSubscriptionStatus: "past_due" })).toBe("ACTIVE");
-  });
-
-  it("keeps a Bachs trial as TRIAL once the signup window has lapsed", () => {
-    const plan = computeEffectivePlan({
-      plan: "TRIAL",
-      trialStartedAt: daysAgo(TRIAL_DAYS + 5),
-      bachsSubscriptionStatus: "trialing",
-      bachsTrialEnd: inDays(9),
-    });
-    expect(plan).toBe("TRIAL");
-  });
-
-  it("falls back to the local clock when the subscription is canceled", () => {
-    const row = { plan: "TRIAL", bachsSubscriptionStatus: "canceled" };
-    expect(computeEffectivePlan({ ...row, trialStartedAt: daysAgo(3) })).toBe("TRIAL");
-    expect(computeEffectivePlan({ ...row, trialStartedAt: daysAgo(TRIAL_DAYS + 1) })).toBe("EXPIRED");
-  });
-
-  it("prefers subscription state over a stale stored plan", () => {
-    expect(
-      computeEffectivePlan({ plan: "TRIAL", trialStartedAt: daysAgo(TRIAL_DAYS + 3), bachsSubscriptionStatus: "active" }),
-    ).toBe("ACTIVE");
-  });
-});
-
-describe("trialEndsAt", () => {
-  it("reports the Bachs trial end while trialing", () => {
-    const end = inDays(9);
-    expect(
-      trialEndsAt({ plan: "TRIAL", trialStartedAt: daysAgo(3), bachsSubscriptionStatus: "trialing", bachsTrialEnd: end }),
-    ).toEqual(end);
-  });
-
-  it("falls back to the local window when Bachs has not sent a trial end", () => {
-    const started = daysAgo(3);
-    expect(trialEndsAt({ plan: "TRIAL", trialStartedAt: started, bachsSubscriptionStatus: "trialing" })).toEqual(
-      new Date(started.getTime() + TRIAL_DAYS * DAY),
+  it("withholds Pro once the window closes", () => {
+    const entitlement = getEntitlement(
+      user({ planStatus: "trial", trialStartedAt: new Date(now.getTime() - 9 * DAY), trialEndsAt: new Date(now.getTime() - 2 * DAY) }),
+      now,
     );
+    expect(entitlement.isPro).toBe(false);
+    expect(entitlement.trialDaysLeft).toBeNull();
   });
 
-  it("reports the signup window end with no subscription", () => {
-    const started = daysAgo(3);
-    expect(trialEndsAt({ plan: "TRIAL", trialStartedAt: started })).toEqual(
-      new Date(started.getTime() + TRIAL_DAYS * DAY),
+  it("never grants a trial to someone who never started one", () => {
+    // The regression this replaces: a Bachs subscription in `trialing` used to
+    // mean Pro on its own. The trial is now started deliberately.
+    expect(getEntitlement(user(), now).isPro).toBe(false);
+  });
+
+  it("grants Pro on a paid subscription with no trial at all", () => {
+    const entitlement = getEntitlement(user({ planStatus: "pro", bachsSubscriptionStatus: "active" }), now);
+    expect(entitlement.isPro).toBe(true);
+    expect(entitlement.status).toBe("pro");
+  });
+
+  it("keeps Pro while a renewal is retrying", () => {
+    expect(getEntitlement(user({ bachsSubscriptionStatus: "past_due" }), now).isPro).toBe(true);
+  });
+
+  it("keeps access after a cancel until the paid period actually ends", () => {
+    const stillPaid = getEntitlement(
+      user({ bachsSubscriptionStatus: "canceled", bachsCancelAtPeriodEnd: true, bachsCurrentPeriodEnd: new Date(now.getTime() + 5 * DAY) }),
+      now,
     );
-    expect(trialEndsAt({ plan: "TRIAL", trialStartedAt: null })).toBeNull();
-  });
-});
+    expect(stillPaid.isPro).toBe(true);
 
-describe("computeEffectivePlan with a one-time term", () => {
-  it("keeps stored ACTIVE alive while the term is in the future", () => {
-    expect(
-      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: inDays(10) }),
-    ).toBe("ACTIVE");
+    const periodOver = getEntitlement(
+      user({ bachsSubscriptionStatus: "canceled", bachsCancelAtPeriodEnd: true, bachsCurrentPeriodEnd: new Date(now.getTime() - DAY) }),
+      now,
+    );
+    expect(periodOver.isPro).toBe(false);
   });
 
-  it("expires stored ACTIVE once the term lapses", () => {
-    expect(
-      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: daysAgo(1) }),
-    ).toBe("EXPIRED");
+  it("drops access the moment a cancel takes effect", () => {
+    expect(getEntitlement(user({ planStatus: "canceled", bachsSubscriptionStatus: "canceled", bachsCancelAtPeriodEnd: false }), now).isPro).toBe(false);
   });
 
-  it("prefers a live Bachs subscription over a lapsed term", () => {
-    expect(
-      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: daysAgo(1), bachsSubscriptionStatus: "active" }),
-    ).toBe("ACTIVE");
-  });
-});
-
-describe("trial preservation", () => {
-  it("falls back to a live trial when a one-time term lapses", () => {
-    expect(
-      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(2), planExpiresAt: daysAgo(1) }),
-    ).toBe("TRIAL");
+  it("keeps Pro on an unexpired one-time term", () => {
+    expect(getEntitlement(user({ planExpiresAt: new Date(now.getTime() + DAY) }), now).isPro).toBe(true);
+    expect(getEntitlement(user({ planExpiresAt: new Date(now.getTime() - DAY) }), now).isPro).toBe(false);
   });
 
-  it("expires when both the term and the trial have lapsed", () => {
-    expect(
-      computeEffectivePlan({ plan: "ACTIVE", trialStartedAt: daysAgo(60), planExpiresAt: daysAgo(1) }),
-    ).toBe("EXPIRED");
+  it("lets a paid subscription outrank a lapsed trial", () => {
+    // Someone who pays with four trial days left keeps Pro for the paid period
+    // instead of dropping to nothing on day eight.
+    const entitlement = getEntitlement(
+      user({ trialStartedAt: new Date(now.getTime() - 9 * DAY), trialEndsAt: new Date(now.getTime() - 2 * DAY), bachsSubscriptionStatus: "active" }),
+      now,
+    );
+    expect(entitlement.isPro).toBe(true);
+    expect(entitlement.trialDaysLeft).toBeNull();
+  });
+
+  it("reports no days left for an account that never started a trial", () => {
+    expect(getEntitlement(user({ bachsSubscriptionStatus: "active" }), now).trialDaysLeft).toBeNull();
+  });
+
+  it("rounds a partial day up, so 30 minutes still reads as a day", () => {
+    const entitlement = getEntitlement(
+      user({ planStatus: "trial", trialStartedAt: new Date(now.getTime() - DAY), trialEndsAt: new Date(now.getTime() + 30 * 60 * 1000) }),
+      now,
+    );
+    expect(entitlement.trialDaysLeft).toBe(1);
+  });
+
+  it("treats a missing user as free rather than throwing", () => {
+    expect(getEntitlement(null, now)).toEqual({ isPro: false, status: "free", trialDaysLeft: null, trialEndsAt: null });
   });
 });

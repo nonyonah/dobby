@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 
 /** Effective plan: inside the 7-day trial, a paid subscriber, or lapsed (view-only). */
+/** Kept so callers that switch on it still work; access comes from `isPro`. */
 export type Plan = "TRIAL" | "ACTIVE" | "EXPIRED";
 
 export type MeProfile = {
@@ -21,6 +22,7 @@ export type MeData = {
   trialEndsAt?: string | null;
   onboardedAt?: string | null;
   firstName?: string | null;
+  entitlement?: unknown;
   lastName?: string | null;
   email?: string | null;
   profile?: MeProfile | null;
@@ -56,6 +58,24 @@ function readPlan(value: unknown): Plan | null {
   return value === "TRIAL" || value === "ACTIVE" || value === "EXPIRED" ? value : null;
 }
 
+export type Entitlement = {
+  isPro: boolean;
+  status: string;
+  trialDaysLeft: number | null;
+  trialEndsAt: string | null;
+};
+
+/** Fails closed: an unreadable answer is not Pro, but it is not a lapse either. */
+function readEntitlement(value: unknown): Entitlement {
+  const raw = (value ?? {}) as Partial<Entitlement>;
+  return {
+    isPro: raw.isPro === true,
+    status: typeof raw.status === "string" ? raw.status : "free",
+    trialDaysLeft: typeof raw.trialDaysLeft === "number" ? raw.trialDaysLeft : null,
+    trialEndsAt: typeof raw.trialEndsAt === "string" ? raw.trialEndsAt : null,
+  };
+}
+
 /**
  * Reads the signed-in user's `/v1/me` once per session (and whenever
  * `refresh` is called). Until the read resolves the plan is `null`, which
@@ -67,6 +87,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [entitlement, setEntitlement] = useState<Entitlement>(readEntitlement(null));
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
   const [me, setMe] = useState<MeData | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -85,12 +106,18 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       .get<{ data: MeData }>("/v1/me")
       .then((response) => {
         if (cancelled) return;
+        // Entitlement is read from the server, not recomputed here. This used
+        // to be `plan === "TRIAL" || plan === "ACTIVE"` — a second copy of the
+        // rule, which is how an account could be offered an upgrade by the UI
+        // while the API granted the same feature for free.
+        setEntitlement(readEntitlement(response.data.entitlement));
         setPlan(readPlan(response.data.plan));
         setTrialEndsAt(response.data.trialEndsAt ?? null);
         setMe(response.data);
       })
       .catch(() => {
         if (cancelled) return;
+        setEntitlement(readEntitlement(null));
         setPlan(null);
         setTrialEndsAt(null);
         setMe(null);
@@ -110,14 +137,15 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       plan,
-      isPro: plan === "TRIAL" || plan === "ACTIVE",
-      expired: plan === "EXPIRED",
+      // From the server's answer, never from the status string.
+      isPro: entitlement.isPro,
+      expired: !entitlement.isPro && loaded,
       trialEndsAt,
       loading,
       me,
       refresh,
     }),
-    [plan, trialEndsAt, loading, me, refresh],
+    [plan, entitlement, trialEndsAt, loading, me, refresh],
   );
 
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;

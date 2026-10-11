@@ -5,7 +5,7 @@ import { env } from "../config/env.js";
 import { prisma } from "./prisma.js";
 import { logger } from "./logger.js";
 import { appUrl, formatMoney } from "../emails/links.js";
-import { TRIAL_DAYS, trialEndsAt } from "../middleware/plan.js";
+import { TRIAL_DAYS } from "../middleware/plan.js";
 import { ImportCompleteEmail, ImportFailedEmail } from "../emails/templates/import-complete.js";
 import { TrialStartedEmail } from "../emails/templates/trial-started.js";
 import { MonthlyTaxReminderEmail } from "../emails/templates/tax-reminder.js";
@@ -195,19 +195,11 @@ export async function notifyTrialStarted(ownerClerkId: string, status: string): 
   try {
     const row = await prisma.user.findUnique({
       where: { clerkId: ownerClerkId },
-      select: { trialStartedAt: true, bachsTrialEnd: true, bachsSubscriptionStatus: true },
+      select: { trialStartedAt: true, trialEndsAt: true },
     });
-    // Goes through the same helper the plan logic bills against, rather than
-    // repeating the arithmetic here — a Bachs `trial_period` wins over the local
-    // clock, and duplicating that rule is how the two would drift.
-    const end = row
-      ? trialEndsAt({
-          plan: "",
-          trialStartedAt: row.trialStartedAt,
-          bachsTrialEnd: row.bachsTrialEnd,
-          bachsSubscriptionStatus: row.bachsSubscriptionStatus,
-        })
-      : null;
+    // Read from the stored trial window rather than recomputed, so the date in
+    // the email is the same one the gate is enforcing.
+    const end = row?.trialEndsAt ?? null;
     endsOn = end
       ? end.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" })
       : null;
@@ -215,7 +207,7 @@ export async function notifyTrialStarted(ownerClerkId: string, status: string): 
     endsOn = null;
   }
 
-  const alreadySubscribed = status !== "trialing";
+  const alreadySubscribed = status !== "trial";
   const text = [
     alreadySubscribed
       ? "Thanks for subscribing — Dobby Pro is active."

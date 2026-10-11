@@ -25,7 +25,7 @@ import { BILLING_COUNTRIES, COUNTRY_OPTIONS, CURRENCIES, CURRENCY_OPTIONS, TAX_J
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { deriveBillingNotice } from "@/lib/billing-notice";
 import { usePlan } from "@/components/plan-provider";
-import { useUpgrade } from "@/components/upgrade";
+import { StartTrialButton, useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWalletSummary, summarizeTransfers, SUMMARY_UNAVAILABLE } from "@/lib/wallet-summary";
@@ -1015,7 +1015,12 @@ export function SettingsPage() {
                   <AlertDescription>{billingNotice.body}</AlertDescription>
                 </AlertContent>
                 <div className="flex shrink-0 gap-2 self-center">
-                  {billingNotice.action === "renew" ? (
+                  {/* Starting a trial and paying are different acts now, so they
+                      get different buttons. Routing "start trial" into a checkout
+                      would attach a card to something that no longer needs one. */}
+                  {billingNotice.action === "trial" ? (
+                    <StartTrialButton />
+                  ) : billingNotice.action === "renew" ? (
                     <Button variant="primary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>
                       {checkoutBusy ? "Opening checkout…" : "Renew Pro"}
                     </Button>

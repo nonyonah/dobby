@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware/errors.js";
 import { verifyBachsSignature } from "./bachs.js";
-import { assertWalletCapacityFor, walletLimitApplies, type PlanRow } from "../middleware/plan.js";
+import { assertWalletCapacityFor, walletLimitApplies } from "../middleware/plan.js";
 import { mergeIdentity } from "../routes/billing.js";
 
 /**
@@ -10,32 +10,44 @@ import { mergeIdentity } from "../routes/billing.js";
  * These cover the pure parts; the reconciliation itself is exercised against
  * the sandbox API by hand, because it needs a live subscription.
  */
-describe("wallet cap during a trial", () => {
-  const oneWallet = { trialStartedAt: new Date(), plan: "TRIAL" };
+describe("wallet cap", () => {
+  const DAY = 86_400_000;
+  const base = {
+    planStatus: "free" as const,
+    trialStartedAt: null,
+    trialEndsAt: null,
+    bachsSubscriptionStatus: null,
+    bachsCurrentPeriodEnd: null,
+    bachsCancelAtPeriodEnd: false,
+    planExpiresAt: null,
+  };
 
-  it("does not cap an account whose Bachs subscription is trialing", () => {
-    // The regression: gating on ACTIVE alone refused a second wallet for a user
-    // whose plan resolved to TRIAL, while the client kept offering the button.
-    expect(() => assertWalletCapacityFor({ ...oneWallet, bachsSubscriptionStatus: "trialing" }, 1)).not.toThrow();
+  it("does not cap an account inside a live trial", () => {
+    const onTrial = { ...base, planStatus: "trial" as const, trialStartedAt: new Date(Date.now() - DAY), trialEndsAt: new Date(Date.now() + 5 * DAY) };
+    expect(() => assertWalletCapacityFor(onTrial, 3)).not.toThrow();
   });
 
-  it("does not cap a paid or past-due account", () => {
-    expect(() => assertWalletCapacityFor({ ...oneWallet, bachsSubscriptionStatus: "active" }, 5)).not.toThrow();
-    expect(() => assertWalletCapacityFor({ ...oneWallet, bachsSubscriptionStatus: "past_due" }, 5)).not.toThrow();
+  it("does not cap a paid account", () => {
+    expect(() => assertWalletCapacityFor({ ...base, bachsSubscriptionStatus: "active" }, 5)).not.toThrow();
   });
 
-  it("still caps an account whose trial has lapsed", () => {
-    const lapsed: PlanRow = { plan: "TRIAL", trialStartedAt: new Date(Date.now() - 9 * 86_400_000) };
+  it("caps an account whose trial has lapsed", () => {
+    const lapsed = { ...base, trialStartedAt: new Date(Date.now() - 9 * DAY), trialEndsAt: new Date(Date.now() - 2 * DAY) };
     expect(() => assertWalletCapacityFor(lapsed, 1)).toThrow(/free tier/i);
     expect(() => assertWalletCapacityFor(lapsed, 0)).not.toThrow();
+  });
+
+  it("does not treat a Bachs trial subscription as a trial", () => {
+    // The trial is ours now. A subscription in `trialing` used to mean Pro by
+    // itself, which is how an account was entitled before paying anything.
+    expect(() => assertWalletCapacityFor({ ...base, bachsSubscriptionStatus: "trialing" }, 1)).toThrow(/free tier/i);
   });
 });
 
 describe("walletLimitApplies", () => {
-  it("applies only once a trial has lapsed", () => {
-    expect(walletLimitApplies("TRIAL")).toBe(false);
-    expect(walletLimitApplies("ACTIVE")).toBe(false);
-    expect(walletLimitApplies("EXPIRED")).toBe(true);
+  it("applies to exactly the accounts without Pro", () => {
+    expect(walletLimitApplies({ isPro: true })).toBe(false);
+    expect(walletLimitApplies({ isPro: false })).toBe(true);
   });
 });
 

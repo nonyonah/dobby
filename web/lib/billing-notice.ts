@@ -12,7 +12,12 @@ import type { ReactNode } from "react";
  */
 
 export type BillingNoticeStatus = "warning" | "danger";
-export type BillingNoticeAction = "renew";
+/**
+ * `trial` starts the free trial without a checkout — there is no card and no
+ * subscription behind it any more. `renew` opens checkout, which now only
+ * happens once someone is actually paying.
+ */
+export type BillingNoticeAction = "renew" | "trial";
 
 export type BillingNotice = {
   status: BillingNoticeStatus;
@@ -44,14 +49,14 @@ export function deriveBillingNotice(input: BillingNoticeInput): BillingNotice | 
 
   if (plan === "EXPIRED") {
     // No trial end date means the trial was never started, not that it ran out.
-    // The clock only begins at checkout now, so this is the normal state for a
-    // new account and telling them it "has ended" would be a lie.
+    // The trial is now started deliberately, with no card, so this is the normal
+    // state for a new account and telling them it "has ended" would be a lie.
     if (!trialEndsAt) {
       return {
         status: "warning",
         title: "Start your free trial",
-        body: "Begin a 7-day trial of Pro — email auto-fetch, stablecoin wallets, proactive AI flags and tax advisory. Your card is not charged until you choose to continue.",
-        action: "renew",
+        body: "7 days of Pro — email auto-fetch, stablecoin wallets, proactive AI flags and tax advisory. No card, nothing to cancel, and it starts the moment you tap.",
+        action: "trial",
       };
     }
     return {

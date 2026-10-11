@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { usePlan } from "@/components/plan-provider";
+import { ApiError } from "@/lib/api-client";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 import { Banner } from "./ui/banner";
 
@@ -122,11 +123,13 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
     for (let attempt = 0; attempt < 8; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       try {
-        const billing = await api.get<{ data: { plan?: string; subscription?: unknown } }>("/v1/billing");
-        if (billing.data.subscription) {
+        // The browser event is a hint, never the answer. Entitlement is refetched
+        // from the server and believed only once the server says so.
+        const billing = await api.get<{ data: { entitlement?: { isPro?: boolean }; subscription?: unknown } }>("/v1/billing");
+        if (billing.data.subscription || billing.data.entitlement?.isPro) {
           refreshPlan();
           setBusy(false);
-          toast.success(billing.data.plan === "ACTIVE" ? "Dobby Pro is active" : "Your free trial has started — Dobby Pro is unlocked");
+          toast.success(billing.data.entitlement?.isPro ? "Dobby Pro is active" : "Your free trial has started — Dobby Pro is unlocked");
           return;
         }
       } catch {
@@ -227,13 +230,23 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
       setDialogOpen(false);
       void (async () => {
         try {
-          const response = await api.post<{ data: { url: string } }>("/v1/billing/checkout", {
+          const response = await api.post<{ data: { url: string | null; alreadySubscribed?: boolean; portalUrl?: string } }>("/v1/billing/checkout", {
             interval: option.interval,
           });
           // No baseUrl: a checkout session already carries its own environment,
           // and the full checkout_url says which checkout serves it. The SDK only
           // needs baseUrl for bare tokens, which this integration never uses.
+          // Already subscribed: the server sends a portal URL instead of a
+          // checkout, so there is nothing to open and no second subscription to
+          // charge the card for.
+          if (response.data.alreadySubscribed) {
+            setBusy(false);
+            refreshPlan();
+            if (response.data.portalUrl) window.location.href = response.data.portalUrl;
+            return;
+          }
           const bachs = await ensureBachs(handleEvent);
+          if (!response.data.url) throw new Error("Bachs returned no checkout URL.");
           await bachs.Checkout.open({ checkoutUrl: response.data.url, onEvent: handleEvent });
         } catch (error) {
           setBusy(false);
@@ -302,6 +315,45 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Starts the free trial. No card and no checkout — the trial is a window in our
+ * own database, and checkout is only for paying.
+ */
+export function StartTrialButton({ className, size = "small" }: { className?: string; size?: "small" | "default" }) {
+  const api = useApi();
+  const { refresh } = usePlan();
+  const [busy, setBusy] = useState(false);
+
+  const start = async () => {
+    setBusy(true);
+    try {
+      const response = await api.post<{ data: { started: boolean; reason?: string } }>("/v1/billing/trial", {});
+      if (response.data.started) {
+        // Re-read entitlement rather than assuming it changed: the server owns
+        // the window, and the client only renders what it is told.
+        refresh();
+        toast.success("Your 7-day free trial has started — no card needed.");
+      } else {
+        refresh();
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "EMAIL_NOT_VERIFIED") {
+        toast.error("Verify your email address first, then start your trial.");
+      } else {
+        toast.error(error instanceof Error ? error.message : "Could not start the trial. Try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button variant="primary" size={size} disabled={busy} onClick={() => void start()} className={className}>
+      {busy ? "Starting…" : "Start free trial"}
+    </Button>
   );
 }
 

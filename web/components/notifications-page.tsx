@@ -17,7 +17,7 @@ import {
 import { Segmented } from "@/components/ui/segmented";
 import { useAttention, type AttentionItem } from "@/hooks/use-attention";
 import { usePlan } from "@/components/plan-provider";
-import { useUpgrade } from "@/components/upgrade";
+import { StartTrialButton, useUpgrade } from "@/components/upgrade";
 import { deriveBillingNotice } from "@/lib/billing-notice";
 import { Alert, AlertContent, AlertDescription, AlertIndicator, AlertTitle } from "@/components/ui/alert";
 
@@ -88,9 +88,13 @@ export default function NotificationsPage() {
             <AlertDescription>{billingNotice.body}</AlertDescription>
           </AlertContent>
           <div className="flex shrink-0 self-center">
-            <Button variant="primary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>
-              {checkoutBusy ? "Opening checkout…" : "Upgrade to Pro"}
-            </Button>
+            {billingNotice.action === "trial" ? (
+              <StartTrialButton />
+            ) : (
+              <Button variant="primary" size="small" disabled={checkoutBusy} onClick={() => openCheckout()}>
+                {checkoutBusy ? "Opening checkout…" : "Upgrade to Pro"}
+              </Button>
+            )}
           </div>
         </Alert>
       ) : null}
