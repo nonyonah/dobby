@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { trialDays } from "@/lib/trial";
 
 /**
  * The one message about billing that must not be a toast.
@@ -55,7 +56,7 @@ export function deriveBillingNotice(input: BillingNoticeInput): BillingNotice | 
       return {
         status: "warning",
         title: "Start your free trial",
-        body: "7 days of Pro — email auto-fetch, stablecoin wallets, proactive AI flags and tax advisory. No card, nothing to cancel, and it starts the moment you tap.",
+        body: `${trialDays()} days of Pro — email auto-fetch, stablecoin wallets, proactive AI flags and tax advisory. No card, nothing to cancel, and it starts the moment you tap.`,
         action: "trial",
       };
     }

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Body, Container, Head, Html, Preview, Section } from "@react-email/components";
 import { fonts, radius, spacing, tokens, type Tone } from "./tokens.js";
+import { appUrl } from "./links.js";
 
 /**
  * Shared shell for every Dobby email.
@@ -23,9 +24,40 @@ export function Layout({ preview, children }: { preview: string; children: React
       </Head>
       <Preview>{preview}</Preview>
       <Body style={styles.body}>
-        <Container style={styles.page}>{children}</Container>
+        <Container style={styles.page}>
+          <EmailHeader />
+          {children}
+        </Container>
       </Body>
     </Html>
+  );
+}
+
+/**
+ * The brand mark, at the top of every email.
+ *
+ * A raster PNG rather than the app's SVG: most mail clients will not render an
+ * SVG at all, and the ones that do render it inconsistently, so a wordmark with
+ * no logo is what every template shipped until now. The file is a 64px square —
+ * twice the size it is displayed at, so it stays sharp on a retina screen
+ * without costing the message a hundred kilobytes the way the 512px source
+ * would.
+ *
+ * The wordmark is real text rather than part of the image, so it stays legible
+ * when images are blocked and reads correctly in every client.
+ */
+export function EmailHeader() {
+  return (
+    <Section style={styles.header}>
+      <img
+        src={appUrl("/dobby-logo-email.png")}
+        alt="Dobby"
+        width={32}
+        height={32}
+        style={styles.logo}
+      />
+      <span style={styles.wordmark}>Dobby</span>
+    </Section>
   );
 }
 
@@ -125,6 +157,19 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "0 auto",
     maxWidth: "560px",
     padding: spacing.card,
+  },
+  header: {
+    alignItems: "center",
+    display: "flex",
+    gap: "10px",
+    margin: `0 0 ${spacing.card}px`,
+  },
+  logo: { borderRadius: "8px", display: "block", height: "32px", width: "32px" },
+  wordmark: {
+    color: "var(--text)",
+    fontSize: "15px",
+    fontWeight: 600,
+    letterSpacing: "-0.01em",
   },
   figureRow: { margin: "0 0 8px" },
   figure: {

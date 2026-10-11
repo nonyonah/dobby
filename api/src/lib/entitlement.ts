@@ -38,9 +38,14 @@ export type EntitlementRow = {
  * window in our own database and ends on its own.
  *
  * One constant. Everything that grants, reports or describes a trial reads it
- * here, so no caller hardcodes a number and drifts from the rest.
+ * here, so no caller hardcodes a number and drifts from the rest. The web reads
+ * it through `/v1/me` for the same reason.
+ *
+ * Back to seven from fourteen. Accounts already holding a fourteen-day window
+ * keep it: shortening a trial someone is already inside is taking something away
+ * rather than changing what is offered next.
  */
-export const TRIAL_DAYS = 14;
+export const TRIAL_DAYS = 7;
 
 /**
  * Documents Composio may fetch while an account is on trial.

@@ -30,6 +30,7 @@ import { StartTrialButton, useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWalletSummary, summarizeTransfers, SUMMARY_UNAVAILABLE } from "@/lib/wallet-summary";
+import { trialLength } from "@/lib/trial";
 
 // Shadow-as-border: a transparent ring reads as a 1px edge without a hard
 // border colour. Dark mode swaps to a single white ring, because layered black
@@ -1059,9 +1060,9 @@ export function SettingsPage() {
                       ? `Your subscription ends ${formatDate(subscription.currentPeriodEnd)} — pick a plan to keep Dobby Pro running.`
                       : "Your subscription has ended — pick a plan to keep Dobby Pro running."
                     : plan === "EXPIRED"
-                      ? "Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a 14-day free trial."
+                      ? `Nothing was deleted — upgrade to resume adding transactions, connections, and categorization. Both plans start with a ${trialLength()} free trial.`
                       : plan === "TRIAL"
-                        ? "Keep every feature without interruption when your trial ends. Both plans start with a 14-day free trial."
+                        ? `Keep every feature without interruption when your trial ends. Both plans start with a ${trialLength()} free trial.`
                         : "Unlocks email auto-fetch, unlimited wallets, net worth, proactive flags, and monthly reminders."
                 }
               >

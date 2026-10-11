@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { setTrialDays } from "@/lib/error-guidance";
+import { setTrialDays } from "@/lib/trial";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 

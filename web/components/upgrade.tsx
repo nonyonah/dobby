@@ -11,6 +11,7 @@ import { usePlan } from "@/components/plan-provider";
 import { ApiError } from "@/lib/api-client";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 import { Banner } from "./ui/banner";
+import { trialLength } from "@/lib/trial";
 
 /** The two cadences Dobby Pro is sold on. */
 export type BillingInterval = "month" | "year";
@@ -335,7 +336,7 @@ export function StartTrialButton({ className, size = "small" }: { className?: st
         // Re-read entitlement rather than assuming it changed: the server owns
         // the window, and the client only renders what it is told.
         refresh();
-        toast.success("Your 14-day free trial has started — no card needed.");
+        toast.success(`Your ${trialLength()} free trial has started — no card needed.`);
       } else {
         refresh();
       }

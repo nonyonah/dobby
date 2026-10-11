@@ -1,3 +1,4 @@
+import { trialLength as trialLabel } from "@/lib/trial";
 import { ApiError } from "@/lib/api-client";
 
 /**
@@ -215,20 +216,6 @@ const CONTEXT_STEPS: Record<ErrorContext, string[]> = {
  * Turns any thrown value into prescriptive copy. Falls back to a short plain
  * message so genuine bugs never get a confident wrong explanation.
  */
-/**
- * Trial length, for copy only.
- *
- * The API owns the real number (`TRIAL_DAYS` in `api/src/lib/entitlement.ts`)
- * and sends it through `/v1/me`; `PlanProvider` hands it here. The fallback is
- * only what shows in the moment before that read lands, which is why it is not
- * simply a constant: a hardcoded 14 would quietly disagree with the server the
- * day the length changes.
- */
-let trialDays = 14;
-export function setTrialDays(days: number | null | undefined) {
-  if (typeof days === "number" && Number.isFinite(days) && days > 0) trialDays = Math.round(days);
-}
-const trialLabel = () => `${trialDays}-day`;
 
 export function guidanceFor(error: unknown, context: ErrorContext = "load"): ErrorGuidance {
   const code = error instanceof ApiError ? error.code : null;
