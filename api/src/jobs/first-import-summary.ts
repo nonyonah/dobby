@@ -116,7 +116,11 @@ async function resolveWindow(ownerClerkId: string, importAt: Date, now: Date): P
 
   if (spansOneFullMonth) {
     const monthStart = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 1));
+    // The last instant of the month, not the first instant of the next one:
+    // `buildInsightsSummary` treats `to` as inclusive, so passing the 1st would
+    // pull a midnight transaction into this month *and* the next — and the
+    // email would then disagree with the Insights page for both.
+    const monthEnd = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 1) - 1);
     return { from: monthStart, to: monthEnd };
   }
   void now;
