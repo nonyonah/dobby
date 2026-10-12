@@ -26,7 +26,24 @@ export class ApiError extends Error {
  * only de-duplicated while a request is in flight, so callers always see
  * fresh data after their own mutations.
  */
-const CACHEABLE_PREFIXES = ["/v1/me", "/v1/categories", "/v1/rules", "/v1/integrations", "/v1/wallets"];
+const CACHEABLE_PREFIXES = [
+  "/v1/me",
+  "/v1/categories",
+  "/v1/rules",
+  "/v1/integrations",
+  "/v1/wallets",
+  // The counts behind the sidebar badges and behind the Notifications page read
+  // the same two things. Cached, the badge stops costing a round trip on every
+  // render, and opening Notifications reuses the answer the badge already has
+  // instead of asking again — which is what made the page feel as slow as the
+  // badge beside it.
+  //
+  // Safe because every mutation clears the whole cache, so an approve, an import
+  // or a settings write cannot leave a stale count behind.
+  "/v1/reviews",
+  "/v1/notifications",
+  "/v1/tax/checklist",
+];
 const CACHE_TTL_MS = 8_000;
 
 type CacheEntry = { value: unknown; expires: number };

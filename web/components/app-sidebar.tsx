@@ -66,7 +66,10 @@ interface NavItem {
 const NotificationsNavIcon = (props: { className?: string }) => <BellIcon filled {...props} />;
 
 const MAIN_NAV: NavItem[] = [
-  { id: "dashboard", label: "Dashboard", href: "/", icon: DashboardIconFull },
+  // `/app`, not `/`. The root belongs to the marketing layout, which bounces
+  // signed-in visitors server-side, so linking there turned the one navigation
+  // item that could be client-side into a full page load through two layouts.
+  { id: "dashboard", label: "Dashboard", href: "/app", icon: DashboardIconFull },
   { id: "transactions", label: "Transactions", href: "/transactions", icon: TransactionsIcon },
   { id: "insights", label: "Insights", href: "/insights", icon: ReportsIcon },
   { id: "notifications", label: "Notifications", href: "/notifications", icon: NotificationsNavIcon },
