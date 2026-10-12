@@ -1,0 +1,11 @@
+-- Recurring, as something a rule can carry.
+--
+-- `Transaction.isRecurring` already existed and was already filterable, but
+-- nothing ever wrote to it: no detection, no control in the editor, and no rule
+-- to make a decision stick. A customer could mark one charge as recurring and
+-- the next import would quietly contradict them.
+--
+-- Nullable on purpose. False would mean "the customer said this is not
+-- recurring", which is different from a rule that simply never mentioned it —
+-- and conflating them means a recurring flag cannot be turned off once set.
+ALTER TABLE "CategorizationRule" ADD COLUMN "isRecurring" BOOLEAN DEFAULT NULL;

@@ -55,6 +55,8 @@ type ApiTransaction = {
   source?: string | null;
   isTaxable: boolean;
   needsReview: boolean;
+  /** Whether this row is a repeating charge, by the customer's or a rule's say-so. */
+  isRecurring: boolean;
   subAccount?: string | null;
   reference?: string | null;
   transferSource?: string | null;
@@ -77,7 +79,7 @@ type ApiReview = {
   transferSource?: string | null;
   transferDirection?: string | null;
   subAccount?: string | null;
-  proposedData?: { type?: string; amount?: number; currency?: string; categoryId?: string; categoryName?: string; description?: string; occurredAt?: string; isTaxable?: boolean | null } | null;
+  proposedData?: { type?: string; amount?: number; currency?: string; categoryId?: string; categoryName?: string; description?: string; occurredAt?: string; isTaxable?: boolean | null; isRecurring?: boolean } | null;
 };
 
 function categoryId(name?: string | null) {
@@ -110,6 +112,7 @@ function mapTransaction(item: ApiTransaction): TxFull {
     transferDirection: item.transferDirection === "IN" || item.transferDirection === "OUT" ? item.transferDirection : null,
     subAccount: item.subAccount ?? null,
     source: sourceId(item.source),
+    recurring: item.isRecurring === true,
     parse: { state: item.needsReview ? "review" : "parsed" },
     note: "",
   };
@@ -307,6 +310,7 @@ function TransactionsInner() {
         source: next.source,
         categoryId: (next.categoryId && liveIds.has(next.categoryId) ? next.categoryId : null) ?? categoryIds[next.category] ?? null,
         isTaxable: next.taxable,
+        recurring: next.recurring === true,
       };
       if (isQueued) {
         await api.patch(`/v1/reviews/${next.id}`, body);
@@ -345,7 +349,15 @@ function TransactionsInner() {
       const matcher = (next.name || "").trim().slice(0, 80);
       if (matcher) {
         try {
-          await api.post("/v1/rules", { matcher, categoryId: mapped.categoryId, isTaxable: mapped.taxable });
+          await api.post("/v1/rules", {
+            matcher,
+            categoryId: mapped.categoryId,
+            isTaxable: mapped.taxable,
+            // Persisted so the next statement does not contradict what the
+            // customer just decided. Absent when unset, which is different from
+            // saying false.
+            ...(mapped.recurring === undefined ? {} : { isRecurring: mapped.recurring }),
+          });
           toast.success("Transaction updated — similar ones will categorize themselves from now on.");
           return true;
         } catch {

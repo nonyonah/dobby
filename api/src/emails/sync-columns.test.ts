@@ -18,6 +18,15 @@ describe("syncColumns", () => {
     cappedByTrial: true,
   };
 
+  it("carries only columns, so any future extra key is dropped by default", () => {
+    // The failure mode this guards is a repeat, not the original bug: a new
+    // field on SyncCounts must never be able to reject the write again.
+    const columns = syncColumns({ ...counts, someNewField: "x" } as never);
+    expect(Object.keys(columns).sort()).toEqual(
+      ["duplicates", "duplicateRows", "failed", "imported", "scanned", "skipped"].sort(),
+    );
+  });
+
   it("drops cappedByTrial, which is not a column", () => {
     const columns = syncColumns(counts);
     expect(columns).not.toHaveProperty("cappedByTrial");

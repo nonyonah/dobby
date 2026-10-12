@@ -42,7 +42,7 @@ export function fingerprintFor(date: string | undefined, amount: number | undefi
 export async function persistReviewItems(ownerClerkId: string, record: { id: string }, prepared: PreparedReview[]) {
   const [categories, rules] = await Promise.all([
     prisma.category.findMany({ where: { ownerClerkId, isArchived: false }, select: { id: true, name: true } }),
-    prisma.categorizationRule.findMany({ where: { ownerClerkId }, select: { matcher: true, categoryId: true } }),
+    prisma.categorizationRule.findMany({ where: { ownerClerkId }, select: { matcher: true, categoryId: true, isRecurring: true } }),
   ]);
   const suggestCategoryId = (rawDescriptor: string, type: string) =>
     suggestCategory(
@@ -51,6 +51,14 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
       categories.map((category) => ({ id: category.id, name: category.name })),
       rules.flatMap((rule) => (rule.categoryId ? [{ matcher: rule.matcher, categoryId: rule.categoryId }] : [])),
     )?.categoryId;
+  // A saved rule can also say a merchant is recurring. Same substring match the
+  // category suggestion uses, so one matcher means the same thing in both places.
+  const recurringRules = rules.filter((rule) => rule.isRecurring !== null && rule.isRecurring !== undefined);
+  const recurringMatch = (descriptor: string) => {
+    const normalized = descriptor.toLowerCase();
+    const hit = recurringRules.find((rule) => normalized.includes(rule.matcher.toLowerCase()));
+    return hit?.isRecurring === true;
+  };
   const keywordMatched = new Set<number>();
   const patternMatched = new Set<number>();
   const enriched = prepared.map((item, index) => {
@@ -61,7 +69,14 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
     const categoryId = rawDescriptor ? suggestCategoryId(rawDescriptor, String(proposed.type ?? "")) : undefined;
     const categoryName = categoryId ? categories.find((category) => category.id === categoryId)?.name : undefined;
     if (categoryId) keywordMatched.add(index);
-    return categoryId ? { ...item, proposedData: { ...proposed, categoryId, categoryName } as Prisma.InputJsonValue } : item;
+    const recurring = rawDescriptor ? recurringMatch(rawDescriptor) : undefined;
+    const additions: Record<string, unknown> = {
+      ...(categoryId ? { categoryId, categoryName } : {}),
+      ...(recurring === undefined ? {} : { isRecurring: recurring }),
+    };
+    return Object.keys(additions).length > 0
+      ? { ...item, proposedData: { ...proposed, ...additions } as Prisma.InputJsonValue }
+      : item;
   });
 
   // Deterministic narration patterns, after the user's saved rules and before the

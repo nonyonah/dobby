@@ -65,14 +65,24 @@ export type SyncCounts = {
 /**
  * The sync counters that are actually columns on `EmailSyncJob`.
  *
- * `SyncCounts` carries `cappedByTrial`, which is for the log line and not for
- * the database. Stripping it here rather than at each of the three call sites is
- * the point: spreading it into an update made Prisma reject the write, and that
- * was fixed at one call site and missed at another, so the error kept coming
- * back after the first fix looked like it had worked.
+ * A whitelist, not a list of known-bad keys. Stripping `cappedByTrial` fixed one
+ * call site and left the same crash at another, so the next extra field put on
+ * `SyncCounts` would have done it a third time — and each time the only symptom
+ * the customer saw was the sync failing and the job stuck on "processing".
+ * Naming the columns means an unrelated addition cannot reach Prisma.
  */
-export function syncColumns(counts: SyncCounts) {
-  const { cappedByTrial: _capped, ...columns } = counts;
+const SYNC_COUNTER_COLUMNS = [
+  "scanned",
+  "imported",
+  "duplicates",
+  "duplicateRows",
+  "skipped",
+  "failed",
+] as const;
+
+export function syncColumns(counts: SyncCounts): Record<string, number> {
+  const columns: Record<string, number> = {};
+  for (const key of SYNC_COUNTER_COLUMNS) columns[key] = counts[key] ?? 0;
   return columns;
 }
 

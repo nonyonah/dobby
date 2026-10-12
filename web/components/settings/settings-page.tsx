@@ -392,6 +392,7 @@ export function SettingsPage() {
      They get no Review action because there is nothing to review: the user
      has to fetch an unlocked copy from their mail app themselves. */
   const [lockedEmails, setLockedEmails] = useState<EmailImportRow[]>([]);
+  const [dismissedLocked, setDismissedLocked] = useState<number | null>(null);
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [lockedOpen, setLockedOpen] = useState(false);
   // Which duplicate batch the user has dismissed. Keyed by count, not a bare
@@ -899,11 +900,14 @@ export function SettingsPage() {
                 </button>
               </Alert>
             ) : null}
-            {lockedEmails.length > 0 ? (
-              /* Persists rather than being dismissible: this is the only place
-                 the user learns a statement was locked and therefore never
-                 imported. The duplicates notice above can be dismissed because
-                 nothing was lost; here, data is missing. */
+            {lockedEmails.length > 0 && dismissedLocked !== lockedEmails.length ? (
+              /* Dismissible on request. Nothing was lost here — the message is
+                 still in the inbox and imports fine once unlocked — so blocking
+                 dismissal only trained the banner to be ignored. The risk that
+                 used to justify it, silently losing the only notice that a
+                 statement never imported, is handled on the provider row
+                 instead: the count stays on Gmail/Outlook with the fix one click
+                 away, which is where the user is looking anyway. */
               <Alert status="error" className="mb-2 gap-2 px-2.5 py-1.5 text-[12px]">
                 <AlertIndicator className="[&_svg]:size-3.5">
                   <HugeiconsIcon icon={AlertIcon} strokeWidth={2} size={14} />
@@ -917,6 +921,14 @@ export function SettingsPage() {
                   </AlertDescription>
                 </AlertContent>
                 <Button variant="secondary" size="small" onClick={() => setLockedOpen(true)}>See how to fix</Button>
+                <button
+                  type="button"
+                  onClick={() => setDismissedLocked(lockedEmails.length)}
+                  aria-label="Dismiss locked message notice"
+                  className="-mr-1 shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                >
+                  <HugeiconsIcon icon={CancelIcon} strokeWidth={2} size={12}  />
+                </button>
               </Alert>
             ) : null}
             {PROVIDER_ROWS.map((row) => {
@@ -932,6 +944,7 @@ export function SettingsPage() {
               // statements through, the connection is demonstrably working, and
               // leaving "needs attention" under a green row read as a contradiction.
               const description = providerCopy(state, sync, isEmail, row.description);
+              const lockedHere = lockedEmails.filter((mail) => mail.provider === row.id).length;
               return (
                 <Row
                   key={row.id}
@@ -941,6 +954,14 @@ export function SettingsPage() {
                     <div className="flex w-full flex-wrap items-center justify-end gap-2">
                       {isEmail ? (
                         <SyncButton state={sync} providerName={row.name} onSync={() => void syncEmailProvider(row.id)} />
+                      ) : null}
+                      {lockedHere > 0 ? (
+                        /* The banner's job moved here rather than disappearing
+                           with it. Silent data loss is the thing to avoid, and
+                           the row is where a locked inbox is actionable. */
+                        <Button variant="secondary" size="small" onClick={() => setLockedOpen(true)}>
+                          {lockedHere} locked
+                        </Button>
                       ) : null}
                       <Button variant="destructive" size="small" onClick={() => void disconnectProvider(row.id)}><HugeiconsIcon icon={CancelIcon}  /> Disconnect</Button>
                     </div>

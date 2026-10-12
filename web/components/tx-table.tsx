@@ -54,7 +54,7 @@ import {
   type TxFull,
 } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
-import { detectRecurringTransactions, MOCK_RECURRING_HISTORY } from "@/lib/recurring";
+import { detectRecurringTransactions } from "@/lib/recurring";
 import { CardIcon, EmailIcon, FileIcon, ManualIcon, WalletIcon } from "./icons";
 import { CategoryChip } from "@/components/ui/category-chip";
 
@@ -214,7 +214,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
   const [menu, setMenu] = useState<MenuDim>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const reduce = useReducedMotion() ?? false;
-  const recurringPatterns = useMemo(() => detectRecurringTransactions([...MOCK_RECURRING_HISTORY, ...rows]), [rows]);
+  const recurringPatterns = useMemo(() => detectRecurringTransactions(rows), [rows]);
   const recurringByTransactionId = useMemo(
     () => new Map(recurringPatterns.flatMap((pattern) => pattern.transactions.map((transaction) => [transaction.id, pattern] as const))),
     [recurringPatterns]
@@ -242,7 +242,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
       if (tax === "taxable" && !t.taxable) return false;
       if (tax === "nontaxable" && t.taxable) return false;
       if (source !== "all" && t.source !== source) return false;
-      if (recurringOnly && !recurringByTransactionId.has(t.id)) return false;
+      if (recurringOnly && !recurringByTransactionId.has(t.id) && t.recurring !== true) return false;
       if (cut && t.date < cut) return false;
       return true;
     });
@@ -383,7 +383,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                   <p className="m-0 px-2 pt-1 pb-0.5 text-[12px] font-semibold text-muted-foreground">Filter by</p>
                   <MenuRow icon={TagIcon} label="Category" value={categories.length === 1 ? optionName(categories[0]) : categories.length > 1 ? `${categories.length} selected` : undefined} onClick={() => setMenu("category")} />
                   <MenuRow icon={CalendarIcon} label="Date" value={dateRange !== "all" ? DATE_LABEL[dateRange] : undefined} onClick={() => setMenu("date")} />
-                  <MenuRow icon={CalendarIcon} label="Recurring" value={recurringOnly ? "Detected" : undefined} onClick={() => setRecurringOnly((current) => !current)} />
+                  <MenuRow icon={CalendarIcon} label="Recurring" value={recurringOnly ? "Showing" : undefined} onClick={() => setRecurringOnly((current) => !current)} />
                   <MenuRow icon={ReceiptIcon} label="Tax status" value={tax !== "all" ? (tax === "taxable" ? "Taxable" : "Non-taxable") : undefined} onClick={() => setMenu("tax")} />
                   <MenuRow icon={UploadIcon} label="Source" value={source !== "all" ? SOURCE_LABEL[source] : undefined} onClick={() => setMenu("source")} />
                   <div className="my-1 border-t border-line" />

@@ -60,6 +60,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
   const [source, setSource] = useState<TxSource>("manual");
   const [note, setNote] = useState("");
   const [rememberRule, setRememberRule] = useState(false);
+  const [recurring, setRecurring] = useState(false);
   // Above the `if (!tx)` bail-out for the same reason as `appCurrency`: the
   // dialog renders null until a row is chosen, and a hook called after that
   // return makes the hook count jump from nine to ten the moment it opens —
@@ -83,6 +84,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       setTaxable(tx.taxable ? "taxable" : "non-taxable");
       setSource(tx.source);
       setNote(tx.note);
+      setRecurring(tx.recurring === true);
       // Uncategorized rows offer to remember the fix; categorized rows don't.
       setRememberRule(!tx.categoryId || tx.categoryName === "Uncategorized");
     }
@@ -129,6 +131,7 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
         categoryName: option?.name ?? tx.categoryName,
         taxable: taxable === "taxable",
         source,
+        recurring,
         note: note.trim(),
       }, { rememberRule });
     } finally {
@@ -173,6 +176,21 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
               value={category}
               onValueChange={setCategory}
               options={options.map((c) => ({ value: c.id, label: `${c.emoji} ${c.name}` }))}
+            />
+          </Field>
+          <Field label="Recurring">
+            {/* A decision, not a guess. The ledger separately infers repeating
+                charges from repeated merchants; this is the customer saying so,
+                and "remember" carries it into a rule so the next statement does
+                not quietly contradict them. */}
+            <NativeSelect
+              aria-label="Recurring"
+              value={recurring ? "yes" : "no"}
+              onValueChange={(v) => setRecurring(v === "yes")}
+              options={[
+                { value: "no", label: "Not recurring" },
+                { value: "yes", label: "Recurring" },
+              ]}
             />
           </Field>
           <Field label="Tax status">

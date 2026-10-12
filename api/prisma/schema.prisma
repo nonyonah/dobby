@@ -452,6 +452,10 @@ model CategorizationRule {
   matcher      String
   categoryId   String?
   isTaxable    Boolean   @default(false)
+  /// Null rather than false, so "not said" is distinguishable from "said no".
+  /// Without that a customer who marked one Netflix charge as recurring had no
+  /// way to stop the next one being flagged by a rule they never chose.
+  isRecurring  Boolean?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   owner        User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)

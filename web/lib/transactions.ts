@@ -93,6 +93,14 @@ export interface TxFull {
   currency?: string;
   needsManualReview?: boolean;
   /**
+   * The customer, or a saved rule, considers this a repeating charge.
+   *
+   * Distinct from "detected recurring", which the ledger infers from repeated
+   * merchant and amount: that is a guess and can be wrong, while this is a
+   * decision somebody made and can be undone.
+   */
+  recurring?: boolean;
+  /**
    * The row is a password-locked attachment rather than a parse failure. Such a
    * row can never be approved here — the user has to unlock the file in their
    * mail app and import an unlocked copy — so the UI shows the instruction and

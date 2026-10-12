@@ -12,47 +12,16 @@ export interface RecurringPattern {
   transactions: TxFull[];
 }
 
-// Mock history gives the detector enough observations to demonstrate the flow
-// until a real transaction history/index is connected.
-export const MOCK_RECURRING_HISTORY: TxFull[] = [
-  ...["2026-07-16", "2026-08-16", "2026-09-16"].map((date, index) => ({
-    id: `rec-netflix-${index}`,
-    name: "Netflix Subscription",
-    account: "Amex ··1005",
-    date,
-    amount: -16,
-    category: "other",
-    taxable: false,
-    source: "card" as const,
-    parse: { state: "parsed" as const, confidence: 97 },
-    note: "",
-  })),
-  ...["2026-06-15", "2026-07-15", "2026-08-15", "2026-09-15"].map((date, index) => ({
-    id: `rec-internet-${index}`,
-    name: "Internet Bill",
-    account: "Chase ··3567",
-    date,
-    amount: -80,
-    category: "housing",
-    taxable: false,
-    source: "email" as const,
-    parse: { state: "parsed" as const, confidence: 93 },
-    note: "",
-  })),
-  ...["2026-06-17", "2026-07-17", "2026-08-17", "2026-09-17"].map((date, index) => ({
-    id: `rec-electric-${index}`,
-    name: "Electricity Bill",
-    account: "Chase ··3567",
-    date,
-    amount: [-38, -42, -40, -40][index],
-    category: "utilities",
-    taxable: false,
-    source: "email" as const,
-    parse: { state: "parsed" as const, confidence: 91 },
-    note: "",
-  })),
-];
-
+/**
+ * The rows a merchant-recurring pattern was found in.
+ *
+ * The detector used to be handed a fabricated history — three months of fake
+ * Netflix and electricity charges — mixed into the real ledger so the feature
+ * had something to show. That meant the "Recurring" filter listed subscriptions
+ * the customer had never made, and any pattern "found" was fiction. It only
+ * ever sees real rows now; a customer with one statement has one observation,
+ * and the honest answer to that is nothing detected rather than a demo.
+ */
 function cadenceFor(days: number): string {
   if (days <= 9) return "Weekly";
   if (days <= 20) return "Every 2 weeks";

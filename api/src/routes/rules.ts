@@ -11,6 +11,12 @@ const ruleSchema = z.object({
   matcher: z.string().trim().min(1).max(120),
   categoryId: z.string().trim().min(1).nullable().optional(),
   isTaxable: z.boolean().optional(),
+  /**
+   * Tri-state on purpose: absent means "this rule says nothing about recurring",
+   * which is different from `false`. Omitting it when absent is what lets a
+   * customer turn a recurring flag back off.
+   */
+  isRecurring: z.boolean().optional(),
 });
 
 async function validCategory(ownerClerkId: string, categoryId?: string | null) {
