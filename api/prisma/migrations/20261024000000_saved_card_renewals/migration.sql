@@ -17,11 +17,16 @@ ALTER TABLE "User" ADD COLUMN "bachsPaymentMethodId" TEXT;
 -- still has a live Bachs subscription, so the two renewal paths cannot both run.
 ALTER TABLE "User" ADD COLUMN "bachsRecurring" BOOLEAN NOT NULL DEFAULT false;
 
--- The renewal sweep reads "due and not already handled" on every run; without
--- this it is a sequential scan of every account.
-CREATE INDEX "User_bachsNextChargeAt_idx" ON "User"("bachsNextChargeAt");
-
 ALTER TABLE "User" ADD COLUMN "bachsNextChargeAt" TIMESTAMP(3);
 ALTER TABLE "User" ADD COLUMN "bachsChargeCurrency" TEXT NOT NULL DEFAULT 'USD';
 ALTER TABLE "User" ADD COLUMN "bachsChargeInterval" TEXT NOT NULL DEFAULT 'month';
 ALTER TABLE "User" ADD COLUMN "bachsChargeAmount" DECIMAL(19,4);
+
+-- The renewal sweep reads "due and not already handled" on every run; without
+-- this it is a sequential scan of every account.
+--
+-- After the column, not before. Postgres resolves the index definition when it
+-- is created, so an index naming a column added later fails the whole migration
+-- with `column does not exist` from ComputeIndexAttrs — which is what happened
+-- the first time this ran.
+CREATE INDEX "User_bachsNextChargeAt_idx" ON "User"("bachsNextChargeAt");
