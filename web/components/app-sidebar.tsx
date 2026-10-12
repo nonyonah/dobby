@@ -157,39 +157,7 @@ function NavMenu({ items, activeId, counts, onNavigate }: { items: NavItem[]; ac
 }
 
 
-function QuickCreate({ onCreate, className }: { onCreate: (kind: "import" | "budget" | "goal") => void; className?: string }) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button variant="secondary" size="icon-sm" aria-label="Create new" title="Create new" data-tour="quick-create" className={`shrink-0 ${className ?? ""}`}>
-            <PlusIcon />
-          </Button>
-        }
-      />
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuItem onClick={() => onCreate("import")}>
-          <UploadIcon />
-          <span>Import transaction</span>
-        </DropdownMenuItem>
-        {FEATURES.budgeting ? (
-          <DropdownMenuItem onClick={() => onCreate("budget")}>
-            <WalletIcon />
-            <span>Create a budget</span>
-          </DropdownMenuItem>
-        ) : null}
-        {FEATURES.goals ? (
-          <DropdownMenuItem onClick={() => onCreate("goal")}>
-            <GoalsIcon />
-            <span>Create a goal</span>
-          </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNavigate?: () => void; onCreate: (kind: "import" | "budget" | "goal") => void }) {
+function SidebarNav({ active, onNavigate }: { active: string; onNavigate?: () => void }) {
   // Both badges are live: the transactions row counts pending review rows, the
   // notifications row counts unread attention items. Both fall to zero once
   // everything is dealt with.
@@ -209,13 +177,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
             aria-label="Brand logo"
           >
             <BrandLogo size={28} />
-
           </div>
-          {/* Create lives in the top bar now: the sidebar collapses behind a
-              hamburger on a phone, so it was unreachable exactly where it was
-              most needed. Kept here for the desktop rail, where it is one click
-              from the logo rather than a walk across the bar. */}
-          <QuickCreate onCreate={onCreate} className="hidden md:inline-flex" />
         </div>
       </SidebarHeader>
 
@@ -356,7 +318,7 @@ export function AppSidebar({ active, peek, onPeekChange, onCreate }: AppSidebarP
         className="border-r-0"
         style={{ borderRightWidth: 0 }}
       >
-        <SidebarNav active={active} onNavigate={() => onPeekChange(false)} onCreate={onCreate} />
+        <SidebarNav active={active} onNavigate={() => onPeekChange(false)} />
       </Sidebar>
 
       {/* Edge hover-strip: opens the floating sidebar while collapsed */}
@@ -373,7 +335,7 @@ export function AppSidebar({ active, peek, onPeekChange, onCreate }: AppSidebarP
             className="fixed top-2 bottom-2 left-2 z-50 hidden w-[248px] flex-col overflow-hidden rounded-[12px] border border-line bg-background shadow-[0_16px_48px_rgb(23_24_28/0.18),0_4px_12px_rgb(23_24_28/0.1)] md:flex"
             aria-label="Sidebar preview"
           >
-            <SidebarNav active={active} onNavigate={() => onPeekChange(false)} onCreate={onCreate} />
+            <SidebarNav active={active} onNavigate={() => onPeekChange(false)} />
           </motion.aside>
         ) : null}
       </AnimatePresence>

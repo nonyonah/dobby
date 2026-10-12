@@ -154,8 +154,24 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
   // every classification; a missing table degrades to regex-only matching.
   const directory = await loadSenderDirectory();
 
-  const saveJob = () =>
-    prisma.emailSyncJob.update({ where: { id: jobId }, data: { ...counts } }).catch(() => undefined);
+  const saveJob = () => {
+    // `counts` carries `cappedByTrial` for the log line below, and that is not
+    // a column. Spreading the whole object sent it to Prisma on every progress
+    // save, which rejected the update — and the rejection was swallowed, so the
+    // job row silently recorded no progress at all.
+    //
+    // Named explicitly rather than spread again, so a field added to SyncCounts
+    // has to be added here on purpose.
+    const { cappedByTrial: _capped, ...columns } = counts;
+    return prisma.emailSyncJob
+      .update({ where: { id: jobId }, data: columns })
+      .catch((error: unknown) => {
+        // Progress is nice to have, not the point of the sync, so a failure
+        // here must not abort the run. Logged because a silent swallow is how
+        // this went unnoticed for so long.
+        logger.warn({ jobId, error: error instanceof Error ? error.message : String(error) }, "could not record email sync progress");
+      });
+  };
 
   // Walk the lookback newest-first in 30-day windows so a deep history never
   // buries this month's statements under a year of newsletters. Windows are
