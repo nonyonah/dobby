@@ -594,14 +594,13 @@ billingRouter.post("/checkout", async (req, res) => {
   const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;
   const session = await createProCheckout({ email, name, clerkUserId: clerkId, interval });
 
-  // We do not restrict the corridors, so whatever Bachs returns is what the
-  // customer will actually be offered. Logged because a corridor the account is
-  // not enabled for drops out silently here — the checkout still succeeds — and
-  // "there was no crypto option" is otherwise invisible until somebody reports it.
-  logger.info(
-    { clerkId, checkoutId: session.checkout_id, interval, offered: session.payment_methods ?? null },
-    "checkout created",
-  );
+  // We do not restrict the corridors, so Bachs decides what the customer is
+  // offered. For this catalog product that is always a card and nothing else:
+  // a subscription has to save a payment method and re-charge it later without
+  // the customer present, and only a card can do that. The restriction is the
+  // product's, not the request's — logging the interval and product so a report
+  // of "the rails were missing" has something concrete to trace.
+  logger.info({ clerkId, checkoutId: session.checkout_id, interval }, "subscription checkout created (card rails only by design)");
 
   res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url } });
 });

@@ -63,7 +63,11 @@ async function bachsFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 export type CheckoutSession = {
   checkout_id: string;
   checkout_url: string;
-  /** The corridors this session will actually offer, when Bachs reports them. */
+  /**
+   * Bachs does not currently return this on either endpoint — see
+   * `logMissingPaymentMethods`. Kept optional so a future version that does
+   * report it starts working without another change.
+   */
   payment_methods?: string[];
 };
 
@@ -285,16 +289,24 @@ export type OneTimeCheckoutSession = {
 };
 
 /**
- * Checks the corridors that actually came back on the session.
+ * Reports on the corridors a session came back with.
  *
- * Bachs will happily create a checkout showing only bank transfer on an account
- * that cannot do crypto yet, and the request still succeeds — a silent success
- * that costs a customer who arrives at the page expecting to pay in crypto.
- * Logged with the session id so a report of "crypto is missing" can be traced to
- * the exact checkout that dropped it.
+ * Bachs does not return `payment_methods` on either the create response or a
+ * re-read — verified against the sandbox, both return no such field — so the
+ * list of what the customer will actually see is only ever visible on the hosted
+ * page. Treating an absent field as "nothing was offered" turned every checkout
+ * into a false alarm, so an absent list is reported as unknown rather than empty.
  */
 export function logMissingPaymentMethods(session: OneTimeCheckoutSession, log: typeof logger): void {
-  const offered = session.payment_methods ?? [];
+  const offered = session.payment_methods;
+  if (!Array.isArray(offered)) {
+    log.info(
+      { checkoutId: session.checkout_id },
+      "bachs did not report payment_methods for this checkout; the hosted page decides what is offered",
+    );
+    return;
+  }
+
   const missing = ONE_TIME_PAYMENT_METHODS.filter((method) => !offered.includes(method));
   if (missing.length === 0) return;
 
@@ -304,11 +316,9 @@ export function logMissingPaymentMethods(session: OneTimeCheckoutSession, log: t
       requested: [...ONE_TIME_PAYMENT_METHODS],
       offered,
       missing,
-      hint: missing.length === offered.length || offered.length === 0
-        ? "the account is probably not enabled for these corridors — check GET /v1/accounts/checkout/settings"
-        : "the corridor is not enabled on the account, or adaptive pricing is off",
+      hint: "the corridor is probably not enabled on the account, or adaptive pricing is off",
     },
-    "one-time checkout does not offer every requested payment method",
+    "checkout does not offer every requested payment method",
   );
 }
 

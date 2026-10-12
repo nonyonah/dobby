@@ -92,6 +92,7 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
   const [dialogInterval, setDialogInterval] = useState<BillingInterval>("month");
   const optionsRef = useRef<BillingOption[] | null>(null);
   const bachsRef = useRef<Bachs | null>(null);
+  const originRef = useRef<string | undefined>(undefined);
   const completedRef = useRef(false);
 
   // Prices loaded once; USD anchor labels render until then so nothing flashes
@@ -210,12 +211,19 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
    * bare "initialise in an effect" would not.
    */
   const ensureBachs = useCallback(
-    async (onEvent: (event: BachsCheckoutEvent) => void) => {
+    async (onEvent: (event: BachsCheckoutEvent) => void, origin?: string) => {
       const existing = bachsRef.current;
-      if (existing) return existing;
-      const bachs = await loadBachs();
-      bachs.Initialize({ onEvent });
+      // `baseUrl` is not just where bare-token URLs are built — the SDK uses it to
+      // *validate* `checkoutUrl`, and rejects any host that does not match. A
+      // session from a sandbox key carries a sandbox checkout URL, so validating
+      // it against the live default origin is what produces "checkout must be in
+      // Bachs". Re-initialising against the session's own origin is the fix, and
+      // is harmless in live where the two are the same.
+      if (existing && (!origin || originRef.current === origin)) return existing;
+      const bachs = existing ?? (await loadBachs());
+      bachs.Initialize({ onEvent, ...(origin ? { baseUrl: origin } : {}) });
       bachsRef.current = bachs;
+      originRef.current = origin ?? originRef.current;
       return bachs;
     },
     [],
@@ -250,8 +258,8 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
             if (response.data.portalUrl) window.location.href = response.data.portalUrl;
             return;
           }
-          const bachs = await ensureBachs(handleEvent);
           if (!response.data.url) throw new Error("Bachs returned no checkout URL.");
+          const bachs = await ensureBachs(handleEvent, new URL(response.data.url).origin);
           await bachs.Checkout.open({ checkoutUrl: response.data.url, onEvent: handleEvent });
         } catch (error) {
           setBusy(false);
