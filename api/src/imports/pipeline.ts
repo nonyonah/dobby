@@ -7,6 +7,15 @@ import { prisma } from "../lib/prisma.js";
 import { getPrivateObjectBytes, getPrivateObjectText } from "../lib/r2.js";
 import { parseOfxQfx } from "./ofx.js";
 import { categorizeDescriptions, extractReceipt, extractStatementReport } from "../providers/gemini.js";
+
+/**
+ * How many categorisation chunks may be in flight at once.
+ *
+ * Chunks are independent, so they overlap; three is enough to hide a model
+ * latency behind the next call without turning a large statement into a burst
+ * that gets rate limited.
+ */
+const AI_CHUNK_CONCURRENCY = 3;
 import { suggestCategory } from "../lib/categorize.js";
 import { enrichStatement, type EnrichedRow } from "./enrich.js";
 import { matchDeterministic } from "./patterns.js";
@@ -104,20 +113,23 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
   }
   if (aiCandidates.length > 0 && aiUnlocked) {
     try {
-      const names = categories.map((category) => category.name);      const byIndex = new Map(aiCandidates.map((entry) => [entry.index, entry]));
+      const names = categories.map((category) => category.name);
+      const byIndex = new Map(aiCandidates.map((entry) => [entry.index, entry]));
+      const byId = new Map(categories.map((category) => [category.name.toLowerCase(), category.id]));
+
+      const chunks: Array<typeof aiCandidates> = [];
       for (let offset = 0; offset < aiCandidates.length; offset += 100) {
-        const chunk = aiCandidates.slice(offset, offset + 100);
-        const suggestions = await categorizeDescriptions(
-          chunk.map(({ item, index }) => {
-            const proposed = item.proposedData as Record<string, unknown>;
-            return {
-              index,
-              description: String(proposed.merchant ?? proposed.description ?? ""),
-            };
-          }),
-          names,
-        );
-        const byId = new Map(categories.map((category) => [category.name.toLowerCase(), category.id]));
+        chunks.push(aiCandidates.slice(offset, offset + 100));
+      }
+
+      // Chunks run concurrently rather than one after another. A 400-row
+      // statement is four model round trips, and they were awaited in sequence,
+      // so the import waited the sum of four model latencies for work that has
+      // no dependency between the chunks — each one only reads its own slice.
+      //
+      // Capped rather than unbounded: firing every chunk at once is how a large
+      // statement turns a slow import into a rate-limited one.
+      const applySuggestions = (chunk: typeof aiCandidates, suggestions: Awaited<ReturnType<typeof categorizeDescriptions>>) => {
         for (const suggestion of suggestions) {
           const categoryId = byId.get(suggestion.category.toLowerCase());
           const target = byIndex.get(suggestion.index);
@@ -131,6 +143,21 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
           } as Prisma.InputJsonValue;
           aiConfidence.set(target.index, suggestion.confidence);
         }
+      };
+
+      for (let i = 0; i < chunks.length; i += AI_CHUNK_CONCURRENCY) {
+        await Promise.all(
+          chunks.slice(i, i + AI_CHUNK_CONCURRENCY).map(async (chunk) => {
+            const suggestions = await categorizeDescriptions(
+              chunk.map(({ item, index }) => {
+                const proposed = item.proposedData as Record<string, unknown>;
+                return { index, description: String(proposed.merchant ?? proposed.description ?? "") };
+              }),
+              names,
+            );
+            applySuggestions(chunk, suggestions);
+          }),
+        );
       }
     } catch (error) {
       logger.info({ error: error instanceof Error ? error.message : String(error) }, "AI categorization skipped; leftovers stay in review");

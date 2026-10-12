@@ -189,9 +189,16 @@ export function GetStarted() {
   // "You're all set" is a beat, not a wall: the pill says so, then goes.
   useEffect(() => {
     if (!finished || !statuses) return;
-    const timer = window.setTimeout(() => setAllDone(true), 4000);
+    // Gone a moment after the last task lands, rather than sitting in the top
+    // bar reading "You're all set 3/3" for the rest of the account's life.
+    const timer = window.setTimeout(() => {
+      setAllDone(true);
+      // Persisted, so it does not come back on the next page load. Best-effort:
+      // the button is already gone for this session either way.
+      void api.patch("/v1/me", { onboarded: true }).catch(() => undefined);
+    }, 2500);
     return () => window.clearTimeout(timer);
-  }, [finished, statuses]);
+  }, [api, finished, statuses]);
 
   const visible = statuses !== null && !dismissed && !allDone;
 

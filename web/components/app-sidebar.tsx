@@ -154,12 +154,12 @@ function NavMenu({ items, activeId, counts, onNavigate }: { items: NavItem[]; ac
 }
 
 
-function QuickCreate({ onCreate }: { onCreate: (kind: "import" | "budget" | "goal") => void }) {
+function QuickCreate({ onCreate, className }: { onCreate: (kind: "import" | "budget" | "goal") => void; className?: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="secondary" size="icon-sm" aria-label="Create new" title="Create new" data-tour="quick-create" className="shrink-0">
+          <Button variant="secondary" size="icon-sm" aria-label="Create new" title="Create new" data-tour="quick-create" className={`shrink-0 ${className ?? ""}`}>
             <PlusIcon />
           </Button>
         }
@@ -208,7 +208,11 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
             <BrandLogo size={28} />
 
           </div>
-          <QuickCreate onCreate={onCreate} />
+          {/* Create lives in the top bar now: the sidebar collapses behind a
+              hamburger on a phone, so it was unreachable exactly where it was
+              most needed. Kept here for the desktop rail, where it is one click
+              from the logo rather than a walk across the bar. */}
+          <QuickCreate onCreate={onCreate} className="hidden md:inline-flex" />
         </div>
       </SidebarHeader>
 

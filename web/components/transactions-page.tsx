@@ -289,7 +289,7 @@ function TransactionsInner() {
     setDrawerOpen(true);
   };
 
-  const save = async (next: TxFull, opts?: { rememberRule?: boolean }) => {
+  const save = async (next: TxFull, opts?: { rememberRule?: boolean }): Promise<boolean> => {
     let mapped: TxFull | null = null;
     // A row in the review queue is not a transaction yet. Editing one used to
     // patch /v1/transactions/{id}, which has nothing at that id until the row is
@@ -332,7 +332,7 @@ function TransactionsInner() {
             : "Could not save this transaction. Try again.",
         );
       }
-      return;
+      return false;
     }
     // Offer kept: persist a rule so the same merchant/description self-categorizes next time.
     if (opts?.rememberRule && mapped?.categoryId) {
@@ -341,13 +341,14 @@ function TransactionsInner() {
         try {
           await api.post("/v1/rules", { matcher, categoryId: mapped.categoryId, isTaxable: mapped.taxable });
           toast.success("Transaction updated — similar ones will categorize themselves from now on.");
-          return;
+          return true;
         } catch {
           // Rule creation is a bonus; the save itself already landed.
         }
       }
     }
     toast.success(isQueued ? "Review row updated" : "Transaction updated");
+    return true;
   };
 
   const declineReview = async (ids: string[]) => {
@@ -499,7 +500,12 @@ function TransactionsInner() {
   return (
     <>
       <div className="w-full px-6 pt-6 pb-10">
-        <div data-tour="transactions-views" className="mb-4 flex items-center justify-between gap-3">
+        <div
+          data-tour="transactions-views"
+          // Stacked on a phone. Side by side, the note took the width the
+          // segmented control needed and ran underneath the "Ledger" tab.
+          className="mb-4 flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+        >
           <Segmented
             label="Transaction views"
             value={effectiveView}
@@ -509,7 +515,7 @@ function TransactionsInner() {
               { value: "ledger", label: "Ledger" },
             ]}
           />
-          {effectiveView === "review" ? <p className="m-0 text-[12px] text-muted-foreground">Approve items to add them to Ledger</p> : null}
+          {effectiveView === "review" ? <p className="m-0 shrink-0 text-[12px] text-muted-foreground">Approve items to add them to Ledger</p> : null}
         </div>
         {effectiveView === "review" ? <ReviewQueue rows={reviewRows} categories={categoryOptions} onApprove={approveReview} onDecline={declineReview} onEdit={setEditId} busy={approving ? (approveProgress ?? true) : false} focusId={focusId ?? undefined} total={reviewTotal} onLoadMore={loadMoreReviews} loadingMore={loadingMoreReviews} /> : <>
           <TxTable

@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { Dashboard } from "@/components/dashboard";
 
 /**
@@ -6,7 +5,6 @@ import { Dashboard } from "@/components/dashboard";
  * marketing layout bounces signed-in users from `/` here before rendering,
  * and onboarding's post-setup `router.replace("/")` lands on that redirect.
  */
-export default async function DashboardPage() {
-  await auth.protect();
+export default function DashboardPage() {
   return <Dashboard />;
 }

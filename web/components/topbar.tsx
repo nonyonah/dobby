@@ -4,17 +4,32 @@ import { useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SignOut } from "@hugeicons/core-free-icons";
+import { GoalsIcon, PlusIcon, UploadIcon, WalletIcon } from "./icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { SidebarTrigger } from "./ui/sidebar";
 import { GetStarted } from "@/components/onboarding/get-started";
+import { TrialPill } from "@/components/trial-pill";
+import { FEATURES } from "@/lib/features";
 
 import { Button } from "./ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 
 /**
- * Rift Labs top bar: page title, sidebar trigger, and notifications.
+ * Rift Labs top bar: page title, sidebar trigger, and the things worth doing.
  * The greeting and net worth live on the homepage, above the income card.
+ *
+ * The create menu and the trial pill both live here rather than in the sidebar
+ * because neither is reachable otherwise on a phone: the sidebar collapses behind
+ * a hamburger, so "import my statement" and "start your free trial" both ended up
+ * invisible to anyone not already holding the app open on a desktop.
  */
-export function TopBar({ title }: { title: string }) {
+export function TopBar({
+  title,
+  onCreate,
+}: {
+  title: string;
+  onCreate: (kind: "import" | "budget" | "goal") => void;
+}) {
   const { signOut } = useClerk();
   const [logoutOpen, setLogoutOpen] = useState(false);
 
@@ -28,12 +43,41 @@ export function TopBar({ title }: { title: string }) {
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {/* Setup pill sits immediately before log out: it is the last thing
-              left to do, so it belongs at the end of the bar rather than in the
-              content, where it was one scroll away from being missed. */}
+          {/* How much trial is left, beside the button that starts it. The two
+              are the same decision, so they sit together: a countdown floating
+              on the dashboard told people they had time without ever saying how
+              to get the thing it was counting down to. */}
+          <TrialPill className="hidden sm:inline-flex" />
           <GetStarted />
-          {/* Notifications moved into the sidebar; the bell's slot is now log
-              out, and the footer holds Help. */}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="secondary" size="icon-sm" aria-label="Create new" title="Create new" data-tour="quick-create" className="shrink-0">
+                  <PlusIcon />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onClick={() => onCreate("import")}>
+                <UploadIcon />
+                <span>Import transaction</span>
+              </DropdownMenuItem>
+              {FEATURES.budgeting ? (
+                <DropdownMenuItem onClick={() => onCreate("budget")}>
+                  <WalletIcon />
+                  <span>Create a budget</span>
+                </DropdownMenuItem>
+              ) : null}
+              {FEATURES.goals ? (
+                <DropdownMenuItem onClick={() => onCreate("goal")}>
+                  <GoalsIcon />
+                  <span>Create a goal</span>
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="ghost"
             size="icon"

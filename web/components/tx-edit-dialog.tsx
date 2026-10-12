@@ -28,7 +28,8 @@ interface TxEditDialogProps {
   tx: TxFull | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (tx: TxFull, opts?: { rememberRule: boolean }) => void;
+  /** Resolves false when the save did not land, which keeps the dialog open. */
+  onSave: (tx: TxFull, opts?: { rememberRule: boolean }) => boolean | Promise<boolean> | void;
   categories?: DialogCategoryOption[];
 }
 
@@ -94,12 +95,20 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
     }
   })();
 
-  const commit = () => {
+  const [saving, setSaving] = useState(false);
+
+  const commit = async () => {
+    if (saving) return;
     const parsed = Number.parseFloat(amount.replace(/[^0-9.]/g, ""));
     const amountChanged = Number.isFinite(parsed) && Math.abs(parsed - Math.abs(tx.amount)) > 0.000001;
     const liveIds = new Set(options.map((o) => o.id));
     const option = options.find((o) => o.id === category);
-    onSave({
+    setSaving(true);
+    // Awaited before closing. This used to call onSave and then close
+    // immediately, so a save that failed left the reader looking at a dialog
+    // that had already taken their edit with it — the change was gone from the
+    // screen with nothing said, which is what "it doesn't save" looks like.
+    const landed = await onSave({
       ...tx,
       name: name.trim() || tx.name,
       amount: (tx.amount < 0 ? -1 : 1) * (Number.isFinite(parsed) ? parsed : Math.abs(tx.amount)),
@@ -113,7 +122,8 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       source,
       note: note.trim(),
     }, { rememberRule });
-    onOpenChange(false);
+    setSaving(false);
+    if (landed !== false) onOpenChange(false);
   };
 
   return (

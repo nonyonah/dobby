@@ -1,7 +1,17 @@
 import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
+import { logger } from "../lib/logger.js";
 
-export type BaseAssetTransfer = { hash: string; from: string; to: string; value?: number; asset?: string; rawContract?: { address?: string } };
+export type BaseAssetTransfer = {
+  hash: string;
+  from: string;
+  to: string;
+  value?: number;
+  asset?: string;
+  rawContract?: { address?: string };
+  /** Present because every call requests it, and the backfill dates by it. */
+  metadata?: { blockTimestamp?: number; blockNum?: string };
+};
 export type WalletBalance = { symbol: string; amount: number; address?: string };
 
 /** Endpoint per chain, or undefined when that chain has no Alchemy key wired. */
@@ -42,14 +52,104 @@ function rawToAmount(raw: string, decimals: number): number {
   return Number(value / base) + Number(value % base) / Number(base);
 }
 
+/**
+ * How far back a wallet sync reaches, and how it gets there.
+ *
+ * `maxCount` is a per-request cap, and `alchemy_getAssetTransfers` answers
+ * newest-first. Capping at 100 therefore meant any wallet with more than 100
+ * transfers could never show anything older than its hundred most recent —
+ * which on an active wallet is a matter of days, and is why imports from months
+ * ago simply never arrived.
+ *
+ * So the range is walked backwards in block windows instead. Each window asks
+ * for the largest page Alchemy allows and keeps going while the page comes back
+ * full, which is the signal that there is more inside that window to find.
+ */
+const TRANSFERS_PER_PAGE = 0x3e8; // 1000, the documented maximum
+const BACKFILL_BLOCK_CHUNKS = 26; // bounded, so a fresh wallet costs one request
+const MAX_PAGES = 30;
+
+/** Base has roughly a 2-second block, so a week of history is ~300k blocks. */
+const BLOCKS_PER_CHUNK = 300_000n;
+
 export async function getBaseWalletTransfers(address: string, category: "from" | "to" | "fromAndTo" = "fromAndTo") {
-  const result = await alchemyRpc<{ transfers?: BaseAssetTransfer[] }>(
-    "base",
-    "alchemy_getAssetTransfers",
-    [{ fromBlock: "0x0", toBlock: "latest", fromAddress: category === "to" ? undefined : address, toAddress: category === "from" ? undefined : address, category: ["external", "erc20", "erc721", "erc1155"], withMetadata: true, maxCount: "0x64" }],
-    "wallet activity",
-  );
-  return result.transfers ?? [];
+  // Alchemy ANDs `fromAddress` with `toAddress`, so passing both is a request
+  // for transfers from this address *to itself* — which is why asking for
+  // everything a wallet did returned almost nothing. Incoming and outgoing are
+  // two separate passes, merged afterwards.
+  const filters =
+    category === "from"
+      ? [{ fromAddress: address, toAddress: undefined }]
+      : category === "to"
+        ? [{ fromAddress: undefined, toAddress: address }]
+        : [{ fromAddress: address, toAddress: undefined }, { fromAddress: undefined, toAddress: address }];
+
+  const merged = new Map<string, BaseAssetTransfer>();
+  for (const filter of filters) {
+    for (const transfer of await walkTransfers(filter)) {
+      // `hash` alone is not unique: one transaction can carry several transfers,
+      // which is what the ERC-721 and batch cases produce.
+      merged.set(`${transfer.hash}:${transfer.rawContract?.address ?? ""}:${transfer.value ?? ""}:${transfer.from}:${transfer.to}`, transfer);
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => (b.metadata?.blockTimestamp ?? 0) - (a.metadata?.blockTimestamp ?? 0));
+}
+
+type TransferFilter = { fromAddress: string | undefined; toAddress: string | undefined };
+
+/** Walks block windows backwards from the head, collecting transfers newest first. */
+async function walkTransfers(filter: TransferFilter): Promise<BaseAssetTransfer[]> {
+  const fetchWindow = async (fromBlock: string, toBlock: string) => {
+    const result = await alchemyRpc<{ transfers?: BaseAssetTransfer[] }>(
+      "base",
+      "alchemy_getAssetTransfers",
+      [
+        {
+          fromBlock,
+          toBlock,
+          fromAddress: filter.fromAddress,
+          toAddress: filter.toAddress,
+          category: ["external", "erc20", "erc721", "erc1155"],
+          withMetadata: true,
+          maxCount: `0x${TRANSFERS_PER_PAGE.toString(16)}`,
+          order: "asc",
+        },
+      ],
+      "wallet activity",
+    );
+    return result.transfers ?? [];
+  };
+
+  let head: bigint;
+  try {
+    head = BigInt(await alchemyRpc<string>("base", "eth_blockNumber", [], "block number"));
+  } catch {
+    head = 0n;
+  }
+  if (head === 0n) return fetchWindow("0x0", "latest");
+
+  const collected: BaseAssetTransfer[] = [];
+  let cursor = head;
+  for (let i = 0; i < BACKFILL_BLOCK_CHUNKS && collected.length < MAX_PAGES * TRANSFERS_PER_PAGE; i++) {
+    const fromBlock = cursor > BLOCKS_PER_CHUNK ? cursor - BLOCKS_PER_CHUNK : 0n;
+    try {
+      const page = await fetchWindow(`0x${fromBlock.toString(16)}`, `0x${cursor.toString(16)}`);
+      collected.push(...page);
+      // A short page means the window held fewer transfers than the cap, so there
+      // is nothing older in it and the walk is done.
+      if (page.length < TRANSFERS_PER_PAGE) break;
+    } catch (error) {
+      // Older windows are the first thing to be rate-limited, and what was
+      // already collected is still the most recent and most useful history.
+      logger.warn({ filter, error: error instanceof Error ? error.message : String(error) }, "wallet backfill window failed; stopping");
+      break;
+    }
+    if (fromBlock === 0n) break;
+    cursor = fromBlock;
+  }
+
+  return collected;
 }
 
 /**

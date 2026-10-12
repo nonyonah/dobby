@@ -112,7 +112,7 @@ export function Shell({ title, active, children }: ShellProps) {
           relationship to the viewport instead of drifting with the page. */}
       <div className={`min-h-0 min-w-0 flex-1 overflow-hidden ${collapsed ? "p-2" : "py-2 pr-2 pl-0 md:pl-1"}`}>
         <main className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-background shadow-none">
-          <TopBar title={title} />
+          <TopBar title={title} onCreate={setQuickCreate} />
           <TrialExpiredBanner />
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {children}

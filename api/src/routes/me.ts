@@ -110,10 +110,13 @@ meRouter.patch("/", async (req, res) => {
   const userUpdate: Prisma.UserUncheckedUpdateInput = {};
   if (input.firstName !== undefined) { userCreate.firstName = input.firstName; userUpdate.firstName = input.firstName; }
   if (input.lastName !== undefined) { userCreate.lastName = input.lastName; userUpdate.lastName = input.lastName; }
-  // Only the transition, not every save: the client posts this flag on each
-  // settings write, so firing on the flag alone would send a welcome email
-  // every time somebody changed their currency.
-  const finishingOnboarding = input.onboarded === true;
+  // The transition, not the flag. `onboarded: true` is posted by the onboarding
+  // flow *and* by the "Get started" dismiss, so firing on the flag alone would
+  // send a welcome email to somebody who had already got one the moment they
+  // closed a menu. Only an account that was not onboarded before can be
+  // completing onboarding.
+  const wasOnboarded = await prisma.user.findUnique({ where: { clerkId }, select: { onboardedAt: true } });
+  const finishingOnboarding = input.onboarded === true && !wasOnboarded?.onboardedAt;
   if (input.onboarded) { userCreate.onboardedAt = new Date(); userUpdate.onboardedAt = new Date(); }
 
   const user = await prisma.user.upsert({

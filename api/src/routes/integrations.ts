@@ -6,6 +6,7 @@ import { env } from "../config/env.js";
 import { requireAuth } from "../middleware/auth.js";
 import { assertPro } from "../middleware/plan.js";
 import { logger } from "../lib/logger.js";
+import { appUrl } from "../emails/links.js";
 
 export const integrationsRouter = Router();
 integrationsRouter.use(requireAuth);
@@ -172,10 +173,26 @@ integrationsRouter.post("/:provider/connect", async (req, res) => {
     });
     return;
   }
+  // Where Composio returns the browser after consent. Derived from the app's own
+  // public origin rather than trusted from the environment, because the value
+  // that was configured pointed at `https://localhost:3000/callback` — which is
+  // not reachable from a browser that is not the developer's own machine, so
+  // every successful connection ended on a 404 instead of back in the app.
+  //
+  // An env override is still honoured when it names a public https address, so
+  // a deployment can point the callback at its own host.
+  const configuredCallback = env.COMPOSIO_CALLBACK_URL?.trim();
+  const callbackUrl =
+    configuredCallback && /^https:\/\//i.test(configuredCallback) ? configuredCallback : appUrl("/callback");
+  if (configuredCallback && callbackUrl !== configuredCallback) {
+    logger.warn(
+      { configuredCallback, using: callbackUrl },
+      "COMPOSIO_CALLBACK_URL is not a public https URL; using the app origin instead",
+    );
+  }
+
   const startLink = (id: string) =>
-    composioClient().connectedAccounts.link(req.auth!.userId, id, {
-      ...(env.COMPOSIO_CALLBACK_URL ? { callbackUrl: env.COMPOSIO_CALLBACK_URL } : {}),
-    });
+    composioClient().connectedAccounts.link(req.auth!.userId, id, { callbackUrl });
 
   try {
     const request = await startLink(authConfigId);
