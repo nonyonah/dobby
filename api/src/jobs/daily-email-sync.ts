@@ -21,7 +21,7 @@
 
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
-import { runEmailSync } from "../emails/sync.js";
+import { runEmailSync, syncColumns } from "../emails/sync.js";
 import { entitlementSelect, getEntitlement } from "../lib/entitlement.js";
 import type { EmailProvider } from "../emails/providers.js";
 
@@ -97,7 +97,7 @@ export async function runDailyEmailSyncs(now = new Date()): Promise<DailySyncRes
       // Not awaited: one mailbox taking a minute must not hold up the other 499.
       void runEmailSync(connection.ownerClerkId, provider, job.id, { lookbackDays: DAILY_LOOKBACK_DAYS })
         .then(async (counts) => {
-          const { cappedByTrial: _capped, ...columns } = counts;
+          const columns = syncColumns(counts);
           await prisma.emailSyncJob.update({
             where: { id: job.id },
             data: { ...columns, status: "completed" },

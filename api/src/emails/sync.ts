@@ -62,6 +62,20 @@ export type SyncCounts = {
   cappedByTrial?: boolean;
 };
 
+/**
+ * The sync counters that are actually columns on `EmailSyncJob`.
+ *
+ * `SyncCounts` carries `cappedByTrial`, which is for the log line and not for
+ * the database. Stripping it here rather than at each of the three call sites is
+ * the point: spreading it into an update made Prisma reject the write, and that
+ * was fixed at one call site and missed at another, so the error kept coming
+ * back after the first fix looked like it had worked.
+ */
+export function syncColumns(counts: SyncCounts) {
+  const { cappedByTrial: _capped, ...columns } = counts;
+  return columns;
+}
+
 const ATTACHMENT_PRIORITY: Record<"statement" | "receipt", string[]> = {
   // Deterministic formats beat OCR when a bank sends both.
   statement: ["csv", "ofx", "qfx", "txt", "pdf", "xls", "xlsx"],

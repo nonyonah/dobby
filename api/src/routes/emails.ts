@@ -7,7 +7,7 @@ import { AppError } from "../middleware/errors.js";
 import { logger } from "../lib/logger.js";
 import { runExclusive } from "../lib/user-mutex.js";
 import { refreshProviderStatus } from "./integrations.js";
-import { runEmailSync } from "../emails/sync.js";
+import { runEmailSync, syncColumns } from "../emails/sync.js";
 import { notifyEmailSyncComplete } from "../lib/mailer.js";
 
 export const emailsRouter = Router();
@@ -68,7 +68,12 @@ emailsRouter.post("/sync", async (req, res) => {
     limit: input.limit,
   })
     .then(async (counts) => {
-      await prisma.emailSyncJob.update({ where: { id: job.id }, data: { ...counts, status: "completed" } });
+      // Same strip as the progress writes: `cappedByTrial` is on the object for
+      // the log line and is not a column, so spreading the whole thing made
+      // Prisma reject the completion write. That left every finished sync stuck
+      // at "processing" with no counts, which is the state the UI reads to decide
+      // whether the mailbox is syncing or broken.
+      await prisma.emailSyncJob.update({ where: { id: job.id }, data: { ...syncColumns(counts), status: "completed" } });
       logger.info({ jobId: job.id, provider: input.provider, ...counts }, "email sync completed");
       await notifyEmailSyncComplete(ownerClerkId, input.provider, counts);
     })
