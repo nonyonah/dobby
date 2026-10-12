@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cta, Detail, Figure, Footnote, Lead, Layout } from "../components.js";
+import { Cta, Detail, Divider, Figure, Footnote, Lead, Layout, LineItem, Meta, Title, TotalRow } from "../components.js";
 import { appUrl } from "../links.js";
 
 export type MonthInReviewInput = {
@@ -45,11 +45,16 @@ export function MonthInReviewEmail({
 }: MonthInReviewInput) {
   const greeting = firstName ? `Here’s your ${period}, ${firstName}.` : `Here’s your ${period}.`;
   const positive = !net.startsWith("-");
-  const uncategorized = uncategorizedLabel ? [uncategorizedLabel] : [];
 
   return (
     <Layout preview={`${period}: ${spent} out, ${income} in, ${net} net.`}>
-      <Figure tone="accent" caption={`Money out — ${period}`}>
+      <Title>Your {period}</Title>
+      <Meta>
+        {period}
+        {needsReviewCount > 0 ? ` · ${needsReviewCount} awaiting review` : ""}
+      </Meta>
+
+      <Figure tone="accent" caption="Money out">
         {spent}
       </Figure>
       <Lead>{greeting}</Lead>
@@ -61,18 +66,19 @@ export function MonthInReviewEmail({
 
       {topCategories.length > 0 ? (
         <>
-          <Detail>Where it went:</Detail>
+          <Divider />
+          <LineItem label="Money out" value={spent} />
+          <LineItem label="Money in" value={income} />
           {topCategories.map((category) => (
-            <Detail key={category.name}>
-              {category.name} — {category.amount}
-            </Detail>
+            <LineItem key={category.name} label={category.name} value={category.amount} />
           ))}
+          <TotalRow label={positive ? "Kept" : "Spent over what came in"} value={positive ? net : net.replace(/^-/, "")} />
         </>
       ) : null}
 
-      {uncategorized.length > 0 ? (
+      {uncategorizedLabel ? (
         <Detail>
-          Plus <strong>{uncategorized[0]}</strong>, which we couldn’t place yet.
+          Plus <strong>{uncategorizedLabel}</strong>, which we couldn’t place yet.
         </Detail>
       ) : null}
 

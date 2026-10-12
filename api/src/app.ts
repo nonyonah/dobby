@@ -9,6 +9,8 @@ import { initSentry } from "./lib/sentry.js";
 import { env } from "./config/env.js";
 import { logger } from "./lib/logger.js";
 import { requestId } from "./middleware/request-id.js";
+import { touchLastActive } from "./middleware/activity.js";
+import { nudgeRouter } from "./nudges/routes.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 import { healthRouter } from "./routes/health.js";
 import { meRouter } from "./routes/me.js";
@@ -53,6 +55,11 @@ app.use(
 );
 // Bachs signs the raw request body, so the webhook route is parsed before
 // express.json runs and leaves a Buffer in req.body.
+// Before the routers, so it sees every authenticated request including ones
+// that never reach a handler. Cheap by design: it only reads the token, and only
+// writes at most once every ten minutes per account.
+app.use(touchLastActive);
+
 app.use("/v1/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
@@ -94,6 +101,7 @@ app.use("/v1/integrations", integrationsRouter);
 app.use("/v1/emails", emailsRouter);
 app.use("/v1/billing", billingWebhookRouter);
 app.use("/v1/billing", billingRouter);
+app.use("/v1/nudges", nudgeRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

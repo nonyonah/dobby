@@ -50,6 +50,10 @@ function pillPrice(options: BillingOption[], interval: BillingInterval): string 
   }
 }
 
+/** Matches the settings controls so the two dropdowns read as the same control. */
+const dialogSelectClass =
+  "h-9 w-full rounded-md border border-line bg-card px-2.5 text-[13px] text-foreground outline-none transition-shadow duration-150 ease-out focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
+
 type UpgradeContextValue = {
   /** Opens the plan picker dialog. */
   openCheckout: (preset?: BillingInterval) => void;
@@ -259,6 +263,7 @@ export function UpgradeProvider({ children }: { children: React.ReactNode }) {
     [api, busy, ensureBachs, handleEvent],
   );
 
+
   return (
     <UpgradeContext.Provider value={{ openCheckout, startCheckout, busy, options, refreshOptions }}>
       {children}
@@ -273,7 +278,20 @@ export function useUpgrade() {
   return useContext(UpgradeContext);
 }
 
-/** Plan picker: cadence cards and the terms, nothing else. Mounts fresh per open. */
+/**
+ * Plan picker: which plan, then straight to checkout.
+ *
+ * One decision here and one on the Bachs page. The plan is ours to choose — it
+ * sets the price and the cadence — but the payment method is theirs, and the
+ * hosted page is where a bank transfer, a crypto asset and a card can be shown
+ * side by side with the fees each one actually costs. Offering the rails as
+ * buttons here would mean restating a list that lives on Bachs and goes stale
+ * the moment they change it.
+ *
+ * A native select rather than a styled listbox, for the same reason the settings
+ * selects are native: the OS picker handles truncation and keyboard behaviour
+ * correctly, and cannot trap focus inside a dialog.
+ */
 function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose: () => void }) {
   const { options, busy, startCheckout } = useUpgrade();
   const [interval, setInterval] = useState<BillingInterval>(preset);
@@ -285,27 +303,34 @@ function CheckoutDialog({ preset, onClose }: { preset: BillingInterval; onClose:
         <DialogHeader>
           <DialogTitle>Upgrade to Dobby Pro</DialogTitle>
           <DialogDescription>
-            Billed in your local currency via Bachs. Cancel any time — Pro runs until the period you paid for ends.
+            Choose a plan. You&apos;ll pick how to pay on the next screen.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex gap-2" role="group" aria-label="Billing cadence">
-          {(["month", "year"] as BillingInterval[]).map((cadence) => (
-            <button
-              key={cadence}
-              type="button"
-              onClick={() => setInterval(cadence)}
-              aria-pressed={interval === cadence}
-              className={`flex-1 cursor-pointer rounded-[10px] border px-3 py-2.5 text-left outline-none transition-colors focus-visible:outline-2 focus-visible:outline-ring ${
-                interval === cadence ? "border-primary bg-primary/5" : "border-line hover:border-muted-foreground/40"
-              }`}
-            >
-              <span className="block text-[13px] font-semibold capitalize text-foreground">{cadence}ly</span>
-              <span className="mono mt-0.5 block text-[12px] tabular-nums text-muted-foreground">
-                {pillPrice(options, cadence)}
-              </span>
-            </button>
-          ))}
+
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="plan-cadence" className="text-[12px] font-medium text-muted-foreground">
+            Plan
+          </label>
+          <select
+            id="plan-cadence"
+            value={interval}
+            disabled={busy}
+            onChange={(event) => setInterval(event.target.value as BillingInterval)}
+            className={`${dialogSelectClass} cursor-pointer appearance-none bg-[length:16px] bg-[right_0.5rem_center] bg-no-repeat pr-8`}
+            style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238a8b91' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E\")" }}
+          >
+            {(["month", "year"] as BillingInterval[]).map((cadence) => (
+              <option key={cadence} value={cadence}>
+                {cadence === "month" ? "Monthly" : "Yearly"} — {pillPrice(options, cadence)}
+              </option>
+            ))}
+          </select>
+          <p className="text-[12px] text-muted-foreground">
+            {interval === "year" ? "Billed once a year." : "Billed every month."} You can cancel any time — Pro
+            runs until the end of the period you already paid for.
+          </p>
         </div>
+
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="small" onClick={onClose}>
             Cancel

@@ -29,6 +29,7 @@ import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, getAppCurrency } from "@/lib/format";
 import { FEATURES } from "@/lib/features";
 import { TrialPill } from "@/components/trial-pill";
+import { NudgeCard } from "@/components/nudge-card";
 
 type ColumnId = "left" | "right";
 
@@ -252,6 +253,7 @@ export function Dashboard() {
 
   return (
     <div className="w-full px-6 pt-6 pb-10">
+      <NudgeCard />
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <HomeGreeting />

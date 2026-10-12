@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cta, Detail, Figure, Footnote, Lead, Layout } from "../components.js";
+import { Cta, Detail, Figure, Footnote, Lead, Layout, Meta, Title } from "../components.js";
 import { appUrl } from "../links.js";
 
 /**
@@ -34,6 +34,8 @@ export function TrialStartedEmail({
 
   return (
     <Layout preview={preview}>
+      <Title>{alreadySubscribed ? "Dobby Pro is active" : "Your trial has started"}</Title>
+      <Meta>{alreadySubscribed ? "Subscription confirmed" : `${days}-day free trial${endsOn ? ` · ends ${endsOn}` : ""}`}</Meta>
       <Figure tone="accent" caption={alreadySubscribed ? "Pro is active" : "Your free trial"}>
         {alreadySubscribed ? "Active" : `${days} days`}
       </Figure>

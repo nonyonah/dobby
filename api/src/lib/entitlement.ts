@@ -17,6 +17,15 @@ import type { PlanStatus } from "@prisma/client";
 export type Entitlement = {
   isPro: boolean;
   status: PlanStatus;
+  /**
+   * Whether a trial was ever started.
+   *
+   * Distinct from `isPro: false`, and the reason "your trial has ended" is not
+   * shown to someone who never had one. The trial starts on the first Pro
+   * action, so a brand-new account is legitimately not Pro — but it is not a
+   * lapsed trial either, and the two need different copy.
+   */
+  trialStarted: boolean;
   /** Whole days left in the trial, null when there is no live trial. */
   trialDaysLeft: number | null;
   /** Server time at which the trial window closes, if one is open. */
@@ -83,8 +92,10 @@ function daysLeft(until: Date, now: Date): number {
  */
 export function getEntitlement(user: EntitlementRow | null, now: Date = new Date()): Entitlement {
   if (!user) {
-    return { isPro: false, status: "free", trialDaysLeft: null, trialEndsAt: null };
+    return { isPro: false, status: "free", trialStarted: false, trialDaysLeft: null, trialEndsAt: null };
   }
+
+  const trialStarted = user.trialStartedAt !== null;
 
   const trialEndsAt = user.trialEndsAt ?? null;
   const trialLive = trialEndsAt !== null && trialEndsAt.getTime() > now.getTime();
@@ -95,19 +106,38 @@ export function getEntitlement(user: EntitlementRow | null, now: Date = new Date
   // paid is Pro even when the trial window is still open, and an account whose
   // trial lapsed while subscribed does not fall off a cliff on day eight.
   if (paid) {
-    return { isPro: true, status: normalizePaidStatus(user), trialDaysLeft: trialLive ? daysLeft(trialEndsAt!, now) : null, trialEndsAt };
+    return { isPro: true, status: normalizePaidStatus(user), trialStarted, trialDaysLeft: trialLive ? daysLeft(trialEndsAt!, now) : null, trialEndsAt };
   }
 
   if (trialLive) {
-    return { isPro: true, status: "trial", trialDaysLeft: daysLeft(trialEndsAt!, now), trialEndsAt };
+    return { isPro: true, status: "trial", trialStarted, trialDaysLeft: daysLeft(trialEndsAt!, now), trialEndsAt };
   }
 
   const lapsed = normalizeLapsedStatus(user);
-  return { isPro: false, status: lapsed, trialDaysLeft: null, trialEndsAt };
+  return { isPro: false, status: lapsed, trialStarted, trialDaysLeft: null, trialEndsAt };
 }
 
 /**
+ * Statuses that mean money is in and the period is still running.
+ *
+ * `past_due` is here deliberately: the customer has already paid for the period
+ * they are in and a retry is still running, so cutting access there would
+ * punish them for our billing provider's timing.
+ *
+ * `trialing` is deliberately *not* here. The trial is ours now and lives in
+ * `trialStartedAt`/`trialEndsAt`; a Bachs subscription sitting in `trialing` is
+ * a leftover from the old model, and treating it as paid is how an account was
+ * entitled to Pro before paying anything.
+ */
+export const LIVE_SUBSCRIPTION_STATUSES = new Set(["active", "past_due"]);
+
+/**
  * True when money is actually in and still covering the current period.
+ *
+ * Pro ends at the *later* of the two things that were paid for: the subscription
+ * period, and any one-time purchase. Someone who subscribes and then buys three
+ * extra months is entitled to all of it, and someone who lets a subscription
+ * lapse while a one-time term runs on still has that term.
  *
  * The one thing that ends access is the end of a period nobody paid for. A
  * cancel set to run at period end leaves that period paid for, whether Bachs
@@ -118,20 +148,25 @@ export function getEntitlement(user: EntitlementRow | null, now: Date = new Date
  */
 function isPaidAndLive(user: EntitlementRow, now: Date): boolean {
   const status = user.bachsSubscriptionStatus ?? "";
+  const live = LIVE_SUBSCRIPTION_STATUSES.has(status);
+  const keepingPaidPeriod = user.bachsCancelAtPeriodEnd && (live || status === "canceled");
 
-  if (user.bachsCancelAtPeriodEnd && user.bachsCurrentPeriodEnd) {
-    if (status === "active" || status === "past_due" || status === "canceled") {
-      return user.bachsCurrentPeriodEnd.getTime() > now.getTime();
-    }
+  const ends: number[] = [];
+  if ((live || keepingPaidPeriod) && user.bachsCurrentPeriodEnd) {
+    ends.push(user.bachsCurrentPeriodEnd.getTime());
   }
-
-  if (status === "active" || status === "past_due") return true;
-
-  // One-time terms (a crypto checkout) carry no subscription, just an end date.
+  // A one-time purchase has no subscription behind it, just an end date.
   if (user.planExpiresAt) {
-    return user.planExpiresAt.getTime() > now.getTime();
+    ends.push(user.planExpiresAt.getTime());
   }
-  return false;
+
+  if (ends.length > 0) return Math.max(...ends) > now.getTime();
+
+  // A live subscription whose period end we never recorded still grants access.
+  // A missing date must not cost a paying customer their subscription — the
+  // opposite mistake, keeping Pro off after a real lapse, is recoverable by
+  // re-syncing from Bachs, whereas this one shows a customer who paid nothing.
+  return live || keepingPaidPeriod;
 }
 
 /** Stored status for a paying account, so a stuck status cannot mask a payment. */

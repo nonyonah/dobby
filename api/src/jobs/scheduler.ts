@@ -4,6 +4,7 @@ import { logger } from "../lib/logger.js";
 import { runMonthlyTaxReminder } from "./monthly-tax-reminder.js";
 import { runFilingDeadlineReminders } from "./filing-deadline-reminder.js";
 import { runFirstImportSummaries } from "./first-import-summary.js";
+import { runNudges } from "../nudges/engine.js";
 
 const TIMEZONE = "UTC";
 
@@ -44,6 +45,11 @@ export function startScheduler() {
     // daily tick would deliver it hours late. The sweep is a single indexed
     // claim per due account, so the extra runs cost one query apiece.
     cron.schedule("*/5 * * * *", logged("first-import-summary", () => runFirstImportSummaries()), { timezone: TIMEZONE }),
+    // Hourly, as the rules require. The engine still refuses to send outside
+    // each user's own 09:00-20:00, so the hour is a resolution, not a decision:
+    // a person in Lagos gets it on the same run as a person in London, and
+    // neither is emailed at 03:00.
+    cron.schedule("0 * * * *", logged("nudges", () => runNudges()), { timezone: TIMEZONE }),
   ];
   logger.info({ timezone: TIMEZONE }, "job scheduler started: monthly tax digest, daily filing-deadline check, first-import summary sweep");
   return () => tasks.forEach((task) => task.stop());

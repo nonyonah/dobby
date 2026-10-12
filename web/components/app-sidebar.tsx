@@ -257,8 +257,10 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
       </SidebarContent>
 
       <SidebarFooter className="px-3 pb-3">
-        {/* Help lives in the footer where log out used to be; log out moved to
-            the top bar. */}
+        {/* Help is off for now — the two entries both open a mail client, which
+            was not the intent for a button labelled Help. Restored by deleting
+            this block; nothing else depends on it. */}
+        {false ? (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -293,6 +295,7 @@ function SidebarNav({ active, onNavigate, onCreate }: { active: string; onNaviga
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        ) : null}
         <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
           <AlertDialogContent className="z-[100]">
             <AlertDialogHeader>

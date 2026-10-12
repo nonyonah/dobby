@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { SignInButton } from "@clerk/nextjs";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CancelIcon, Menu01Icon } from "@hugeicons/core-free-icons";
 import { BrandLogo } from "@/components/ui/brand-logo";
@@ -80,6 +81,17 @@ export function LandingNav() {
         </nav>
         <div className="hidden items-center gap-2 sm:flex">
           <ThemeToggleButton />
+          {/* Modal, not a navigation: somebody who already has an account should
+              be one click from typing their password, not sent to a page that
+              then has to load before they can. */}
+          <SignInButton mode="modal">
+            <button
+              type="button"
+              className="inline-flex cursor-pointer items-center rounded-[50px] px-3.5 py-2 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            >
+              Sign in
+            </button>
+          </SignInButton>
           <Link
             href="/sign-up"
             className="inline-flex items-center rounded-[50px] bg-primary px-3.5 py-2 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
@@ -127,6 +139,20 @@ export function LandingNav() {
               </a>
             ))}
           </nav>
+          {/* Same order as the bar: sign in first, then the primary action.
+
+              Deliberately does not close the panel. Clerk renders the modal from
+              this component, so unmounting the panel in the same tick would take
+              the modal down with it — the visitor would tap Sign in and watch a
+              dialog open and immediately disappear. */}
+          <SignInButton mode="modal">
+            <button
+              type="button"
+              className="mt-1 flex w-[calc(100%-0.5rem)] cursor-pointer items-center justify-center rounded-[50px] border border-line bg-card py-2.5 text-[14px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            >
+              Sign in
+            </button>
+          </SignInButton>
           {/* Nearly the full panel width, so the primary action reads as the
               same weight in the bar and in the menu. */}
           <Link

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cta, Detail, Figure, Footnote, Lead, Layout } from "../components.js";
+import { Cta, Detail, Figure, Footnote, Layout, Lead, Meta, Title } from "../components.js";
 import { appUrl } from "../links.js";
 import { deadlineCountdown, deadlineUrgency } from "../tokens.js";
 import { formatMoney } from "./format.js";
@@ -60,6 +60,10 @@ export function DeadlineReminderEmail({
 
   return (
     <Layout preview={`${jurisdictionLabel} filing ${deadlineLabel}.`}>
+      <Title>{deadlineLabel}</Title>
+      <Meta>
+        {jurisdictionLabel} filing deadline · {daysRemaining <= 0 ? "past due" : `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} left`}
+      </Meta>
       <Figure tone={urgency.tone} caption={caption}>
         {headline}
       </Figure>

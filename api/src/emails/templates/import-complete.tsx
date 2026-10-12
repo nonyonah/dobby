@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cta, Detail, Figure, Footnote, Lead, Layout } from "../components.js";
+import { Cta, Detail, Figure, Footnote, Lead, Layout, Meta, Title } from "../components.js";
 import { appUrl } from "../links.js";
 
 /**
@@ -31,6 +31,8 @@ export function ImportCompleteEmail({
   if (duplicate) {
     return (
       <Layout preview={preview}>
+        <Title>Already imported</Title>
+        <Meta>{filename}</Meta>
         <Figure tone="accent" caption="Already in your ledger">
           0 new
         </Figure>
@@ -49,6 +51,8 @@ export function ImportCompleteEmail({
 
   return (
     <Layout preview={preview}>
+      <Title>Import complete</Title>
+      <Meta>{filename}</Meta>
       <Figure
         tone="accent"
         caption={needsReview ? `${importedCount} imported · ${reviewCount} need a look` : `${importedCount} imported from ${filename}`}
@@ -92,6 +96,8 @@ export function ImportFailedEmail({
 }) {
   return (
     <Layout preview={`Could not import ${filename}.`}>
+      <Title>Import failed</Title>
+      <Meta>{filename}</Meta>
       <Figure tone="danger" caption="Nothing was added">
         0
       </Figure>

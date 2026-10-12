@@ -105,6 +105,67 @@ export function Footnote({ children }: { children: React.ReactNode }) {
   return <p style={styles.footnote}>{children}</p>;
 }
 
+/** What the email is about, set as a heading rather than a sentence in a paragraph. */
+export function Title({ children }: { children: React.ReactNode }) {
+  return <h1 style={styles.title}>{children}</h1>;
+}
+
+/**
+ * The reference line under the title — a date, an id, a period.
+ *
+ * Present on every email so the reader can tell at a glance when it was raised,
+ * which is the thing a receipt-shaped message most needs to say.
+ */
+export function Meta({ children }: { children: React.ReactNode }) {
+  return <p style={styles.meta}>{children}</p>;
+}
+
+/**
+ * One line of an itemised list: the name on the left, the figure on the right.
+ *
+ * Built on a table rather than flexbox because Outlook renders through Word and
+ * drops `justify-content`, which would leave every amount stranded mid-row. The
+ * value is tabular and mono so a column of figures lines up on the decimal, the
+ * way it does everywhere else in the product.
+ */
+export function LineItem({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
+  return (
+    <table role="presentation" width="100%" style={styles.lineItemTable}>
+      <tbody>
+        <tr>
+          <td style={styles.lineItemLabel}>{label}</td>
+          <td style={styles.lineItemValue}>{value}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * The closing figure, ruled off from the items above it.
+ *
+ * The heavier top border is what makes it read as a total rather than another
+ * row, and it is why this is a separate primitive instead of `LineItem` with
+ * different padding.
+ */
+export function TotalRow({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
+  return (
+    <table role="presentation" width="100%" style={styles.totalTable}>
+      <tbody>
+        <tr>
+          <td style={styles.totalLabel}>{label}</td>
+          <td style={styles.totalValue}>{value}</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/** Hairline between blocks, so the email has sections without boxes. */
+export function Divider() {
+  return <div style={styles.divider} />;
+}
+
 /**
  * Custom properties are declared once and overridden for dark mode, so every
  * component reads `var(--text)` rather than a literal. Values come straight from
@@ -190,6 +251,66 @@ const styles: Record<string, React.CSSProperties> = {
   },
   lead: { color: "var(--text)", fontSize: "15px", lineHeight: "22px", margin: "0 0 8px" },
   detail: { color: "var(--text-muted)", fontSize: "13px", lineHeight: "20px", margin: "0" },
+  title: {
+    color: "var(--text)",
+    fontSize: "22px",
+    fontWeight: 600,
+    letterSpacing: "-0.02em",
+    lineHeight: "28px",
+    margin: `0 0 4px`,
+  },
+  meta: {
+    color: "var(--text-muted)",
+    fontSize: "12px",
+    lineHeight: "18px",
+    margin: "0 0 20px",
+  },
+  lineItemTable: { borderCollapse: "collapse", margin: "0", width: "100%" },
+  lineItemLabel: {
+    borderBottom: `1px solid var(--line)`,
+    color: "var(--text)",
+    fontSize: "14px",
+    lineHeight: "20px",
+    padding: "10px 12px 10px 0",
+    verticalAlign: "top",
+  },
+  lineItemValue: {
+    borderBottom: `1px solid var(--line)`,
+    color: "var(--text)",
+    fontFamily: fonts.mono,
+    fontSize: "14px",
+    fontVariantNumeric: "tabular-nums",
+    lineHeight: "20px",
+    padding: "10px 0",
+    textAlign: "right",
+    whiteSpace: "nowrap",
+    width: "30%",
+  },
+  // The final item before a total keeps its rule, so the block closes on a line
+  // rather than stopping one row short of it.
+  totalTable: { borderCollapse: "collapse", margin: "0", width: "100%" },
+  totalLabel: {
+    borderTop: `2px solid var(--text)`,
+    color: "var(--text)",
+    fontSize: "14px",
+    fontWeight: 600,
+    lineHeight: "20px",
+    padding: "12px 12px 0 0",
+  },
+  totalValue: {
+    borderTop: `2px solid var(--text)`,
+    color: "var(--text)",
+    fontFamily: fonts.mono,
+    fontSize: "16px",
+    fontVariantNumeric: "tabular-nums",
+    fontWeight: 600,
+    lineHeight: "20px",
+    padding: "12px 0 0",
+    textAlign: "right",
+    whiteSpace: "nowrap",
+    width: "30%",
+  },
+  divider: { borderTop: `1px solid var(--line)`, margin: `${spacing.section}px 0` },
   ctaRow: { margin: `${spacing.section}px 0 0` },
   cta: {
     backgroundColor: "var(--accent)",

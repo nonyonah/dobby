@@ -117,6 +117,17 @@ model User {
   /// key: a second import must never send it again, and a second sweep of the
   /// job must not send it twice.
   firstImportSummarySentAt DateTime?
+  /// Bumped on any authenticated request, throttled to once every ten minutes.
+  /// Every "is this person still around" question is measured from here rather
+  /// than from the last transaction's date, which cannot tell a dormant
+  /// account from one that has been reading and not acting.
+  lastActiveAt           DateTime?               @map("last_active_at")
+  /// IANA zone, used for the nudge send window and for "the 2nd of the month".
+  timezone               String?                  @default("Africa/Lagos")
+  /// Notification preferences. Default on: a product that starts silent about
+  /// what it sends is worse than one that has to be turned off deliberately.
+  nudgeEmailsEnabled     Boolean                  @default(true) @map("nudge_emails_enabled")
+  nudgeInAppEnabled      Boolean                  @default(true) @map("nudge_in_app_enabled")
   bachsCustomerId         String?                 @unique
   bachsSubscriptionId     String?                 @unique
   bachsSubscriptionStatus String?
@@ -144,12 +155,16 @@ model User {
   emailSyncJobs           EmailSyncJob[]
   emailImports            EmailImport[]
   reminderLogs            ReminderLog[]
+  nudgeLogs               NudgeLog[]
   payments                Payment[]
 
   @@index([email])
   @@index([planStatus])
   @@index([trialEndsAt])
   @@index([firstImportSummarySentAt])
+  @@index([lastActiveAt])
+  @@index([nudgeEmailsEnabled])
+  @@index([nudgeInAppEnabled])
 }
 
 model Profile {
@@ -211,6 +226,34 @@ model TaxChecklistItem {
  * days before, -1 for the one-time overdue notice) and monthly digests. The
  * unique key is the dedupe: a daily job re-checks without re-sending.
  */
+/**
+ * Every nudge sent, in-app or by email, with its whole life in one row.
+ *
+ * Doubles as the idempotency record. `clickedAt`/`completedAt`/`dismissedAt` are
+ * set afterwards by the client's callbacks, which is what lets a rule ask
+ * "did they ignore this last time?" without keeping any state in memory — and
+ * survives a restart, unlike a cache.
+ */
+model NudgeLog {
+  id           String   @id @default(cuid())
+  ownerClerkId String
+  /** The rule's key, matching the entry in the nudge config. */
+  nudgeKey     String
+  /** "email" or "in_app". A nudge sent on both writes one row per channel. */
+  channel      String
+  sentAt       DateTime @default(now())
+  clickedAt    DateTime?
+  completedAt  DateTime?
+  dismissedAt  DateTime?
+  /** Marks a locally-shown in-app nudge the user swiped away, not acted on. */
+  shownAt      DateTime?
+  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+
+  @@index([ownerClerkId, nudgeKey, channel])
+  @@index([ownerClerkId, sentAt])
+  @@index([nudgeKey, sentAt])
+}
+
 model ReminderLog {
   id           String   @id @default(cuid())
   ownerClerkId String
@@ -225,9 +268,14 @@ model ReminderLog {
 }
 
 /**
- * One-time Pro term purchases (Flutterwave NGN). Bachs subscriptions live on
- * the User row; these rows are the audit trail plus the idempotency key
- * (txRef) shared by checkout, verify, and webhook fulfillment.
+ * One-time Pro purchases. Bachs subscriptions live on the User row; these rows
+ * are the audit trail plus the idempotency key (txRef) shared by checkout,
+ * verify, and webhook fulfillment.
+ *
+ * Originally Flutterwave/NGN only, so `provider` and the nullable `providerTxId`
+ * stay: a Bachs one-time purchase is `provider: "bachs"` with the charge id in
+ * `providerTxId`, and the uniqueness that stops a replayed webhook granting a
+ * second month is on (provider, providerTxId).
  */
 model Payment {
   id           String    @id @default(cuid())
@@ -235,18 +283,57 @@ model Payment {
   provider     String    @default("flutterwave")
   txRef        String    @unique
   providerTxId String?
-  plan         String // "month" | "year"
+  /**
+   * The Bachs checkout session this order was opened from.
+   *
+   * Its own column rather than sharing `providerTxId`: a `chk_` id is a
+   * checkout and a `ch_` id is a charge, and conflating them would make the
+   * charge-id uniqueness guard that stops a replayed webhook from granting a
+   * second month depend on which half of the payment happened to arrive first.
+   */
+  checkoutId    String?
+  plan         String // "month" | "year" | "once"
   amount       Decimal   @db.Decimal(19, 4)
   currency     String    @default("NGN")
-  status       String    @default("pending") // pending | paid | failed
+  status       String    @default("pending") // pending | paid | underpaid | refunded | failed
   paidAt       DateTime?
   periodEndsAt DateTime?
+  /// Months this purchase bought. One for a single "Pay once"; the column exists
+  /// so applying access is arithmetic rather than a branch on which button was hit.
+  months       Int       @default(1)
+  /// How far short a crypto payment landed, in `currency`. Set on `underpaid`,
+  /// which grants nothing — it is here so the Plan page can say what is owed
+  /// without re-deriving it from the original charge.
+  shortfall    Decimal?  @db.Decimal(19, 4)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   owner        User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
+  @@unique([provider, providerTxId])
+  @@index([checkoutId])
   @@index([ownerClerkId, status])
   @@index([providerTxId])
+  @@index([periodEndsAt])
+}
+
+/**
+ * Every webhook delivery, kept before it is acted on.
+ *
+ * `eventId` is unique and is the whole reason this table exists: Bachs retries
+ * anything it does not get a 2xx for, and `collection.succeeded` and
+ * `checkout.completed` both describe the same single payment. Fulfilment is
+ * written as an insert-or-ignore against this row, so a duplicate delivery
+ * loses the race and returns before it can grant a second month of Pro.
+ *
+ * `processedAt` is left null when the handler did not finish, which makes an
+ * interrupted run visible afterwards instead of silently absent.
+ */
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  eventId     String    @unique
+  type        String
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
 }
 
 model Account {

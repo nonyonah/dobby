@@ -37,6 +37,8 @@ type PlanContextValue = {
   isPro: boolean;
   /** Trial lapsed — everything stays visible, writes are paused. */
   expired: boolean;
+  /** Whether a trial was ever started, so "never started" can be told from "ended". */
+  trialStarted: boolean;
   /** Whole days left in the trial, null when there is no live trial. */
   trialDaysLeft: number | null;
   /** When the trial ends (ISO), when known. */
@@ -52,6 +54,7 @@ const PlanContext = createContext<PlanContextValue>({
   plan: null,
   isPro: false,
   expired: false,
+  trialStarted: false,
   trialDaysLeft: null,
   trialEndsAt: null,
   loading: true,
@@ -66,6 +69,7 @@ function readPlan(value: unknown): Plan | null {
 export type Entitlement = {
   isPro: boolean;
   status: string;
+  trialStarted: boolean;
   trialDaysLeft: number | null;
   trialEndsAt: string | null;
 };
@@ -76,6 +80,7 @@ function readEntitlement(value: unknown): Entitlement {
   return {
     isPro: raw.isPro === true,
     status: typeof raw.status === "string" ? raw.status : "free",
+    trialStarted: raw.trialStarted === true,
     trialDaysLeft: typeof raw.trialDaysLeft === "number" ? raw.trialDaysLeft : null,
     trialEndsAt: typeof raw.trialEndsAt === "string" ? raw.trialEndsAt : null,
   };
@@ -146,7 +151,11 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       plan,
       // From the server's answer, never from the status string.
       isPro: entitlement.isPro,
-      expired: !entitlement.isPro && loaded,
+      // A lapsed trial, not merely "not Pro". A brand-new account has not
+      // started one, and telling that account its trial has ended is the one
+      // thing it cannot possibly be true of.
+      expired: !entitlement.isPro && entitlement.trialStarted && loaded,
+      trialStarted: entitlement.trialStarted,
       trialDaysLeft: entitlement.trialDaysLeft,
       trialEndsAt,
       loading,

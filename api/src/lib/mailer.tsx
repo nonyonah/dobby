@@ -14,6 +14,7 @@ import { ImportCompleteEmail, ImportFailedEmail } from "../emails/templates/impo
 import { TrialStartedEmail } from "../emails/templates/trial-started.js";
 import { MonthlyTaxReminderEmail } from "../emails/templates/tax-reminder.js";
 import { DeadlineReminderEmail } from "../emails/templates/deadline-reminder.js";
+import { NudgeEmail } from "../emails/templates/nudge.js";
 
 export function mailConfigured(): boolean {
   return Boolean(env.RESEND_API_KEY && env.RESEND_FROM_EMAIL);
@@ -484,4 +485,79 @@ export async function sendDeadlineNotification(input: {
     text,
   );
   return sendEmail({ to: input.to, subject: input.subject, html, text: plain });
+}
+
+/**
+ * One-time payment confirmed.
+ *
+ * A receipt rather than a nudge: it says what was bought, what it cost and the
+ * date access runs out, because "Pay once" has no renewal and no card on file —
+ * this email is the only place that end date is stated plainly.
+ */
+export async function notifyOneTimePayment(ownerClerkId: string, endsAt: Date): Promise<void> {
+  const to = await userEmailAddress(ownerClerkId);
+  if (!to) return;
+  const firstName = await firstNameFor(ownerClerkId);
+  const endsOn = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" }).format(endsAt);
+
+  const text = [
+    firstName ? `${firstName}, your payment came through.` : "Your payment came through.",
+    `Dobby Pro is active until ${endsOn}.`,
+    "Nothing is charged automatically — renew whenever you want to keep it going, or switch to a card subscription and let it renew on its own.",
+    "",
+    appUrl("/app"),
+  ].join("\n");
+
+  const { html, text: plain } = await renderMail(
+    <NudgeEmail
+      firstName={firstName}
+      subject="Your Pro access is active"
+      headline="Your Pro access is active"
+      body={`Dobby Pro runs until ${endsOn}. Nothing is charged automatically — renew whenever you want to keep it going, or switch to a card subscription and let it renew on its own.`}
+      ctaLabel="Open Dobby"
+      ctaHref={appUrl("/app")}
+      preferencesHref={appUrl("/settings#notifications")}
+    />,
+    text,
+  );
+  await sendEmail({ to, subject: "Dobby: your Pro access is active", html, text: plain });
+}
+
+/**
+ * A crypto payment that arrived short.
+ *
+ * Leads with what happened and what is still owed, because the customer can fix
+ * this themselves by sending the remainder to the same reference. No refund is
+ * offered or implied: the payment was not wrong, it was incomplete.
+ */
+export async function notifyUnderpaid(
+  ownerClerkId: string,
+  amounts: { amountPaid: string | null; amountExpected: string | null; amountRemaining: string | null; currency: string },
+): Promise<void> {
+  const to = await userEmailAddress(ownerClerkId);
+  if (!to) return;
+  const firstName = await firstNameFor(ownerClerkId);
+  const short = amounts.amountRemaining ? formatMoney(Number(amounts.amountRemaining), amounts.currency) : null;
+
+  const text = [
+    firstName ? `${firstName}, your payment was received but it came in short.` : "Your payment was received but it came in short.",
+    short ? `${short} is still outstanding.` : "There is a shortfall on this payment.",
+    "Send the remainder using the same payment reference and it will complete automatically. Pro starts as soon as it does.",
+    "",
+    appUrl("/settings#plan"),
+  ].join("\n");
+
+  const { html, text: plain } = await renderMail(
+    <NudgeEmail
+      firstName={firstName}
+      subject="Your payment came in short"
+      headline="Your payment came in short"
+      body={`${short ? `${short} is still outstanding. ` : ""}Send the remainder using the same payment reference and it will complete automatically. Pro starts as soon as it does.`}
+      ctaLabel="Complete payment"
+      ctaHref={appUrl("/settings#plan")}
+      preferencesHref={appUrl("/settings#notifications")}
+    />,
+    text,
+  );
+  await sendEmail({ to, subject: "Dobby: your payment came in short", html, text: plain });
 }

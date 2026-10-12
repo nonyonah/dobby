@@ -179,6 +179,206 @@ export async function retrieveSubscriptionOrNull(subscriptionId: string): Promis
   }
 }
 
+/**
+ * Corridors offered on a one-time checkout.
+ *
+ * Bank transfer and crypto are the two that cannot back a subscription: Bachs
+ * will only re-charge a card, because a later cycle is billed with the customer
+ * absent. That is the whole reason there are two checkouts rather than one
+ * checkout with everything on it.
+ *
+ * A corridor can be added here once the account has it enabled — `NGN_CARD` is
+ * the obvious next one. Restriction only ever narrows what the customer sees; it
+ * never adds a corridor the account cannot accept.
+ */
+export const ONE_TIME_PAYMENT_METHODS = ["NGN_BANK_TRANSFER", "CRYPTO"] as const;
+
+export type OneTimePaymentMethod = (typeof ONE_TIME_PAYMENT_METHODS)[number];
+
+/**
+ * What one "Pay once" buys.
+ *
+ * A single month, at the same price as the monthly subscription, rather than a
+ * ladder of prepaid terms. The point of this path is that someone who cannot
+ * put a recurring card on a rail can still pay; how many months they buy up
+ * front is a product decision that should be made deliberately, not smuggled in
+ * as a discount table.
+ */
+export const ONE_TIME_MONTHS = 1;
+
+/** How long a one-time checkout stays open. Long enough to pay, short enough to expire. */
+export const ONE_TIME_EXPIRY_MINUTES = 60;
+
+/**
+ * Starts the hosted checkout for a single, non-recurring payment.
+ *
+ * Priced with `pricing` rather than `product_cart`: there is no catalog product
+ * behind this, and Bachs treats the two as mutually exclusive. `currency: "USD"`
+ * is what makes adaptive pricing do the work — the customer pays in their own
+ * currency at the prevailing rate and Bachs credits us in USD.
+ *
+ * `reference` is unique per attempt and is echoed back on the webhook, so a
+ * retry after a failure is a new reference rather than a second order silently
+ * collapsing onto the first.
+ */
+export async function createOneTimeCheckout(input: {
+  email: string;
+  name?: string;
+  clerkUserId: string;
+  reference: string;
+  successUrl: string;
+  cancelUrl: string;
+  currencyOptions?: Record<string, string>;
+}): Promise<OneTimeCheckoutSession> {
+  const amount = Number(SUBSCRIPTION_PRICE_ANCHORS.month).toFixed(2);
+
+  return bachsFetch<OneTimeCheckoutSession>("/v1/checkout-sessions", {
+    method: "POST",
+    body: JSON.stringify({
+      pricing: {
+        currency: "USD",
+        amount,
+        // Optional exact amounts per currency. Omitted, Bachs converts at the
+        // live rate — which is the default, because a hardcoded naira amount
+        // goes stale against the rate and quietly overcharges.
+        ...(input.currencyOptions && Object.keys(input.currencyOptions).length > 0
+          ? { currency_options: input.currencyOptions }
+          : {}),
+      },
+      customer: input.name ? { email: input.email, name: input.name } : { email: input.email },
+      payment_method_types: [...ONE_TIME_PAYMENT_METHODS],
+      expires_in_minutes: ONE_TIME_EXPIRY_MINUTES,
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      reference: input.reference,
+      metadata: {
+        clerk_user_id: input.clerkUserId,
+        purchase: "one_time",
+        months: String(ONE_TIME_MONTHS),
+      },
+    }),
+  });
+}
+
+export type OneTimeCheckoutSession = {
+  checkout_id: string;
+  checkout_url: string;
+  status?: string;
+  payment_status?: string;
+  /** What the customer will actually see. Narrower than what we asked for. */
+  payment_methods?: string[];
+  amount?: string;
+  currency?: string;
+  reference?: string | null;
+  metadata?: Record<string, unknown>;
+  customer?: { id?: string | null; email?: string | null; name?: string | null };
+  customer_details?: { email?: string; name?: string };
+};
+
+/**
+ * Checks the corridors that actually came back on the session.
+ *
+ * Bachs will happily create a checkout showing only bank transfer on an account
+ * that cannot do crypto yet, and the request still succeeds — a silent success
+ * that costs a customer who arrives at the page expecting to pay in crypto.
+ * Logged with the session id so a report of "crypto is missing" can be traced to
+ * the exact checkout that dropped it.
+ */
+export function logMissingPaymentMethods(session: OneTimeCheckoutSession, log: typeof logger): void {
+  const offered = session.payment_methods ?? [];
+  const missing = ONE_TIME_PAYMENT_METHODS.filter((method) => !offered.includes(method));
+  if (missing.length === 0) return;
+
+  log.warn(
+    {
+      checkoutId: session.checkout_id,
+      requested: [...ONE_TIME_PAYMENT_METHODS],
+      offered,
+      missing,
+      hint: missing.length === offered.length || offered.length === 0
+        ? "the account is probably not enabled for these corridors — check GET /v1/accounts/checkout/settings"
+        : "the corridor is not enabled on the account, or adaptive pricing is off",
+    },
+    "one-time checkout does not offer every requested payment method",
+  );
+}
+
+export type CheckoutSettings = {
+  adaptive_pricing?: boolean;
+  base_currency?: string;
+  enabled_payment_methods?: Array<{
+    code?: string;
+    enabled?: boolean;
+    currencies?: Record<string, boolean>;
+  }>;
+};
+
+/**
+ * Reads what the account can actually accept.
+ *
+ * `payment_method_types` is a request, not a promise: it narrows the checkout
+ * and Bachs silently drops anything the account is not enabled for. This is the
+ * only place that truth is visible before a customer hits the page.
+ *
+ * Returns null rather than throwing — a settings read that fails is a reason to
+ * warn loudly, not a reason to refuse to sell.
+ */
+export async function readCheckoutSettings(): Promise<CheckoutSettings | null> {
+  try {
+    return await bachsFetch<CheckoutSettings>("/v1/accounts/checkout/settings", { method: "GET" });
+  } catch (error) {
+    logger.warn({ err: error instanceof Error ? error.message : String(error) }, "could not read bachs checkout settings");
+    return null;
+  }
+}
+
+/**
+ * Reports whether a one-time checkout can actually offer what we ask for.
+ *
+ * Two distinct failures, deliberately told apart in the message:
+ *   - adaptive pricing off means a USD-priced checkout can only be paid in the
+ *     account's base currency, so naira and crypto corridors drop out silently;
+ *   - a corridor simply not enabled on the account cannot be switched on from here.
+ */
+export async function warnIfOneTimeUnavailable(log: typeof logger): Promise<void> {
+  const settings = await readCheckoutSettings();
+  if (!settings) {
+    log.warn("could not confirm bachs checkout settings; a one-time checkout may not offer bank transfer or crypto");
+    return;
+  }
+
+  if (settings.adaptive_pricing === false) {
+    log.warn(
+      { baseCurrency: settings.base_currency },
+      "bachs adaptive pricing is OFF: a USD-priced checkout can only be paid in the base currency, so bank transfer and crypto will not appear. Turn adaptive pricing on in the Bachs dashboard.",
+    );
+  }
+
+  const enabled = new Set(
+    (settings.enabled_payment_methods ?? [])
+      .filter((method) => method.enabled === true)
+      .map((method) => method.code),
+  );
+  const missing = ONE_TIME_PAYMENT_METHODS.filter((method) => !enabled.has(method));
+  if (missing.length > 0) {
+    log.warn(
+      { missing, enabled: [...enabled] },
+      "bachs account does not have every one-time corridor enabled: enable them in the Bachs dashboard or the customer will only see the rest",
+    );
+  }
+}
+
+/**
+ * Reads a checkout back from Bachs.
+ *
+ * Used before granting anything for a one-time payment: the webhook says a
+ * charge succeeded, but it does not say which plan it paid for or how much, and
+ * a redirect the customer could have skipped is not evidence at all.
+ */
+export async function retrieveCheckout(checkoutId: string): Promise<OneTimeCheckoutSession> {
+  return bachsFetch<OneTimeCheckoutSession>(`/v1/checkout-sessions/${encodeURIComponent(checkoutId)}`, { method: "GET" });
+}
+
 const hmac = (secret: string, message: string) => crypto.createHmac("sha256", secret).update(message, "utf8").digest("hex");
 
 function equalHex(a: string, b: string): boolean {

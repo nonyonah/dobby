@@ -50,6 +50,19 @@ type BillingSubscription = {
   cancelAtPeriodEnd?: boolean | null;
 };
 
+/** One-time purchase state, as reported by the server. */
+type OneTimeState = {
+  available: boolean;
+  /** When access bought by a one-time payment runs out, if it did. */
+  paidUntil: string | null;
+  outstanding: {
+    amount: string;
+    currency: string;
+    shortfall: string | null;
+    createdAt: string;
+  } | null;
+};
+
 const formatDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
 
@@ -400,6 +413,7 @@ export function SettingsPage() {
   const { openCheckout, busy: checkoutBusy, refreshOptions } = useUpgrade();
   const { enabled: tutorialEnabled, reset: resetTutorialAndRun } = useTutorial();
   const [subscription, setSubscription] = useState<BillingSubscription | null>(null);
+  const [oneTime, setOneTime] = useState<OneTimeState | null>(null);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   // Live subscription that has not been set to end: the plan control is then a
@@ -613,7 +627,7 @@ export function SettingsPage() {
         api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=duplicate&take=25"),
         api.get<{ data: EmailImportRow[] }>("/v1/emails/imports?status=failed&take=25"),
         api.get<{ data: Array<SyncJob & { provider: string; id: string }> }>("/v1/emails/sync"),
-        api.get<{ data: { subscription: BillingSubscription | null } }>("/v1/billing"),
+        api.get<{ data: { subscription: BillingSubscription | null; oneTime?: OneTimeState } }>("/v1/billing"),
       ]);
       if (cancelled) return;
 
@@ -642,6 +656,7 @@ export function SettingsPage() {
       if (lockedResult.status === "fulfilled") setLockedEmails(lockedResult.value.data);
       if (billingResult.status === "fulfilled") {
         setSubscription(billingResult.value.data.subscription ?? null);
+        setOneTime(billingResult.value.data.oneTime ?? null);
       }
 
       if (jobResult.status === "fulfilled") {
@@ -1007,6 +1022,25 @@ export function SettingsPage() {
           </Section>
 
           <Section label="Plan">
+            {/* A short crypto payment grants nothing and is not refunded, so the
+                shortfall has to be visible here — the email that announced it is
+                the only other place it appears. */}
+            {oneTime?.outstanding ? (
+              <Alert status="warning" className="mb-2">
+                <AlertIndicator>
+                  <HugeiconsIcon icon={AlertIcon} strokeWidth={2} />
+                </AlertIndicator>
+                <AlertContent>
+                  <AlertTitle>Your payment came in short</AlertTitle>
+                  <AlertDescription>
+                    {oneTime.outstanding.shortfall
+                      ? `${oneTime.outstanding.shortfall} ${oneTime.outstanding.currency} is still outstanding. `
+                      : "There is a shortfall on this payment. "}
+                    Send the remainder using the same reference and Pro starts automatically.
+                  </AlertDescription>
+                </AlertContent>
+              </Alert>
+            ) : null}
             {/* After a trial lapses the dashboard goes quiet, so Settings is where
                 the one remaining nudge lives — never a modal, never a countdown. */}
             <TrialPill className="mb-2" />
@@ -1074,7 +1108,9 @@ export function SettingsPage() {
             <Row
               label="Current plan"
               description={
-                plan === "ACTIVE"
+                oneTime?.paidUntil && !subscription
+                  ? `Dobby Pro, paid once — active until ${formatDate(oneTime.paidUntil)}. Nothing is charged automatically; you'll be reminded before it ends.`
+                  : plan === "ACTIVE"
                   ? subscription?.currentPeriodEnd
                     ? `Dobby Pro — email auto-fetch, unlimited wallets, net worth, proactive flags, and monthly tax reminders. Renews ${formatDate(subscription.currentPeriodEnd)}.`
                     : "Dobby Pro — email auto-fetch, unlimited wallets, net worth, proactive flags, and monthly tax reminders."

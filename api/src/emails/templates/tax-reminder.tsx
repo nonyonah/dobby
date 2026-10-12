@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cta, Detail, Figure, Footnote, Lead, Layout } from "../components.js";
+import { Cta, Detail, Figure, Footnote, Layout, Lead, Meta, Title } from "../components.js";
 import { appUrl } from "../links.js";
 import { formatMoney } from "./format.js";
 
@@ -34,6 +34,11 @@ export function MonthlyTaxReminderEmail({
 
   return (
     <Layout preview={`Estimated ${jurisdictionLabel} tax for ${taxYear}: ${formatted}.`}>
+      <Title>Your {taxYear} {jurisdictionLabel} estimate</Title>
+      <Meta>
+        {jurisdictionLabel} tax year {taxYear}
+        {noChecklist ? "" : ` · ${checklistReady} of ${checklistTotal} documents ready`}
+      </Meta>
       <Figure tone="success" caption={`Estimated ${jurisdictionLabel} tax · ${taxYear}`}>
         {formatted}
       </Figure>

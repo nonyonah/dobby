@@ -1,15 +1,26 @@
 import { Router } from "express";
+import crypto from "node:crypto";
 import { clerkClient } from "@clerk/express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
-import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createPortalSession, createProCheckout, retrieveSubscriptionOrNull, verifyBachsSignature, type BillingInterval, type SubscriptionState } from "../lib/bachs.js";
+import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createOneTimeCheckout, createPortalSession, createProCheckout, logMissingPaymentMethods, retrieveSubscriptionOrNull, verifyBachsSignature, warnIfOneTimeUnavailable, type BillingInterval, type SubscriptionState } from "../lib/bachs.js";
 import { loadEffectivePlan } from "../middleware/plan.js";
 import { entitlementSelect, getEntitlement, trialWindowFrom, type EntitlementRow } from "../lib/entitlement.js";
 import { notifyTrialStarted } from "../lib/mailer.js";
+import { appUrl } from "../emails/links.js";
+import {
+  ONE_TIME_PROVIDER,
+  fulfilOneTimePayment,
+  handleRefund,
+  handleUnderpaid,
+  newOneTimeReference,
+  type OneTimeEventData,
+} from "../billing/one-time.js";
 
 const WEBHOOK_PATH = "/webhook";
 
@@ -156,36 +167,127 @@ billingWebhookRouter.post(WEBHOOK_PATH, async (req, res) => {
     throw new AppError(401, "Invalid Bachs webhook signature.", "INVALID_WEBHOOK_SIGNATURE");
   }
 
-  let event: { id?: string; type?: string; data?: SubscriptionData };
+  let event: { id?: string; type?: string; data?: SubscriptionData & OneTimeEventData };
   try {
     event = JSON.parse(rawBody.toString("utf8")) as typeof event;
   } catch {
     throw new AppError(400, "Webhook body was not valid JSON.", "INVALID_WEBHOOK_PAYLOAD");
   }
 
-  const data = event.data ?? {};
-  switch (event.type) {
-    case "customer.subscription.created":
-    case "customer.subscription.updated":
-      await applySubscription(data, event.type);
-      break;
-    case "customer.subscription.deleted":
-      await cancelSubscription(data);
-      break;
-    default:
-      // `collection.succeeded` and `invoice.paid` also fire on a subscription
-      // checkout. They carry the charge, not the entitlement, and the
-      // subscription events above are what grant and revoke Pro — fulfilling
-      // from a payment event would double-grant across a plan change.
-      logger.info({ eventId: event.id, eventType: event.type }, "bachs webhook handled by the subscription events");
+  const type = event.type ?? "";
+
+  // Idempotency, before anything else. `collection.succeeded` and
+  // `checkout.completed` describe the same single payment and either may arrive
+  // first, and Bachs retries anything not answered 2xx — so a duplicate delivery
+  // is normal traffic, not an edge case. Inserting the event id first means a
+  // repeat loses the race and returns without doing any work.
+  //
+  // An event with no id cannot be deduplicated, so it is recorded under a value
+  // that can never collide and handled normally.
+  const eventId = event.id ?? `evt_no_id_${crypto.randomUUID()}`;
+  const claimed = await prisma.webhookEvent
+    .create({ data: { eventId, type }, select: { id: true } })
+    .then(() => true)
+    .catch(() => false);
+
+  if (!claimed) {
+    logger.info({ eventId, eventType: type }, "bachs webhook redelivered; already recorded");
+    res.json({ received: true, duplicate: true });
+    return;
   }
 
-  // Always acknowledge, and only after the row is written. Bachs retries
-  // unacknowledged deliveries, so a slow handler turns one event into a queue
-  // of duplicates; every write above is an assignment of the event's own state,
-  // so applying the same event twice lands on the same row.
+  try {
+    await dispatchWebhook(type, event.data ?? {}, eventId);
+    await prisma.webhookEvent.update({ where: { eventId }, data: { processedAt: new Date() } });
+  } catch (error) {
+    // Left unprocessed so the event is visible as failed rather than absent.
+    // Replayed deliveries are still dropped by the claim above, so a retry has
+    // to come from a manual replay — deliberate, because re-running fulfilment
+    // on a half-applied event is worse than making someone look at it.
+    logger.error({ eventId, eventType: type, err: error }, "bachs webhook handler failed");
+  }
+
+  // Always acknowledge, and only after the work is done. Bachs retries
+  // unacknowledged deliveries, so a slow handler turns one event into a queue of
+  // duplicates; every write here is keyed on the event id or the charge id, so a
+  // duplicate that does arrive lands on the same row.
   res.json({ received: true });
 });
+
+const isSubscription = (user: { bachsSubscriptionId: string | null } | null) => Boolean(user?.bachsSubscriptionId);
+
+/** Routes one verified event to the code that owns it. */
+async function dispatchWebhook(type: string, data: SubscriptionData & OneTimeEventData, eventId: string): Promise<void> {
+  const data_ = data;
+  switch (type) {
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+      await applySubscription(data_, type);
+      return;
+    case "customer.subscription.deleted":
+      await cancelSubscription(data_);
+      return;
+    case "collection.succeeded":
+    case "checkout.completed": {
+      // Both can fire for one payment, and a subscription checkout emits
+      // `collection.succeeded` for its first invoice too. Only the ones with an
+      // order of ours behind them are a one-time purchase.
+      if (await isSubscriptionPayment(data_)) {
+        logger.info({ eventId, eventType: type }, "payment event belongs to a subscription; handled by the subscription events");
+        return;
+      }
+      await fulfilOneTimePayment(data_, type);
+      return;
+    }
+    case "collection.underpaid":
+      await handleUnderpaid(data_, type);
+      return;
+    case "checkout.expired":
+      logger.info({ eventId, checkoutId: data_.checkout_id }, "one-time checkout expired; no access granted");
+      return;
+    case "refund.paid":
+      await handleRefund(data_, type);
+      return;
+    case "invoice.paid":
+    case "invoice.payment_failed":
+    case "collection.failed":
+      // Renewal outcomes. `customer.subscription.updated` carries the
+      // resulting status and is what `getEntitlement` reads, so there is nothing
+      // to grant or revoke here — but a failure is worth a line in the log.
+      logger.info({ eventId, eventType: type, subscriptionId: data_.subscription_id }, "invoice event logged");
+      return;
+    default:
+      logger.info({ eventId, eventType: type }, "bachs webhook type not handled");
+  }
+}
+
+/**
+ * Whether this payment event belongs to a subscription rather than a one-time
+ * order.
+ *
+ * The webhook for a subscription's first payment looks exactly like one for a
+ * checkout: same event type, same `collection.succeeded`. The order of the
+ * checks matters — an existing subscription id wins, and failing that we look
+ * for one of our own pending orders rather than trusting the absence of one.
+ */
+async function isSubscriptionPayment(data: OneTimeEventData): Promise<boolean> {
+  if (typeof data.metadata?.clerk_user_id === "string") {
+    const user = await prisma.user.findUnique({
+      where: { clerkId: data.metadata.clerk_user_id },
+      select: { bachsSubscriptionId: true },
+    });
+    if (isSubscription(user)) return true;
+  }
+  if (data.customer?.id) {
+    const user = await prisma.user.findUnique({
+      where: { bachsCustomerId: data.customer.id },
+      select: { bachsSubscriptionId: true },
+    });
+    if (isSubscription(user)) return true;
+  }
+  // No subscription anywhere on the account, and no reference of ours: not ours.
+  return !data.reference;
+}
 
 export const billingRouter = Router();
 billingRouter.use(requireAuth);
@@ -290,9 +392,19 @@ async function reconcileSubscription(user: BillingRow | null): Promise<BillingRo
 }
 
 billingRouter.get("/", async (req, res) => {
+  const clerkId = req.auth!.userId;
   const user = await reconcileSubscription(
-    await prisma.user.findUnique({ where: { clerkId: req.auth!.userId }, select: billingRowSelect }),
+    await prisma.user.findUnique({ where: { clerkId }, select: billingRowSelect }),
   );
+
+  // A short crypto payment is shown back on the Plan page so the customer can
+  // see what is outstanding without hunting through their email. Only the most
+  // recent one: an older shortfall has either been completed or written off.
+  const latestUnderpaid = await prisma.payment.findFirst({
+    where: { ownerClerkId: clerkId, provider: ONE_TIME_PROVIDER, status: "underpaid" },
+    orderBy: { createdAt: "desc" },
+    select: { amount: true, currency: true, shortfall: true, createdAt: true, txRef: true },
+  });
 
   const entitlement = getEntitlement(user);
   res.json({
@@ -305,6 +417,15 @@ billingRouter.get("/", async (req, res) => {
       trialEndsAt: entitlement.trialEndsAt,
       configured: billingConfigured(),
       planExpiresAt: user?.planExpiresAt ?? null,
+      // Whether "Pay once" may be offered at all. Hidden for a card subscriber
+      // rather than disabled: two ways to hold Pro is two things to forget about,
+      // and the one they forgot is the one that charged them.
+      oneTime: {
+        available: Boolean(billingConfigured()) && !user?.bachsSubscriptionId,
+        /** Ends the access a one-time purchase bought, if there was one. */
+        paidUntil: user?.planExpiresAt ?? null,
+        outstanding: latestUnderpaid,
+      },
       subscription: user?.bachsSubscriptionId
         ? {
             id: user.bachsSubscriptionId,
@@ -476,6 +597,105 @@ billingRouter.post("/checkout", async (req, res) => {
   res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url } });
 });
 
+/**
+ * Starts a one-time purchase, paid by bank transfer or crypto.
+ *
+ * A separate checkout from `/checkout` on purpose. Bachs will only ever re-charge
+ * a card, so a subscription checkout can show nothing but a card — there is no
+ * version of one checkout that offers a recurring card *and* a bank transfer.
+ * Two sessions, two buttons, and the customer picks each time.
+ *
+ * A pending `Payment` row is written before the checkout is opened. It is the
+ * link the webhook matches on and the record the fulfilment updates, so nothing
+ * is granted to a payment that has no order behind it.
+ */
+billingRouter.post("/checkout/once", async (req, res) => {
+  const clerkId = req.auth!.userId;
+
+  const user = await prisma.user.findUnique({
+    where: { clerkId },
+    select: {
+      email: true,
+      firstName: true,
+      lastName: true,
+      bachsCustomerId: true,
+      bachsSubscriptionId: true,
+      // entitlementSelect already carries the subscription status, period end,
+      // cancel flag and one-time expiry.
+      ...entitlementSelect,
+    },
+  });
+  if (!user) throw new AppError(404, "No account found.", "USER_NOT_FOUND");
+
+  // A card subscriber is already covered by something that renews on its own.
+  // Selling them a second, non-renewing term would take their money for access
+  // they already have and would leave them worse off than before.
+  if (user.bachsSubscriptionId) {
+    const portalUrl = user.bachsCustomerId ? (await createPortalSession(user.bachsCustomerId)).url : null;
+    res.status(200).json({ data: { alreadySubscribed: true, portalUrl, url: null, checkoutId: null } });
+    return;
+  }
+
+  const merged = mergeIdentity(user, await readClerkIdentity(clerkId, logger));
+  const { email, firstName, lastName } = merged;
+  if (email !== user.email || firstName !== user.firstName || lastName !== user.lastName) {
+    await prisma.user.update({ where: { clerkId }, data: { email, firstName, lastName } });
+  }
+  if (!email) {
+    throw new AppError(400, "Add an email address to your account before upgrading.", "EMAIL_REQUIRED");
+  }
+
+  // Says plainly what is wrong with the account before a customer reaches a
+  // checkout page that cannot take their money. Cheap, and it makes the log
+  // traceable to a specific misconfiguration.
+  await warnIfOneTimeUnavailable(logger);
+
+  const reference = newOneTimeReference(clerkId);
+  const settingsUrl = appUrl("/settings#plan");
+
+  // Bachs validates the redirect pair, and a bare `http://localhost` is the
+  // shape it rejects. Left unchecked this surfaces as an opaque failure from
+  // checkout *creation*, which reads as "Bachs is broken" rather than "this
+  // environment has no APP_URL".
+  if (!settingsUrl.startsWith("https://")) {
+    logger.warn(
+      { settingsUrl },
+      "APP_URL is not an https absolute URL; Bachs will reject this checkout. Set APP_URL in api/.env to the public https origin.",
+    );
+  }
+
+  const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;
+
+  const session = await createOneTimeCheckout({
+    email,
+    name,
+    clerkUserId: clerkId,
+    reference,
+    successUrl: settingsUrl,
+    cancelUrl: settingsUrl,
+  });
+
+  // A checkout that quietly dropped a corridor still succeeds. Catch it here,
+  // with the session id, rather than letting the customer discover it.
+  logMissingPaymentMethods(session, logger);
+
+  await prisma.payment.create({
+    data: {
+      ownerClerkId: clerkId,
+      provider: ONE_TIME_PROVIDER,
+      txRef: reference,
+      checkoutId: session.checkout_id,
+      plan: "once",
+      amount: new Prisma.Decimal(SUBSCRIPTION_PRICE_ANCHORS.month),
+      currency: "USD",
+      status: "pending",
+    },
+  });
+
+  logger.info({ clerkId, checkoutId: session.checkout_id, reference, offered: session.payment_methods ?? null }, "one-time checkout created");
+  res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url, reference } });
+});
+
 billingRouter.post("/portal", async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { clerkId: req.auth!.userId },
@@ -560,16 +780,27 @@ const CARD_OPTIONS: BillingOption[] = (["month", "year"] as const).map((interval
   pricing: "local",
 }));
 
-billingRouter.get("/options", async (_req, res) => {
+billingRouter.get("/options", async (req, res) => {
   // Bachs resolves the customer's currency itself at checkout — a currency set
   // on the product wins, then adaptive conversion, then the USD primary — so
   // there is no region logic here to drift from the catalog. The USD amounts are
   // display anchors for the pills, not the amount charged: the catalog product
   // behind BACHS_PRO_*_PRODUCT_ID owns the real price.
+  //
+  // Read straight off the user row with no reconciliation: this only has to know
+  // whether a subscription exists, and making a dialog open re-sync a
+  // subscription from Bachs to decide what to draw would be a slow way to ask a
+  // yes/no question.
+  const user = await prisma.user.findUnique({
+    where: { clerkId: req.auth!.userId },
+    select: { bachsSubscriptionId: true },
+  });
+
   res.json({
     data: {
       region: null,
       options: billingConfigured() ? CARD_OPTIONS : [],
+      oneTimeAvailable: billingConfigured() && !user?.bachsSubscriptionId,
     },
   });
 });
