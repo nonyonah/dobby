@@ -47,10 +47,16 @@ describe("createProCheckout", () => {
     expect(body).not.toHaveProperty("product_cart");
   });
 
-  it("asks for the card to be saved, so a card payer can be renewed", async () => {
+  it("does not ask to save the card, because that is what removes the other rails", async () => {
+    // Measured on this account, identical session otherwise:
+    //   save_payment_method: true -> USD card, NGN card
+    //   without it                -> + NGN bank transfer, crypto
+    // A checkout that keeps a payment method can only offer methods that can be
+    // saved, which is cards. Asking for it costs bank transfer and crypto, so it
+    // is not asked for.
     const fetchMock = stubSession();
     await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", price });
-    expect(sentBody(fetchMock).save_payment_method).toBe(true);
+    expect(sentBody(fetchMock)).not.toHaveProperty("save_payment_method");
   });
 
   it("carries the plan so a renewal charges what was agreed", async () => {

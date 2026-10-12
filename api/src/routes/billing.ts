@@ -249,52 +249,6 @@ async function dispatchWebhook(type: string, data: SubscriptionData & OneTimeEve
     case "refund.paid":
       await handleRefund(data_, type);
       return;
-    case "payment_method.saved": {
-      // The card is only saved once the customer finishes the checkout, so this
-      // is where a `pm_` id first exists. Without it there is nothing to renew
-      // from, and the account silently stops after one period.
-      const pm = data.payment_method_details;
-      const pmId = typeof pm?.id === "string" ? pm.id : null;
-      const email = data.customer?.email?.trim() || data.customer_details?.email?.trim();
-      if (!pmId || !email) {
-        logger.warn({ eventId }, "payment_method.saved had no payment method id or email");
-        return;
-      }
-      const user = await prisma.user.findFirst({
-        where: { OR: [{ email: { equals: email, mode: "insensitive" } }, ...(data.customer?.id ? [{ bachsCustomerId: data.customer.id }] : [])] },
-        select: { clerkId: true },
-      });
-      if (!user) {
-        logger.warn({ eventId, email }, "saved card has no matching user");
-        return;
-      }
-      // The interval and currency come off our own metadata rather than off the
-      // event, so what we re-charge matches what the customer agreed to pay.
-      const planInterval = typeof data.metadata?.plan_interval === "string" && data.metadata.plan_interval === "year" ? "year" : "month";
-      const planCurrency = typeof data.metadata?.plan_currency === "string" ? data.metadata.plan_currency : "USD";
-      const now = new Date();
-
-      await prisma.user.update({
-        where: { clerkId: user.clerkId },
-        data: {
-          bachsPaymentMethodId: pmId,
-          bachsChargeAmount: new Prisma.Decimal(SUBSCRIPTION_PRICE_ANCHORS[planInterval]),
-          bachsChargeCurrency: planCurrency,
-          bachsChargeInterval: planInterval,
-          // A year of access from the moment the card was saved, so somebody who
-          // pays today is not charged again in four weeks.
-          bachsNextChargeAt: addMonths(now, planInterval === "year" ? 12 : 1),
-          planExpiresAt: addMonths(now, planInterval === "year" ? 12 : 1),
-          // Only start renewing accounts that are ours to renew. Anyone still on
-          // a Bachs subscription is billed by Bachs, and charging them here as
-          // well is the double charge this column exists to prevent.
-          bachsRecurring: true,
-          ...(data.customer?.id ? { bachsCustomerId: data.customer.id } : {}),
-        },
-      });
-      logger.info({ eventId, clerkId: user.clerkId, pmId }, "saved card recorded");
-      return;
-    }
     case "invoice.paid":
     case "invoice.payment_failed":
     case "collection.failed":

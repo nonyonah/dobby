@@ -99,14 +99,18 @@ export type PlanPrice = {
  * plain payment may be bank transfer, crypto or card depending on the currency
  * the customer picks.
  *
- * `save_payment_method: true` is what keeps auto-renewal alive for the people who
- * choose a card: the card is kept, and `renewSavedCard` re-charges it each
- * period. Somebody who pays by transfer or crypto has nothing saved, so their
- * access simply stops when the period ends and the renewal nudges tell them —
- * which is the only honest behaviour for a rail that cannot be re-charged.
+ * No `save_payment_method`, deliberately. Asking to save the card is what removes
+ * the other rails: a checkout that keeps a payment method can only offer methods
+ * that *can* be saved, and that is cards alone. Measured on this account, same
+ * session otherwise:
  *
- * The card is only saved on completion, so the saved-card id arrives later on a
- * `payment_method.saved` webhook, never from this response.
+ *   save_payment_method: true  -> USD card, NGN card
+ *   without it                 -> USD card, NGN card, NGN bank transfer, crypto
+ *
+ * Auto-renew and bank transfer are mutually exclusive on Bachs, and the trade
+ * goes to the rails: somebody paying by transfer or crypto cannot be re-charged
+ * at all, so they start a new checkout when the term ends, and the renewal
+ * nudges are what tell them to.
  */
 export async function createProCheckout(input: {
   email: string;
@@ -131,12 +135,6 @@ export async function createProCheckout(input: {
     // No `payment_method_types`: naming a corridor only narrows what the page
     // offers, and the customer picks their own on the hosted page. Left to
     // Bachs, the list also stays correct when they change what is enabled.
-    //
-    // Refused with CHECKOUT_CANNOT_SAVE_PAYMENT_METHOD if the session ends up
-    // with no card on it. That only happens if every card corridor is disabled
-    // on the account, and it is far better to fail loudly here than to accept
-    // the checkout and discover at the first renewal that nothing was saved.
-    save_payment_method: true,
     customer: input.customerId
       ? { customer_id: input.customerId }
       : input.name
@@ -152,59 +150,6 @@ export async function createProCheckout(input: {
   };
 
   return bachsFetch<CheckoutSession>("/v1/checkout-sessions", { method: "POST", body: JSON.stringify(body) });
-}
-
-export type ChargeResult = {
-  payment_id: string;
-  /** "processing", "succeeded" or "failed". A 201 is not a payment. */
-  status: string;
-  amount: string;
-  amount_paid?: string;
-  currency: string;
-  payment_method?: string | null;
-};
-
-/**
- * Re-charges a saved card, off-session, with nobody on a payment page.
- *
- * This is how a card payer renews without Bachs running a subscription: the card
- * was kept at checkout, and we bill it ourselves. It is also why the one-time
- * checkout was worth having — a bank transfer or crypto payer simply cannot be
- * re-charged and is not put in this path at all.
- *
- * `idempotencyKey` is required and must be keyed to the *period*, not the
- * attempt: a retry after a timeout that invents a new key charges the customer
- * a second time.
- *
- * Returns `status: "failed"` for a declined card rather than throwing. A refusal
- * is an answer, not an error, and the caller decides what to do about it.
- */
-export async function chargeSavedCard(input: {
-  customerId: string;
-  paymentMethodId: string;
-  amount: string;
-  currency: string;
-  /** One per period per customer. */
-  idempotencyKey: string;
-  reference: string;
-  description?: string;
-}): Promise<ChargeResult> {
-  return bachsFetch<ChargeResult>("/v1/charges", {
-    method: "POST",
-    headers: {
-      // Sent as a header, not a body field: this is what stops a retried request
-      // after a timeout from charging twice.
-      "Idempotency-Key": input.idempotencyKey,
-    },
-    body: JSON.stringify({
-      customer: input.customerId,
-      payment_method: input.paymentMethodId,
-      amount: input.amount,
-      currency: input.currency,
-      reference: input.reference,
-      ...(input.description ? { description: input.description } : {}),
-    }),
-  });
 }
 
 /** The two cadences Dobby Pro is sold on. */
