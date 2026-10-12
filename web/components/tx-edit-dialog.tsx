@@ -60,6 +60,12 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
   const [source, setSource] = useState<TxSource>("manual");
   const [note, setNote] = useState("");
   const [rememberRule, setRememberRule] = useState(false);
+  // Above the `if (!tx)` bail-out for the same reason as `appCurrency`: the
+  // dialog renders null until a row is chosen, and a hook called after that
+  // return makes the hook count jump from nine to ten the moment it opens —
+  // React throws "Rendered more hooks than during the previous render" and the
+  // page dies instead of showing the form.
+  const [saving, setSaving] = useState(false);
   const options =
     categories.length > 0
       ? categories
@@ -94,8 +100,6 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       return amountCurrency;
     }
   })();
-
-  const [saving, setSaving] = useState(false);
 
   const commit = async () => {
     if (saving) return;
