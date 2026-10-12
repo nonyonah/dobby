@@ -12,7 +12,7 @@ import { SUBSCRIPTION_PRICE_ANCHORS, bachsFetch, billingConfigured, cancelProSub
 import { loadEffectivePlan } from "../middleware/plan.js";
 import { entitlementSelect, getEntitlement, trialWindowFrom, type EntitlementRow } from "../lib/entitlement.js";
 import { notifyTrialStarted } from "../lib/mailer.js";
-import { appUrl } from "../emails/links.js";
+import { appUrl, publicAppUrl } from "../emails/links.js";
 import {
   ONE_TIME_PROVIDER,
   addMonths,
@@ -717,17 +717,17 @@ billingRouter.post("/checkout/once", async (req, res) => {
   await warnIfOneTimeUnavailable(logger);
 
   const reference = newOneTimeReference(clerkId);
-  const settingsUrl = appUrl("/settings#plan");
 
-  // Bachs validates the redirect pair, and a bare `http://localhost` is the
-  // shape it rejects. Left unchecked this surfaces as an opaque failure from
-  // checkout *creation*, which reads as "Bachs is broken" rather than "this
-  // environment has no APP_URL".
-  if (!settingsUrl.startsWith("https://")) {
-    logger.warn(
-      { settingsUrl },
-      "APP_URL is not an https absolute URL; Bachs will reject this checkout. Set APP_URL in api/.env to the public https origin.",
-    );
+  // Refused here rather than logged. Bachs rejects a checkout whose
+  // `success_url` is not publicly reachable, and that arrives mid-purchase as an
+  // opaque upstream error; failing before the session is created says plainly
+  // which variable is missing.
+  let settingsUrl: string;
+  try {
+    settingsUrl = publicAppUrl("/settings#plan");
+  } catch (error) {
+    logger.error({ err: error instanceof Error ? error.message : String(error) }, "cannot create a Bachs checkout without a public app URL");
+    throw new AppError(503, "Checkout is misconfigured on this environment. Please contact support.", "APP_URL_NOT_PUBLIC");
   }
 
   const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;

@@ -1,7 +1,42 @@
-/** Where the CTA links go, so the app's host is defined in exactly one place. */
+import { env } from "../config/env.js";
+
+/**
+ * Where the CTA links go, so the app's host is defined in exactly one place.
+ *
+ * Reads `env.WEB_ORIGIN` rather than `process.env.APP_URL`. That is the variable
+ * the API already declares and the one every environment actually sets — it
+ * drives CORS, so a host that is wrong here is visibly wrong there too. `APP_URL`
+ * was never in the env schema, so on production it was always unset and every
+ * link resolved to `http://localhost:3000`, which is how a checkout ended up
+ * being created with a `success_url` Bachs refuses as not publicly accessible.
+ *
+ * `APP_URL` still wins where it is set, for the case where a deployment wants
+ * the link host to differ from the browser-facing one.
+ */
 export function appUrl(path: string): string {
-  const base = (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const configured = process.env.APP_URL ?? env.WEB_ORIGIN;
+  const base = (configured || "http://localhost:3000").replace(/\/$/, "");
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/**
+ * The app URL for a redirect Bachs will actually follow.
+ *
+ * Bachs requires `success_url` and `cancel_url` to be publicly reachable, so a
+ * checkout created with a localhost host is rejected by the provider rather than
+ * by us. That failure arrives as an opaque upstream error at the worst possible
+ * moment — the customer is mid-purchase — so it is worth refusing up front with
+ * a message that names the variable to set.
+ */
+export function publicAppUrl(path: string): string {
+  const url = appUrl(path);
+  if (!url.startsWith("https://")) {
+    throw new Error(
+      `Bachs requires a public https APP_URL, but the API resolved links to "${url}". ` +
+        `Set APP_URL (or WEB_ORIGIN) to the public https origin of the app.`,
+    );
+  }
+  return url;
 }
 
 /**
