@@ -60,7 +60,12 @@ async function bachsFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
-export type CheckoutSession = { checkout_id: string; checkout_url: string };
+export type CheckoutSession = {
+  checkout_id: string;
+  checkout_url: string;
+  /** The corridors this session will actually offer, when Bachs reports them. */
+  payment_methods?: string[];
+};
 
 /** The two cadences Dobby Pro is sold on. */
 export type BillingInterval = "month" | "year";
@@ -103,11 +108,15 @@ export async function createProCheckout(input: {
     body: JSON.stringify({
       product_cart: [{ product_id: productId, quantity: 1 }],
       customer: input.name ? { email: input.email, name: input.name } : { email: input.email },
-      // Only a card can back a subscription, and Bachs bills subscriptions in
-      // USD cards only. Naming the corridor means an account without USD cards
-      // enabled is rejected when the checkout is created rather than at the
-      // first renewal, when the customer is no longer there to fix it.
-      payment_method_types: ["USD_CARD"],
+      // No `payment_method_types`. Sending one is how this used to be pinned to
+      // `["USD_CARD"]`, which meant a customer whose only working rail was a
+      // bank transfer or a crypto asset reached a page with nothing they could
+      // pay with. Omitting the field leaves Bachs to offer every corridor the
+      // account actually has enabled, so the choice is the customer's and the
+      // list stays correct when Bachs add or change one.
+      //
+      // Restriction only ever narrows — it cannot surface a corridor the account
+      // is not enabled for — so there was nothing to gain by naming them.
       metadata: { clerk_user_id: input.clerkUserId },
     }),
   });
@@ -306,11 +315,15 @@ export function logMissingPaymentMethods(session: OneTimeCheckoutSession, log: t
 export type CheckoutSettings = {
   adaptive_pricing?: boolean;
   base_currency?: string;
-  enabled_payment_methods?: Array<{
-    code?: string;
-    enabled?: boolean;
-    currencies?: Record<string, boolean>;
-  }>;
+  available_currencies?: Record<string, string[]>;
+  /**
+   * Keyed by corridor, not an array: `{ CRYPTO: { enabled: true, currencies: {…} } }`.
+   *
+   * Worth stating because it was an array in an earlier draft of this file, and
+   * reading an object with `.filter()` throws at runtime rather than failing a
+   * type check somewhere visible.
+   */
+  enabled_payment_methods?: Record<string, { enabled?: boolean; currencies?: Record<string, boolean> } | undefined>;
 };
 
 /**
@@ -340,6 +353,48 @@ export async function readCheckoutSettings(): Promise<CheckoutSettings | null> {
  *     account's base currency, so naira and crypto corridors drop out silently;
  *   - a corridor simply not enabled on the account cannot be switched on from here.
  */
+/**
+ * What about this account would stop a one-time checkout offering a rail, as
+ * plain sentences.
+ *
+ * Pure, so it can be tested against the shapes Bachs actually returns. The
+ * object-keyed `enabled_payment_methods` is the thing worth testing: reading it
+ * as an array throws inside the webhook-adjacent code path, where the visible
+ * symptom is a 500 on checkout creation rather than a warning in a log.
+ */
+export function oneTimeCorridorWarnings(settings: CheckoutSettings): string[] {
+  const warnings: string[] = [];
+
+  if (settings.adaptive_pricing === false) {
+    warnings.push(
+      "adaptive pricing is OFF, so a USD-priced checkout can only be paid in the account's base currency and the naira and crypto corridors drop out — turn adaptive pricing on in the Bachs dashboard",
+    );
+  }
+
+  const methods = settings.enabled_payment_methods ?? {};
+  const enabled = new Set(
+    Object.entries(methods)
+      .filter(([, method]) => method?.enabled === true)
+      .map(([code]) => code),
+  );
+
+  const missing = ONE_TIME_PAYMENT_METHODS.filter((method) => !enabled.has(method));
+  if (missing.length > 0) {
+    warnings.push(
+      `these corridors are not enabled on the account: ${missing.join(", ")} — enable them in the Bachs dashboard or the customer only sees the rest`,
+    );
+  }
+
+  // `CRYPTO` reads as enabled while offering nothing when every asset under it
+  // is false, so it needs its own check or a crypto-only account looks configured.
+  const assets = methods.CRYPTO?.currencies;
+  if (enabled.has("CRYPTO") && assets !== undefined && Object.values(assets).every((value) => value !== true)) {
+    warnings.push(`CRYPTO is enabled but all ${Object.keys(assets).length} assets under it are false, so crypto will not appear on any checkout`);
+  }
+
+  return warnings;
+}
+
 export async function warnIfOneTimeUnavailable(log: typeof logger): Promise<void> {
   const settings = await readCheckoutSettings();
   if (!settings) {
@@ -347,24 +402,8 @@ export async function warnIfOneTimeUnavailable(log: typeof logger): Promise<void
     return;
   }
 
-  if (settings.adaptive_pricing === false) {
-    log.warn(
-      { baseCurrency: settings.base_currency },
-      "bachs adaptive pricing is OFF: a USD-priced checkout can only be paid in the base currency, so bank transfer and crypto will not appear. Turn adaptive pricing on in the Bachs dashboard.",
-    );
-  }
-
-  const enabled = new Set(
-    (settings.enabled_payment_methods ?? [])
-      .filter((method) => method.enabled === true)
-      .map((method) => method.code),
-  );
-  const missing = ONE_TIME_PAYMENT_METHODS.filter((method) => !enabled.has(method));
-  if (missing.length > 0) {
-    log.warn(
-      { missing, enabled: [...enabled] },
-      "bachs account does not have every one-time corridor enabled: enable them in the Bachs dashboard or the customer will only see the rest",
-    );
+  for (const warning of oneTimeCorridorWarnings(settings)) {
+    log.warn({ adaptivePricing: settings.adaptive_pricing }, warning);
   }
 }
 

@@ -9,7 +9,7 @@ vi.mock("../config/env.js", () => ({
   isProduction: false,
 }));
 
-import { createProCheckout } from "./bachs.js";
+import {  createProCheckout , oneTimeCorridorWarnings } from "./bachs.js";
 
 function stubSession() {
   const fetchMock = vi.fn(async () =>
@@ -43,12 +43,15 @@ describe("createProCheckout", () => {
 
   // The API takes `payment_method_types` as an array of exact corridors. The
   // earlier `payment_method_options: { crypto: {} }` named no field that exists,
-  // so it restricted nothing and offered every enabled method.
-  it("restricts the checkout to the USD card corridor", async () => {
+  // so it restricted nothing and offered every enabled method — which is where
+  // we want to be now. Naming `["USD_CARD"]` then pinned the page to a card and
+  // left anyone paying by transfer or crypto with nothing to choose.
+  it("leaves the payment corridors to Bachs so every enabled one is offered", async () => {
     const fetchMock = stubSession();
     await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", interval: "month" });
     const body = sentBody(fetchMock);
-    expect(body.payment_method_types).toEqual(["USD_CARD"]);
+    // Absent, not empty: sending `[]` is a restriction to nothing.
+    expect(body).not.toHaveProperty("payment_method_types");
     expect(body).not.toHaveProperty("payment_method_options");
   });
 
@@ -72,5 +75,56 @@ describe("createProCheckout", () => {
     const fetchMock = stubSession();
     await createProCheckout({ email: "user@example.com", name: "", clerkUserId: "user_1", interval: "month" });
     expect(sentBody(fetchMock).customer).toEqual({ email: "user@example.com" });
+  });
+});
+/**
+ * `enabled_payment_methods` is keyed by corridor, not an array. An earlier
+ * version of this file typed it as an array and called `.filter()` on it, which
+ * throws on an object — inside the checkout-creation path, so the symptom was a
+ * 500 with "Bachs is broken" rather than a warning anyone read.
+ */
+describe("oneTimeCorridorWarnings", () => {
+  const account = {
+    adaptive_pricing: true,
+    enabled_payment_methods: {
+      NGN_BANK_TRANSFER: { enabled: true },
+      CRYPTO: { enabled: true, currencies: { ETH_ETH: true, SOL_SOL: true } },
+      USD_CARD: { enabled: true },
+    },
+  };
+
+  it("says nothing about a correctly configured account", () => {
+    expect(oneTimeCorridorWarnings(account)).toEqual([]);
+  });
+
+  it("names adaptive pricing when it is off", () => {
+    const warnings = oneTimeCorridorWarnings({ ...account, adaptive_pricing: false });
+    expect(warnings.join(" ")).toMatch(/adaptive pricing is OFF/i);
+  });
+
+  it("names a corridor the account has not enabled", () => {
+    const warnings = oneTimeCorridorWarnings({
+      adaptive_pricing: true,
+      enabled_payment_methods: { USD_CARD: { enabled: true } },
+    });
+    expect(warnings.join(" ")).toMatch(/NGN_BANK_TRANSFER/);
+    expect(warnings.join(" ")).toMatch(/CRYPTO/);
+  });
+
+  it("catches CRYPTO that is enabled but offers nothing", () => {
+    // Enabled with every asset false is the case that looks configured and is not.
+    const warnings = oneTimeCorridorWarnings({
+      adaptive_pricing: true,
+      enabled_payment_methods: {
+        NGN_BANK_TRANSFER: { enabled: true },
+        CRYPTO: { enabled: true, currencies: { ETH_ETH: false, SOL_SOL: false } },
+      },
+    });
+    expect(warnings.join(" ")).toMatch(/all 2 assets/i);
+  });
+
+  it("survives an account with no methods listed at all", () => {
+    expect(() => oneTimeCorridorWarnings({})).not.toThrow();
+    expect(oneTimeCorridorWarnings({}).length).toBeGreaterThan(0);
   });
 });
