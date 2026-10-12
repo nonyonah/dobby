@@ -310,7 +310,12 @@ function TransactionsInner() {
         source: next.source,
         categoryId: (next.categoryId && liveIds.has(next.categoryId) ? next.categoryId : null) ?? categoryIds[next.category] ?? null,
         isTaxable: next.taxable,
-        recurring: next.recurring === true,
+        // `isRecurring`, matching the API field. Sending `recurring` parsed as
+        // an unknown key and was silently dropped: zod strips what it does not
+        // recognise, the update succeeded, and the toggle snapped back to "no"
+        // with "Transaction updated" showing. Silent drops are the failure mode
+        // here — a field that does not save must not look like it did.
+        isRecurring: next.recurring === true,
       };
       if (isQueued) {
         await api.patch(`/v1/reviews/${next.id}`, body);

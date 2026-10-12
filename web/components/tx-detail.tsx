@@ -93,6 +93,15 @@ export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
             {tx.taxable ? "Taxable" : "Non-tax"}
           </span>
         </Row>
+        {/* Only shown when set. An always-visible "Not recurring" would be
+            noise on the ~95% of rows that are ordinary one-off charges. */}
+        {tx.recurring ? (
+          <Row label="Recurring">
+            <span className="inline-flex items-center rounded-full border border-transparent bg-primary px-2 py-0.5 text-[12px] font-medium text-primary-foreground">
+              Recurring
+            </span>
+          </Row>
+        ) : null}
         <Row label="Source">
           <span className="inline-flex items-center gap-1.5">
             <SIcon />

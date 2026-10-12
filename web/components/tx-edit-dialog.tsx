@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -72,8 +72,15 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
       ? categories
       : TX_CATEGORIES.map((c) => ({ id: c.id, name: c.label, emoji: c.emoji }));
 
+  // Which row the form was last seeded from. Seeding keys off the row id, not
+  // the `tx` object: after a save the parent replaces the row with a freshly
+  // mapped object, and an identity-based dep re-seeded mid-edit — wiping the
+  // "remember" toggle and the category the user had just chosen.
+  const seededIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (tx && open) {
+    if (tx && open && seededIdRef.current !== tx.id) {
+      seededIdRef.current = tx.id;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- form reset on open
       setName(tx.name);
       setAmount(String(Math.abs(tx.amount)));
@@ -90,6 +97,11 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tx, open]);
+
+  // Clearing on close lets the same row re-seed when the dialog is reopened.
+  useEffect(() => {
+    if (!open) seededIdRef.current = null;
+  }, [open]);
 
   if (!tx) return null;
 

@@ -220,6 +220,16 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     [recurringPatterns]
   );
 
+  const recurringLine = (row: TxFull) => {
+    const pattern = recurringByTransactionId.get(row.id);
+    if (pattern) {
+      const next = new Date(`${pattern.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring · {pattern.cadence} · next {next} · {formatUSD(pattern.amount)}</span>;
+    }
+    if (row.recurring) return <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring</span>;
+    return null;
+  };
+
   useEffect(() => {
     setPage(1);
   }, [query, categories, tax, source, dateRange, recurringOnly]);
@@ -537,7 +547,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                     ) : null}
                     <TableRow id={t.id} onClick={() => onSelect(t.id)} onDoubleClick={() => onEdit(t.id)} className={`cursor-pointer border-b border-line hover:bg-secondary! ${selected ? "bg-primary/10 hover:bg-primary/15!" : ""}`}>
                       <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.has(t.id)} onChange={() => toggleCheck(t.id)} aria-label={`Select row: ${t.name}`} className="block size-4 accent-primary" /></TableCell>
-                      <TableCell className="max-w-56 px-3 py-2.5 leading-normal"><span className="block truncate font-medium text-foreground">{t.name}</span><span className="block truncate text-[12px] text-muted-foreground">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringByTransactionId.get(t.id) ? <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring · next {new Date(`${recurringByTransactionId.get(t.id)!.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {formatUSD(recurringByTransactionId.get(t.id)!.amount)}</span> : null}
+                      <TableCell className="max-w-56 px-3 py-2.5 leading-normal"><span className="block truncate font-medium text-foreground">{t.name}</span><span className="block truncate text-[12px] text-muted-foreground">{t.account} · {t.date.slice(5).replace("-", "/")}</span>{recurringLine(t)}
                         {/* Category, tax and source move in here on phones so no
                             information is lost when the columns collapse. */}
                         <span className="mt-1 flex flex-wrap items-center gap-1.5 md:hidden">

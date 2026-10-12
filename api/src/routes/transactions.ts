@@ -202,7 +202,7 @@ transactionsRouter.patch("/:id", async (req, res) => {
   // here, is what lets every automated pass skip the row afterwards — rules
   // re-apply was walking the whole ledger with no exclusion and silently
   // reverting manual edits.
-  const DECISION_FIELDS = ["type", "categoryId", "isTaxable", "amount", "description", "subAccount", "reference"] as const;
+  const DECISION_FIELDS = ["type", "categoryId", "isTaxable", "isRecurring", "amount", "description", "subAccount", "reference"] as const;
   const isDecision = DECISION_FIELDS.some((field) => input[field] !== undefined);
 
   const updateData: Prisma.TransactionUncheckedUpdateInput = {

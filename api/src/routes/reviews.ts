@@ -108,7 +108,7 @@ reviewsRouter.get("/", async (req, res) => {
  * loan?"). The user answers it while approving, rather than approving a
  * coin-flip and discovering it later in the tax summary.
  */
-type ApproveInput = { id: string; categoryId?: string | null; isTaxable?: boolean | null };
+type ApproveInput = { id: string; categoryId?: string | null; isTaxable?: boolean | null; isRecurring?: boolean };
 type ApproveResult =
   | { id: string; ok: true; duplicate: boolean }
   | { id: string; ok: false; code: string; message: string };
@@ -220,6 +220,14 @@ async function approveReviewItems(ownerClerkId: string, inputs: ApproveInput[]):
           : proposed.data.isTaxable !== undefined
             ? { isTaxable: proposed.data.isTaxable, taxableSource: proposed.data.taxableSource ?? "rule" }
             : {}),
+        // A recurring decision is the user's, so approval must not drop it. The
+        // explicit input outranks the proposed value for the same reason
+        // isTaxable does: they may have changed their mind in the queue.
+        ...(input.isRecurring !== undefined
+          ? { isRecurring: input.isRecurring }
+          : proposed.data.isRecurring !== undefined
+            ? { isRecurring: Boolean(proposed.data.isRecurring) }
+            : {}),
       };
       await prisma.transaction.create({ data: transactionData });
       await prisma.transactionReviewItem.update({ where: { id: item.id }, data: { status: ReviewStatus.APPROVED } });
@@ -292,6 +300,7 @@ reviewsRouter.patch("/:id", async (req, res) => {
       occurredAt: z.coerce.date().optional(),
       categoryId: z.string().trim().min(1).max(80).nullable().optional(),
       isTaxable: z.boolean().nullable().optional(),
+      isRecurring: z.boolean().optional(),
     })
     .parse(req.body ?? {});
 
@@ -345,6 +354,8 @@ reviewsRouter.patch("/:id", async (req, res) => {
         // pass can overturn it.
         { isTaxable: input.isTaxable, taxableSource: "user", taxTreatment: input.isTaxable ? "taxable" : "not_taxable" }
       : {}),
+    // Carried through to the transaction on approval, the same as isTaxable.
+    ...(input.isRecurring !== undefined ? { isRecurring: input.isRecurring } : {}),
   } as Prisma.InputJsonValue;
 
   // The fingerprint is the duplicate check on approval, so it has to follow the
@@ -377,9 +388,10 @@ reviewsRouter.post("/:id/approve", async (req, res) => {
   const override = z.object({
     categoryId: z.string().trim().min(1).max(80).nullable().optional(),
     isTaxable: z.boolean().nullable().optional(),
+    isRecurring: z.boolean().optional(),
   }).parse(req.body);
   const [result] = await runExclusive(`reviews-approve:${ownerClerkId}`, () =>
-    approveReviewItems(ownerClerkId, [{ id: req.params.id, categoryId: override.categoryId, isTaxable: override.isTaxable }]),
+    approveReviewItems(ownerClerkId, [{ id: req.params.id, categoryId: override.categoryId, isTaxable: override.isTaxable, isRecurring: override.isRecurring }]),
   );
   if (!result || !result.ok) {
     const code = result && !result.ok ? result.code : "REVIEW_ITEM_NOT_FOUND";
