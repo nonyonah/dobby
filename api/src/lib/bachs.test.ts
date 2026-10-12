@@ -24,59 +24,92 @@ function sentBody(fetchMock: ReturnType<typeof stubSession>) {
   return JSON.parse(init.body as string) as Record<string, unknown>;
 }
 
+/**
+ * A one-time checkout, not a catalog product.
+ *
+ * The product cannot be a recurring one: Bachs can only re-charge a card, so a
+ * subscription page offers a USD card and nothing else, and the rails a customer
+ * in this market actually uses simply do not appear. A raw `pricing` session is a
+ * plain payment and may be transfer, crypto or card depending on the currency
+ * the customer picks.
+ *
+ * `save_payment_method` is what keeps auto-renewal alive for the card payers.
+ */
 describe("createProCheckout", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  const price = { amount: "4.00", currency: "USD", interval: "month" as const };
 
-  it("sells the catalog product for the requested cadence", async () => {
+  it("prices a raw amount instead of putting a product in a cart", async () => {
     const fetchMock = stubSession();
-    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", interval: "month" });
-    expect(sentBody(fetchMock).product_cart).toEqual([{ product_id: "prod_month", quantity: 1 }]);
-  });
-
-  it("uses the yearly product for the yearly cadence", async () => {
-    const fetchMock = stubSession();
-    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", interval: "year" });
-    expect(sentBody(fetchMock).product_cart).toEqual([{ product_id: "prod_year", quantity: 1 }]);
-  });
-
-  // The API takes `payment_method_types` as an array of exact corridors. The
-  // earlier `payment_method_options: { crypto: {} }` named no field that exists,
-  // so it restricted nothing and offered every enabled method — which is where
-  // we want to be now. Naming `["USD_CARD"]` then pinned the page to a card and
-  // left anyone paying by transfer or crypto with nothing to choose.
-  it("leaves the payment corridors to Bachs so every enabled one is offered", async () => {
-    const fetchMock = stubSession();
-    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", interval: "month" });
+    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", price });
     const body = sentBody(fetchMock);
-    // Absent, not empty: sending `[]` is a restriction to nothing.
+    expect(body.pricing).toEqual({ currency: "USD", amount: "4.00" });
+    // A cart and a price are mutually exclusive; sending both is refused.
+    expect(body).not.toHaveProperty("product_cart");
+  });
+
+  it("asks for the card to be saved, so a card payer can be renewed", async () => {
+    const fetchMock = stubSession();
+    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", price });
+    expect(sentBody(fetchMock).save_payment_method).toBe(true);
+  });
+
+  it("carries the plan so a renewal charges what was agreed", async () => {
+    const fetchMock = stubSession();
+    await createProCheckout({
+      email: "user@example.com",
+      clerkUserId: "user_1",
+      price: { amount: "36.00", currency: "USD", interval: "year" },
+    });
+    expect(sentBody(fetchMock).metadata).toMatchObject({ clerk_user_id: "user_1", plan_interval: "year" });
+  });
+
+  it("sends no corridor restriction, so every enabled rail is offered", async () => {
+    const fetchMock = stubSession();
+    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", price });
+    const body = sentBody(fetchMock);
+    // Absent, not empty: sending `[]` restricts to nothing.
     expect(body).not.toHaveProperty("payment_method_types");
     expect(body).not.toHaveProperty("payment_method_options");
   });
 
-  // A raw-amount checkout would need `pricing.currency`, which is required.
-  // Subscriptions are catalog products, so no pricing block is sent at all.
-  it("sends no raw pricing block", async () => {
+  it("passes pinned currency prices through when there are any", async () => {
     const fetchMock = stubSession();
-    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", interval: "month" });
-    expect(sentBody(fetchMock)).not.toHaveProperty("pricing");
+    await createProCheckout({
+      email: "user@example.com",
+      clerkUserId: "user_1",
+      price: { ...price, currencyOptions: { NGN: "6000.00" } },
+    });
+    expect(sentBody(fetchMock).pricing).toMatchObject({ currency_options: { NGN: "6000.00" } });
   });
 
-  it("identifies the customer and carries the Clerk id the webhook matches on", async () => {
+  it("omits currency_options entirely when none are set", async () => {
+    // Left to adaptive pricing, which converts at the rate of the moment. A
+    // hardcoded figure here would go stale against that and overcharge.
     const fetchMock = stubSession();
-    await createProCheckout({ email: "user@example.com", name: "Ada L", clerkUserId: "user_1", interval: "month" });
-    const body = sentBody(fetchMock);
-    expect(body.customer).toEqual({ email: "user@example.com", name: "Ada L" });
-    expect(body.metadata).toEqual({ clerk_user_id: "user_1" });
+    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", price });
+    expect(sentBody(fetchMock).pricing).not.toHaveProperty("currency_options");
+  });
+
+  it("reuses an existing customer so the saved card has somewhere to live", async () => {
+    const fetchMock = stubSession();
+    await createProCheckout({ email: "user@example.com", clerkUserId: "user_1", customerId: "cust_9", price });
+    expect(sentBody(fetchMock).customer).toEqual({ customer_id: "cust_9" });
+  });
+
+  it("creates a customer for a first-time buyer, so a card can be saved to it", async () => {
+    const fetchMock = stubSession();
+    await createProCheckout({ email: "user@example.com", name: "Ada L", clerkUserId: "user_1", price });
+    expect(sentBody(fetchMock).customer).toMatchObject({ email: "user@example.com", name: "Ada L", customer_creation: "always" });
   });
 
   it("omits a blank name rather than sending an empty string", async () => {
     const fetchMock = stubSession();
-    await createProCheckout({ email: "user@example.com", name: "", clerkUserId: "user_1", interval: "month" });
-    expect(sentBody(fetchMock).customer).toEqual({ email: "user@example.com" });
+    await createProCheckout({ email: "user@example.com", name: "", clerkUserId: "user_1", price });
+    expect(sentBody(fetchMock).customer).toMatchObject({ email: "user@example.com" });
+    expect(sentBody(fetchMock).customer).not.toHaveProperty("name");
   });
 });
+
 /**
  * `enabled_payment_methods` is keyed by corridor, not an array. An earlier
  * version of this file typed it as an array and called `.filter()` on it, which

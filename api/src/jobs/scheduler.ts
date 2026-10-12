@@ -5,6 +5,7 @@ import { runMonthlyTaxReminder } from "./monthly-tax-reminder.js";
 import { runFilingDeadlineReminders } from "./filing-deadline-reminder.js";
 import { runFirstImportSummaries } from "./first-import-summary.js";
 import { runNudges } from "../nudges/engine.js";
+import { renewSavedCards } from "../billing/renewals.js";
 
 const TIMEZONE = "UTC";
 
@@ -50,6 +51,10 @@ export function startScheduler() {
     // a person in Lagos gets it on the same run as a person in London, and
     // neither is emailed at 03:00.
     cron.schedule("0 * * * *", logged("nudges", () => runNudges()), { timezone: TIMEZONE }),
+    // Saved-card renewals. Hourly, and driven by each account's own
+    // `bachsNextChargeAt` rather than a fixed day, so a charge is attempted
+    // close to when it falls due whether that was a 09:00 job or not.
+    cron.schedule("15 * * * *", logged("saved-card-renewals", () => renewSavedCards()), { timezone: TIMEZONE }),
   ];
   logger.info({ timezone: TIMEZONE }, "job scheduler started: monthly tax digest, daily filing-deadline check, first-import summary sweep");
   return () => tasks.forEach((task) => task.stop());

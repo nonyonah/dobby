@@ -14,6 +14,7 @@ import { nudgeRouter } from "./nudges/routes.js";
 import { errorHandler, notFoundHandler } from "./middleware/errors.js";
 import { healthRouter } from "./routes/health.js";
 import { meRouter } from "./routes/me.js";
+import { releaseRouter } from "./routes/releases.js";
 import { walletsRouter } from "./routes/wallets.js";
 import { accountsRouter } from "./routes/accounts.js";
 import { categoriesRouter } from "./routes/categories.js";
@@ -102,6 +103,7 @@ app.use("/v1/emails", emailsRouter);
 app.use("/v1/billing", billingWebhookRouter);
 app.use("/v1/billing", billingRouter);
 app.use("/v1/nudges", nudgeRouter);
+app.use("/v1/releases", releaseRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -15,6 +15,9 @@ import { TrialStartedEmail } from "../emails/templates/trial-started.js";
 import { MonthlyTaxReminderEmail } from "../emails/templates/tax-reminder.js";
 import { DeadlineReminderEmail } from "../emails/templates/deadline-reminder.js";
 import { NudgeEmail } from "../emails/templates/nudge.js";
+import { WelcomeEmail } from "../emails/templates/welcome.js";
+import { WhatsNewEmail } from "../emails/templates/whats-new.js";
+import { WinBackEmail } from "../emails/templates/win-back.js";
 
 export function mailConfigured(): boolean {
   return Boolean(env.RESEND_API_KEY && env.RESEND_FROM_EMAIL);
@@ -39,7 +42,7 @@ export async function sendEmail(mail: Mail): Promise<boolean> {
   }
   const resend = new Resend(apiKey);
   try {
-    await resend.emails.send({ from, to: mail.to, subject: mail.subject, html: mail.html, text: mail.text });
+    await resend.emails.send({ from: withDisplayName(from), to: mail.to, subject: mail.subject, html: mail.html, text: mail.text });
     logger.info({ to: mail.to, subject: mail.subject }, "email sent");
     return true;
   } catch (error) {
@@ -49,7 +52,7 @@ export async function sendEmail(mail: Mail): Promise<boolean> {
     if (isDomainNotVerified(error) && from !== RESEND_TEST_SENDER) {
       logger.warn({ to: mail.to, subject: mail.subject, from }, "sending domain unverified, retrying via Resend test sender");
       try {
-        await resend.emails.send({ from: RESEND_TEST_SENDER, to: mail.to, subject: mail.subject, html: mail.html, text: mail.text });
+        await resend.emails.send({ from: withDisplayName(RESEND_TEST_SENDER), to: mail.to, subject: mail.subject, html: mail.html, text: mail.text });
         logger.info({ to: mail.to, subject: mail.subject }, "email sent via Resend test sender");
         return true;
       } catch (fallbackError) {
@@ -83,6 +86,21 @@ function escapeHtml(value: string): string {
 
 /** Resend's sender for unverified domains — only reaches the account owner. */
 export const RESEND_TEST_SENDER = "onboarding@resend.dev";
+
+/**
+ * The name a sender shows as, not the address.
+ *
+ * Resend derives the display name from the local part when the address is given
+ * bare, so `dobby@dobby.riftlabs.xyz` arrived reading as "dobby". Adding the
+ * display name here rather than in the env value means every environment gets
+ * "Dobby" without being edited separately, and an address that already carries
+ * one is left alone.
+ */
+const SENDER_NAME = "Dobby";
+
+function withDisplayName(from: string): string {
+  return from.includes("<") ? from : `${SENDER_NAME} <${from}>`;
+}
 
 /** Matches Resend's 403 "domain is not verified" validation error. */
 export function isDomainNotVerified(error: unknown): boolean {
@@ -560,4 +578,98 @@ export async function notifyUnderpaid(
     text,
   );
   await sendEmail({ to, subject: "Dobby: your payment came in short", html, text: plain });
+}
+
+/**
+ * Marketing sends. Same shell, same tokens and the same 50px control radius as
+ * the transactional mail, so a campaign and a receipt are visibly the same
+ * product to someone reading both.
+ *
+ * Kept apart from the transactional senders on purpose: these are scheduled and
+ * speakable, those are triggered and factual. A receipt that reads like a
+ * campaign trains people to distrust receipts.
+ */
+
+/**
+ * The currency this account chose in Settings.
+ *
+ * Every amount in an email is rendered in it, so a customer who set NGN reads
+ * ₦ and not a bare number. Falls back to USD, which is what the profile column
+ * itself defaults to.
+ */
+async function currencyFor(ownerClerkId: string): Promise<string> {
+  try {
+    const profile = await prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } });
+    return (profile?.currency ?? "USD").toUpperCase();
+  } catch {
+    // Never let a settings read change whether an email goes out; USD is the
+    // profile's own default, so this is the same answer in practice.
+    return "USD";
+  }
+}
+
+export async function sendWelcome(
+  ownerClerkId: string,
+  summary: { importedCount: number; categoriesFound: Array<{ name: string; amount: number }>; nextPath?: string | null },
+): Promise<void> {
+  const to = await userEmailAddress(ownerClerkId);
+  if (!to) return;
+  const firstName = await firstNameFor(ownerClerkId);
+  const currency = await currencyFor(ownerClerkId);
+
+  const { html, text } = await renderMail(
+    <WelcomeEmail
+      firstName={firstName}
+      currency={currency}
+      importedCount={summary.importedCount}
+      categoriesFound={summary.categoriesFound.map((category) => ({
+        name: category.name,
+        amount: formatMoney(category.amount, currency),
+      }))}
+      nextPath={summary.nextPath}
+    />,
+    [
+      firstName ? `${firstName}, you're set up.` : "You're set up.",
+      `Dobby sorted ${summary.importedCount} transactions into categories.`,
+      "Nothing was deleted and every row is yours to change.",
+      "",
+      appUrl(summary.nextPath ?? "/insights"),
+    ].join("\n"),
+  );
+  await sendEmail({ to, subject: "You're set up — here's what Dobby found", html, text });
+}
+
+export async function sendWhatsNew(
+  ownerClerkId: string,
+  input: { releaseName: string; notes: Array<{ title: string; body: string }>; href?: string | null },
+): Promise<void> {
+  const to = await userEmailAddress(ownerClerkId);
+  if (!to) return;
+  const firstName = await firstNameFor(ownerClerkId);
+
+  const { html, text } = await renderMail(
+    <WhatsNewEmail firstName={firstName} releaseName={input.releaseName} notes={input.notes} href={input.href} />,
+    [input.releaseName, "", ...input.notes.map((note) => `${note.title} — ${note.body}`), "", appUrl(input.href ?? "/app")].join("\n"),
+  );
+  await sendEmail({ to, subject: `${input.releaseName} — what's new in Dobby`, html, text });
+}
+
+export async function sendWinBack(
+  ownerClerkId: string,
+  input: { daysAway: number; daysSinceFirstImport: number | null },
+): Promise<void> {
+  const to = await userEmailAddress(ownerClerkId);
+  if (!to) return;
+  const firstName = await firstNameFor(ownerClerkId);
+
+  const { html, text } = await renderMail(
+    <WinBackEmail firstName={firstName} daysAway={input.daysAway} daysSinceFirstImport={input.daysSinceFirstImport} />,
+    [
+      firstName ? `${firstName}, nothing changed while you were away.` : "Nothing changed while you were away.",
+      "Your imports, categories and ledger are exactly where you left them.",
+      "",
+      appUrl("/transactions"),
+    ].join("\n"),
+  );
+  await sendEmail({ to, subject: "Your Dobby data is still here", html, text });
 }

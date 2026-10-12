@@ -19,6 +19,7 @@ import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { appUrl } from "../emails/links.js";
 import { sendNudgeEmail } from "../emails/templates/nudge.js";
+import { sendWinBack } from "../lib/mailer.js";
 import { LIVE_SUBSCRIPTION_STATUSES, entitlementSelect, getEntitlement, type EntitlementRow } from "../lib/entitlement.js";
 import { NUDGE_RULES } from "./config.js";
 import { taxCountryForJurisdiction } from "../tax/registry.js";
@@ -251,16 +252,26 @@ export async function runNudges(now = new Date()): Promise<NudgeRunResult> {
       try {
         if (channel === "email") {
           const copy = chosen.copy(context);
-          await sendNudgeEmail({
-            to: user.email!,
-            firstName: user.firstName,
-            subject: copy.subject,
-            headline: copy.headline,
-            body: copy.body,
-            ctaLabel: copy.ctaLabel,
-            ctaHref: appUrl(copy.ctaPath),
-            preferencesHref: appUrl("/settings#notifications"),
-          });
+          // `inactive` is a win-back rather than a nudge, and reads wrong in the
+          // generic template: the whole point is that nothing has changed while
+          // they were away, which the generic copy has no room to say.
+          if (chosen.key === "inactive") {
+            await sendWinBack(user.clerkId, {
+              daysAway: Math.floor(context.inactiveHours ?? 0) / 24,
+              daysSinceFirstImport: context.facts.daysSinceFirstImport,
+            });
+          } else {
+            await sendNudgeEmail({
+              to: user.email!,
+              firstName: user.firstName,
+              subject: copy.subject,
+              headline: copy.headline,
+              body: copy.body,
+              ctaLabel: copy.ctaLabel,
+              ctaHref: appUrl(copy.ctaPath),
+              preferencesHref: appUrl("/settings#notifications"),
+            });
+          }
         }
         logger.info({ nudge: chosen.key, channel, event: NUDGE_EVENTS.sent, clerkId: user.clerkId }, "nudge recorded");
         result.sent += 1;

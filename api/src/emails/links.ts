@@ -31,4 +31,8 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   KES: "KSh ",
   ZAR: "R",
   GHS: "GH₵",
+  JPY: "¥",
+  KRW: "₩",
+  // Currencies with no widely used symbol fall through to the code, which is
+  // what a reader would recognise. `formatMoney` appends a space for these.
 };

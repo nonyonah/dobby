@@ -6,6 +6,8 @@ import { requireAuth } from "../middleware/auth.js";
 import { TRIAL_DAYS, entitlementSelect, getEntitlement } from "../lib/entitlement.js";
 import { taxCountryForJurisdiction } from "../tax/registry.js";
 import { DEFAULT_CATEGORIES, LEGACY_CATEGORY_RENAMES } from "../lib/default-categories.js";
+import { logger } from "../lib/logger.js";
+import { sendWelcome } from "../lib/mailer.js";
 
 export const meRouter = Router();
 
@@ -108,6 +110,10 @@ meRouter.patch("/", async (req, res) => {
   const userUpdate: Prisma.UserUncheckedUpdateInput = {};
   if (input.firstName !== undefined) { userCreate.firstName = input.firstName; userUpdate.firstName = input.firstName; }
   if (input.lastName !== undefined) { userCreate.lastName = input.lastName; userUpdate.lastName = input.lastName; }
+  // Only the transition, not every save: the client posts this flag on each
+  // settings write, so firing on the flag alone would send a welcome email
+  // every time somebody changed their currency.
+  const finishingOnboarding = input.onboarded === true;
   if (input.onboarded) { userCreate.onboardedAt = new Date(); userUpdate.onboardedAt = new Date(); }
 
   const user = await prisma.user.upsert({
@@ -122,6 +128,18 @@ meRouter.patch("/", async (req, res) => {
     },
     include: { profile: true },
   });
+
+  if (finishingOnboarding && userUpdate.onboardedAt) {
+    // Best-effort, and only after the row is written: a welcome email that
+    // arrives before the account exists would greet somebody with a dead link.
+    void sendWelcome(clerkId, {
+      importedCount: await countTransactions(clerkId),
+      categoriesFound: [],
+      nextPath: "/insights",
+    }).catch((error: unknown) => {
+      logger.warn({ clerkId, err: error }, "welcome email failed");
+    });
+  }
 
   // Keep the tax engine in step with the jurisdiction chosen in Settings. The
   // tax module reads its own TaxProfile.country to pick the tax currency, so
@@ -139,3 +157,12 @@ meRouter.patch("/", async (req, res) => {
 
   res.json({ data: user });
 });
+
+/** How much the new account has to look at, so the welcome email is not empty. */
+async function countTransactions(clerkId: string): Promise<number> {
+  try {
+    return await prisma.transaction.count({ where: { ownerClerkId: clerkId } });
+  } catch {
+    return 0;
+  }
+}

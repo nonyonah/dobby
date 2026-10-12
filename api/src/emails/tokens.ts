@@ -1,36 +1,61 @@
 /**
- * Email palette, lifted from the app's own tokens in `web/app/globals.css`.
+ * Email palette, taken from the app's own tokens in `web/app/globals.css`.
  *
- * Kept as one object rather than inline styles so the email cannot drift from
- * the product: the brand accent, the money semantics and the four surface
- * levels are the same values the app paints with. Dark mode overrides the same
- * custom properties in a `prefers-color-scheme` block in `layout.ts`, so there
- * is one definition per colour rather than one per usage.
+ * These were hand-copied and left behind when the app moved from the purple
+ * brand to the near-black/near-white monochrome, so every email had been
+ * rendering in colours the product no longer uses. The mapping below names the
+ * app variable each value comes from, and `tokens.test.ts` parses
+ * `globals.css` and fails if any of these drift from it — which is the only
+ * thing that stops the copy rotting a second time.
+ *
+ * The app has no accent. What the design system calls its primary surface is
+ * `--primary`, so that is what the CTA paints: near-black in light, near-white in
+ * dark, with the foreground inverted to match.
+ *
+ * The two deliberate departures from the app, both for email rather than screen:
+ *
+ *   - the CTA is a 50px pill, not the app's 10px control radius. A button in an
+ *     email is read at a glance in a notification list, where the pill is
+ *     recognisable as an action at far more sizes than a 10px radius is;
+ *   - borders are resolved to a flat value instead of `rgb(0 0 0 / 0.08)`, because
+ *     alpha in a border attribute is dropped by Outlook and Gmail on Windows.
+ *     `line` is the nearest opaque equivalent of the app's hairline.
+ *
+ * oklch values are converted to hex for the same reason: email clients have no
+ * oklch support, and a colour that silently falls back to black in Outlook is
+ * worse than a slightly different shade.
  */
+
 export const tokens = {
   light: {
-    accent: "#411880",
-    accentSoft: "#ddd5e8",
+    /** `--primary` / `--primary-foreground`. */
+    accent: "#232528",
     accentForeground: "#ffffff",
-    background: "#f4f5f6",
+    /** `--surface` */
     surface: "#ffffff",
-    surfaceMuted: "#f4f5f6",
-    line: "#e3e5e8",
-    text: "#1c1d20",
+    /** `--paper-000` */
+    background: "#f9f9fa",
+    /** Nearest opaque form of `--border`, which is `rgb(0 0 0 / 0.08)`. */
+    line: "#e8eaed",
+    /** `--text` */
+    text: "#232528",
+    /** `--text-muted` */
     textMuted: "#6b6d72",
-    success: "#047857",
-    warning: "#b45309",
+    /** `--success-foreground` */
+    success: "#007a55",
+    /** `--warning` */
+    warning: "#bb4d00",
+    /** `--danger` */
     danger: "#e11d48",
   },
   dark: {
-    accent: "#a77cff",
-    accentSoft: "#120724",
-    accentForeground: "#0f0e17",
-    background: "#121213",
+    accent: "#e5e6e8",
+    accentForeground: "#232528",
     surface: "#1a1a1b",
-    surfaceMuted: "#1f1f22",
+    background: "#121213",
+    /** Nearest opaque form of `--border`, which is `rgb(255 255 255 / 0.06)`. */
     line: "#252529",
-    text: "#eceef0",
+    text: "#e5e6e8",
     textMuted: "#a2a3a8",
     success: "#34d399",
     warning: "#fbbf24",
@@ -41,21 +66,23 @@ export const tokens = {
 export type Tone = "accent" | "success" | "warning" | "danger";
 
 /**
- * Inter for text, JetBrains Mono for figures — the app's `--font-sans` and the
- * `.mono` class. Email clients cannot be relied on to have either, so both are
- * named first and then fall through to the platform stack. The hero number is
- * the one place the mono really shows, which is the point: it reads as a figure
- * rather than a word.
+ * Cards are `rounded-2xl` in the app (`--radius-2xl: 16px`). Controls are a
+ * pill — see the note at the top of this file for why that one differs.
  */
-export const fonts = {
-  sans: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-} as const;
-
-/** Cards are `rounded-2xl` in the app; controls are pills. */
 export const radius = { card: "16px", control: "50px" } as const;
 
 export const spacing = { page: "32px", card: "28px", section: "16px" } as const;
+
+/**
+ * Inter throughout, like the app: it sets `--font-mono` to Inter as well.
+ *
+ * Figures get tabular numerals rather than a mono face, which is how the app
+ * keeps a column of amounts aligned on the decimal.
+ */
+export const fonts = {
+  sans: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  mono: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+};
 
 /**
  * How close a filing deadline is, which decides the visual weight.

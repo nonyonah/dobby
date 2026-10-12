@@ -41,6 +41,13 @@ export type OneTimeEventData = {
   /** `refund.paid`. */
   charge?: { id?: string | null } | null;
   payment?: { id?: string | null; charge_id?: string | null } | null;
+  /** `payment_method.saved`: the card that is now kept for later. */
+  payment_method_details?: {
+    id?: string | null;
+    type?: string | null;
+    card_last4?: string | null;
+    currency?: string | null;
+  } | null;
   customer?: { id?: string | null; email?: string | null };
   customer_details?: { email?: string };
   metadata?: Record<string, unknown>;

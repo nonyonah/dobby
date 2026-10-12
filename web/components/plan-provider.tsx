@@ -30,6 +30,16 @@ export type MeData = {
   profile?: MeProfile | null;
 };
 
+/**
+ * How hard to try before deciding the server is unreachable.
+ *
+ * Two attempts, a beat apart. Enough to ride out the cold-start case on a
+ * brand-new account, short enough that a genuinely down API still lands the user
+ * somewhere they can see the problem rather than spinning.
+ */
+const ME_READ_ATTEMPTS = 2;
+const ME_READ_RETRY_MS = 400;
+
 type PlanContextValue = {
   /** Effective plan, or `null` until the first read resolves. */
   plan: Plan | null;
@@ -48,6 +58,14 @@ type PlanContextValue = {
   me: MeData | null;
   /** Re-reads the plan from the API; call after a checkout returns or a subscription changes. */
   refresh: () => void;
+  /**
+   * `/v1/me` was asked and never answered, as opposed to answering with no user.
+   *
+   * Kept separate because the two mean opposite things to a gate: no user is an
+   * account that needs onboarding, an unanswered request is an outage and must
+   * not be treated as one.
+   */
+  meFailed: boolean;
 };
 
 const PlanContext = createContext<PlanContextValue>({
@@ -60,6 +78,7 @@ const PlanContext = createContext<PlanContextValue>({
   loading: true,
   me: null,
   refresh: () => {},
+  meFailed: false,
 });
 
 function readPlan(value: unknown): Plan | null {
@@ -101,6 +120,7 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
   const [me, setMe] = useState<MeData | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [meFailed, setMeFailed] = useState(false);
   const [version, setVersion] = useState(0);
 
   const refresh = useCallback(() => {
@@ -112,32 +132,51 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     if (!isLoaded || !isSignedIn) return;
 
     let cancelled = false;
-    void api
-      .get<{ data: MeData }>("/v1/me")
-      .then((response) => {
-        if (cancelled) return;
-        // Entitlement is read from the server, not recomputed here. This used
-        // to be `plan === "TRIAL" || plan === "ACTIVE"` — a second copy of the
-        // rule, which is how an account could be offered an upgrade by the UI
-        // while the API granted the same feature for free.
-        setEntitlement(readEntitlement(response.data.entitlement));
-        // The server owns the trial length; copy reads it rather than restating it.
-        setTrialDays(response.data.trialDays);
-        setPlan(readPlan(response.data.plan));
-        setTrialEndsAt(response.data.trialEndsAt ?? null);
-        setMe(response.data);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setEntitlement(readEntitlement(null));
-        setPlan(null);
-        setTrialEndsAt(null);
-        setMe(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
-      });
 
+    const read = (attempt: number) => {
+      void api
+        .get<{ data: MeData }>("/v1/me")
+        .then((response) => {
+          if (cancelled) return;
+          // Entitlement is read from the server, not recomputed here. This used
+          // to be `plan === "TRIAL" || plan === "ACTIVE"` — a second copy of the
+          // rule, which is how an account could be offered an upgrade by the UI
+          // while the API granted the same feature for free.
+          setEntitlement(readEntitlement(response.data.entitlement));
+          // The server owns the trial length; copy reads it rather than restating it.
+          setTrialDays(response.data.trialDays);
+          setPlan(readPlan(response.data.plan));
+          setTrialEndsAt(response.data.trialEndsAt ?? null);
+          setMe(response.data);
+          setMeFailed(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          // Retried rather than given up on. The first read for a brand-new
+          // account is the heaviest one the API ever serves — it creates the
+          // user, seeds the category list and reconciles legacy names — so it is
+          // the one most likely to fail transiently. Giving up on it left `me`
+          // null for the rest of the session, and every gate that reads `me`
+          // fails open, which is why a new user landed on the dashboard with no
+          // onboarding until they refreshed.
+          if (attempt < ME_READ_ATTEMPTS) {
+            window.setTimeout(() => read(attempt + 1), ME_READ_RETRY_MS * attempt);
+            return;
+          }
+          setEntitlement(readEntitlement(null));
+          setPlan(null);
+          setTrialEndsAt(null);
+          setMe(null);
+          setMeFailed(true);
+        })
+        .finally(() => {
+          // Only settle once the last attempt is in, so `loading` stays true
+          // across a retry rather than flashing the unauthenticated state.
+          if (!cancelled) setLoaded(true);
+        });
+    };
+
+    read(1);
     return () => {
       cancelled = true;
     };
@@ -161,8 +200,9 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       loading,
       me,
       refresh,
+      meFailed,
     }),
-    [plan, entitlement, trialEndsAt, loading, loaded, me, refresh],
+    [plan, entitlement, trialEndsAt, loading, loaded, me, refresh, meFailed],
   );
 
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;

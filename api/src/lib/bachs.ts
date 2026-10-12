@@ -20,7 +20,7 @@ function requireConfigured(): void {
   }
 }
 
-async function bachsFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function bachsFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   requireConfigured();
   const hasBody = typeof init.body === "string" && init.body.length > 0;
   const response = await fetch(`${baseUrl()}${path}`, {
@@ -71,60 +71,162 @@ export type CheckoutSession = {
   payment_methods?: string[];
 };
 
-/** The two cadences Dobby Pro is sold on. */
-export type BillingInterval = "month" | "year";
+/** What one "Pay now" costs, and how often the saved card should be re-charged. */
+export type PlanPrice = {
+  /** Amount in `currency`, as a decimal string. */
+  amount: string;
+  currency: string;
+  /** What the renewal interval is called in our own terms: "month" or "year". */
+  interval: BillingInterval;
+  /**
+   * Exact prices per currency, overriding the live rate.
+   *
+   * Left unset by default on purpose: adaptive pricing is on, so a customer
+   * outside the US is shown a converted amount at the rate of the moment. A
+   * hardcoded naira figure goes stale against that rate and quietly overcharges,
+   * so an override has to be a decision someone makes on purpose.
+   */
+  currencyOptions?: Record<string, string>;
+};
 
 /**
- * Display-only anchors for the price pills. The amount actually charged comes
- * from the Bachs catalog product behind each `BACHS_PRO_*_PRODUCT_ID`, so this
- * can drift from the real price — change the product and this in the same commit.
- */
-export const SUBSCRIPTION_PRICE_ANCHORS = {
-  month: "4.00",
-  year: "36.00",
-} as const;
-
-const productIdFor = (interval: BillingInterval) =>
-  interval === "year" ? env.BACHS_PRO_YEARLY_PRODUCT_ID : env.BACHS_PRO_PRODUCT_ID;
-
-/**
- * Starts the hosted checkout that turns a Pro product into a subscription.
- * The customer picks nothing on our side: `interval` decides which catalog
- * product (monthly or yearly) the Bachs page bills. No return URL is sent —
- * the checkout opens as an overlay on our own page, which reports completion
- * in-browser while the webhook confirms it, so nothing depends on a public
- * address. `metadata.clerk_user_id` is copied onto the subscription when
- * checkout succeeds, which is how a webhook event finds the user it belongs to.
+ * Starts a one-time checkout that keeps the card for later.
+ *
+ * Not a catalog product, and that is the whole point. A recurring product can
+ * only be paid by a card — Bachs has to re-charge it months later with nobody
+ * present, and only a card can be charged again — so the hosted page offers a
+ * USD card and nothing else. A raw `pricing` checkout is a plain payment, and a
+ * plain payment may be bank transfer, crypto or card depending on the currency
+ * the customer picks.
+ *
+ * `save_payment_method: true` is what keeps auto-renewal alive for the people who
+ * choose a card: the card is kept, and `renewSavedCard` re-charges it each
+ * period. Somebody who pays by transfer or crypto has nothing saved, so their
+ * access simply stops when the period ends and the renewal nudges tell them —
+ * which is the only honest behaviour for a rail that cannot be re-charged.
+ *
+ * The card is only saved on completion, so the saved-card id arrives later on a
+ * `payment_method.saved` webhook, never from this response.
  */
 export async function createProCheckout(input: {
   email: string;
   name?: string;
   clerkUserId: string;
-  interval: BillingInterval;
+  price: PlanPrice;
+  /** An existing Bachs customer, so a saved card can attach to them. */
+  customerId?: string | null;
+  successUrl?: string;
+  cancelUrl?: string;
 }): Promise<CheckoutSession> {
-  const productId = productIdFor(input.interval);
-  if (!productId) {
-    throw new AppError(503, "Billing is not configured for this environment.", "BILLING_NOT_CONFIGURED");
-  }
+  const { price } = input;
 
-  return bachsFetch<CheckoutSession>("/v1/checkout-sessions", {
+  const body: Record<string, unknown> = {
+    pricing: {
+      currency: price.currency,
+      amount: price.amount,
+      ...(price.currencyOptions && Object.keys(price.currencyOptions).length > 0
+        ? { currency_options: price.currencyOptions }
+        : {}),
+    },
+    // No `payment_method_types`: naming a corridor only narrows what the page
+    // offers, and the customer picks their own on the hosted page. Left to
+    // Bachs, the list also stays correct when they change what is enabled.
+    //
+    // Refused with CHECKOUT_CANNOT_SAVE_PAYMENT_METHOD if the session ends up
+    // with no card on it. That only happens if every card corridor is disabled
+    // on the account, and it is far better to fail loudly here than to accept
+    // the checkout and discover at the first renewal that nothing was saved.
+    save_payment_method: true,
+    customer: input.customerId
+      ? { customer_id: input.customerId }
+      : input.name
+        ? { email: input.email, name: input.name, customer_creation: "always" }
+        : { email: input.email, customer_creation: "always" },
+    metadata: {
+      clerk_user_id: input.clerkUserId,
+      plan_interval: price.interval,
+      plan_currency: price.currency,
+    },
+    ...(input.successUrl ? { success_url: input.successUrl } : {}),
+    ...(input.cancelUrl ? { cancel_url: input.cancelUrl } : {}),
+  };
+
+  return bachsFetch<CheckoutSession>("/v1/checkout-sessions", { method: "POST", body: JSON.stringify(body) });
+}
+
+export type ChargeResult = {
+  payment_id: string;
+  /** "processing", "succeeded" or "failed". A 201 is not a payment. */
+  status: string;
+  amount: string;
+  amount_paid?: string;
+  currency: string;
+  payment_method?: string | null;
+};
+
+/**
+ * Re-charges a saved card, off-session, with nobody on a payment page.
+ *
+ * This is how a card payer renews without Bachs running a subscription: the card
+ * was kept at checkout, and we bill it ourselves. It is also why the one-time
+ * checkout was worth having — a bank transfer or crypto payer simply cannot be
+ * re-charged and is not put in this path at all.
+ *
+ * `idempotencyKey` is required and must be keyed to the *period*, not the
+ * attempt: a retry after a timeout that invents a new key charges the customer
+ * a second time.
+ *
+ * Returns `status: "failed"` for a declined card rather than throwing. A refusal
+ * is an answer, not an error, and the caller decides what to do about it.
+ */
+export async function chargeSavedCard(input: {
+  customerId: string;
+  paymentMethodId: string;
+  amount: string;
+  currency: string;
+  /** One per period per customer. */
+  idempotencyKey: string;
+  reference: string;
+  description?: string;
+}): Promise<ChargeResult> {
+  return bachsFetch<ChargeResult>("/v1/charges", {
     method: "POST",
+    headers: {
+      // Sent as a header, not a body field: this is what stops a retried request
+      // after a timeout from charging twice.
+      "Idempotency-Key": input.idempotencyKey,
+    },
     body: JSON.stringify({
-      product_cart: [{ product_id: productId, quantity: 1 }],
-      customer: input.name ? { email: input.email, name: input.name } : { email: input.email },
-      // No `payment_method_types`. Sending one is how this used to be pinned to
-      // `["USD_CARD"]`, which meant a customer whose only working rail was a
-      // bank transfer or a crypto asset reached a page with nothing they could
-      // pay with. Omitting the field leaves Bachs to offer every corridor the
-      // account actually has enabled, so the choice is the customer's and the
-      // list stays correct when Bachs add or change one.
-      //
-      // Restriction only ever narrows — it cannot surface a corridor the account
-      // is not enabled for — so there was nothing to gain by naming them.
-      metadata: { clerk_user_id: input.clerkUserId },
+      customer: input.customerId,
+      payment_method: input.paymentMethodId,
+      amount: input.amount,
+      currency: input.currency,
+      reference: input.reference,
+      ...(input.description ? { description: input.description } : {}),
     }),
   });
 }
+
+/** The two cadences Dobby Pro is sold on. */
+export type BillingInterval = "month" | "year";
+
+/**
+ * What each plan costs, and the amount actually charged.
+ *
+ * These used to be display-only anchors for the price pills, with the Bachs
+ * catalog product owning the real price. They are now the price: the checkout is
+ * a raw amount rather than a cart, so this is the single source of what a
+ * customer is billed and there is nothing for it to drift from.
+ *
+ * Optional `currency_options` can pin an exact amount per currency. Left unset
+ * by default, because adaptive pricing is on and a customer outside the US is
+ * converted at the rate of the moment — a hardcoded naira figure goes stale
+ * against that and quietly overcharges.
+ */
+export const SUBSCRIPTION_PRICE_ANCHORS = {
+  month: "4.00",
+  year: "36.00",
+} as const;
 
 /** Mints a short-lived URL that opens the hosted portal for an existing customer. */
 export async function createPortalSession(customerId: string): Promise<{ id: string; url: string }> {

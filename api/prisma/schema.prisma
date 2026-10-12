@@ -131,6 +131,22 @@ model User {
   bachsCustomerId         String?                 @unique
   bachsSubscriptionId     String?                 @unique
   bachsSubscriptionStatus String?
+  /// The saved card (`pm_`) from a checkout created with `save_payment_method`.
+  /// Present only for people who paid by card; somebody who paid by transfer or
+  /// crypto has nothing saved, which is exactly why their access stops instead
+  /// of renewing. Null is the normal state for a non-card payer, not an error.
+  bachsPaymentMethodId    String?
+  /// Whether we bill this account ourselves each period from the saved card.
+  /// Off for anyone still on a Bachs subscription, who is renewed by Bachs and
+  /// must not also be charged here.
+  bachsRecurring          Boolean                 @default(false)
+  /// When the saved card is next due to be charged. Null means never.
+  bachsNextChargeAt       DateTime?
+  /// What the saved card is billed in and how often, so a renewal does not have
+  /// to guess at the customer's original choice.
+  bachsChargeCurrency     String                  @default("USD")
+  bachsChargeInterval     String                  @default("month")
+  bachsChargeAmount       Decimal?                @db.Decimal(19, 4)
   bachsTrialEnd           DateTime?
   bachsCurrentPeriodEnd   DateTime?
   bachsCancelAtPeriodEnd  Boolean                 @default(false)

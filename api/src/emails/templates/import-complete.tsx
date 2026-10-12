@@ -1,14 +1,13 @@
 import * as React from "react";
-import { Cta, Detail, Figure, Footnote, Lead, Layout, Meta, Title } from "../components.js";
+import { Cta, Detail, Divider, Figure, Footnote, Layout, Lead, Meta, Title } from "../components.js";
 import { appUrl } from "../links.js";
 
 /**
- * Import completed — deliberately the quietest of the three.
+ * Import finished — the success, duplicate and failure cases.
  *
- * An import is background work: the user asked for it and can see it happening.
- * So this informs and points at the queue, in a neutral accent rather than the
- * success green, and the figure is the row count. The review count is the part
- * that needs a decision, so it is the line that gets emphasis.
+ * One template, three outcomes, because a failure should look like part of the
+ * same product rather than a different email. What changes is the tone of the
+ * figure and the sentence under it; the shell never moves.
  */
 export function ImportCompleteEmail({
   firstName,
@@ -33,18 +32,18 @@ export function ImportCompleteEmail({
       <Layout preview={preview}>
         <Title>Already imported</Title>
         <Meta>{filename}</Meta>
+
         <Figure tone="accent" caption="Already in your ledger">
           0 new
         </Figure>
-        <Lead>
-          {filename} looks like a statement you have already imported, so nothing was added.
-        </Lead>
-        <Detail>That keeps your totals honest — the same statement twice would double-count it.</Detail>
+        <Lead>Nothing was added.</Lead>
+        <Detail>
+          This looks like a statement you have already imported. That keeps your totals honest —
+          the same statement twice would count it twice.
+        </Detail>
+
         <Cta href={appUrl("/transactions")}>See what is imported</Cta>
-        <Footnote>
-          Dobby never files or submits anything on your behalf.
-          {firstName ? ` — ${firstName}` : ""}
-        </Footnote>
+        <Footnote>From {filename}. Dobby never files or submits anything on your behalf.</Footnote>
       </Layout>
     );
   }
@@ -52,36 +51,40 @@ export function ImportCompleteEmail({
   return (
     <Layout preview={preview}>
       <Title>Import complete</Title>
-      <Meta>{filename}</Meta>
-      <Figure
-        tone="accent"
-        caption={needsReview ? `${importedCount} imported · ${reviewCount} need a look` : `${importedCount} imported from ${filename}`}
-      >
+      <Meta>
+        {filename} · {needsReview ? `${reviewCount} awaiting review` : "nothing waiting"}
+      </Meta>
+
+      <Figure tone="accent" caption={needsReview ? "Transactions imported" : "Transactions imported, all sorted"}>
         {importedCount}
       </Figure>
-      <Lead>
-        {needsReview
-          ? `${reviewCount} of these need your review before they count.`
-          : "All of them were categorised automatically."}
-      </Lead>
+      <Lead>{needsReview ? `${reviewCount} of these need you.` : "All of them were categorised."}</Lead>
       <Detail>
         {needsReview
-          ? "Approve the ones that look right and Dobby will add them to your ledger."
-          : "Nothing is waiting for you."}
+          ? "Dobby flagged the ones it was not sure about. Approve those and they join your ledger."
+          : "Nothing is waiting for you. Every row is already sorted and in your ledger."}
       </Detail>
-      <Cta href={appUrl("/transactions")}>
+
+      {needsReview ? (
+        <>
+          <Divider />
+          <Detail>
+            These figures do not include the {reviewCount} awaiting review, so they may move once
+            you confirm them.
+          </Detail>
+        </>
+      ) : null}
+
+      <Cta href={appUrl(needsReview ? "/transactions?view=review" : "/transactions")}>
         {needsReview ? "Review your transactions" : "See what was imported"}
       </Cta>
-      <Footnote>
-        From {filename}. Dobby never files or submits anything on your behalf.
-        {firstName ? ` — ${firstName}` : ""}
-      </Footnote>
+      <Footnote>From {filename}. Dobby never files or submits anything on your behalf.</Footnote>
     </Layout>
   );
 }
 
 /**
- * The same email when the import failed. Same shape and same one CTA, so a
+ * The same email when the import failed. Same shell and same one CTA, so a
  * failure is recognisably part of the same product rather than a different
  * template — only the tone changes.
  */
@@ -98,15 +101,17 @@ export function ImportFailedEmail({
     <Layout preview={`Could not import ${filename}.`}>
       <Title>Import failed</Title>
       <Meta>{filename}</Meta>
+
       <Figure tone="danger" caption="Nothing was added">
         0
       </Figure>
-      <Lead>{filename} could not be imported.</Lead>
+      <Lead>We could not read that file.</Lead>
       <Detail>{reason}</Detail>
+
       <Cta href={appUrl("/transactions")}>Try another file</Cta>
       <Footnote>
-        If the file is password-protected, remove the password first — Dobby cannot read locked files.
-        {firstName ? ` — ${firstName}` : ""}
+        If the file is password-protected, remove the password first — Dobby cannot read locked
+        files.
       </Footnote>
     </Layout>
   );

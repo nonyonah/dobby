@@ -8,13 +8,14 @@ import { env } from "../config/env.js";
 import { AppError } from "../middleware/errors.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logger } from "../lib/logger.js";
-import { SUBSCRIPTION_PRICE_ANCHORS, billingConfigured, cancelProSubscription, createOneTimeCheckout, createPortalSession, createProCheckout, logMissingPaymentMethods, retrieveSubscriptionOrNull, verifyBachsSignature, warnIfOneTimeUnavailable, type BillingInterval, type SubscriptionState } from "../lib/bachs.js";
+import { SUBSCRIPTION_PRICE_ANCHORS, bachsFetch, billingConfigured, cancelProSubscription, createOneTimeCheckout, createPortalSession, createProCheckout, logMissingPaymentMethods, retrieveSubscriptionOrNull, verifyBachsSignature, warnIfOneTimeUnavailable, type BillingInterval, type PlanPrice, type SubscriptionState } from "../lib/bachs.js";
 import { loadEffectivePlan } from "../middleware/plan.js";
 import { entitlementSelect, getEntitlement, trialWindowFrom, type EntitlementRow } from "../lib/entitlement.js";
 import { notifyTrialStarted } from "../lib/mailer.js";
 import { appUrl } from "../emails/links.js";
 import {
   ONE_TIME_PROVIDER,
+  addMonths,
   fulfilOneTimePayment,
   handleRefund,
   handleUnderpaid,
@@ -248,6 +249,52 @@ async function dispatchWebhook(type: string, data: SubscriptionData & OneTimeEve
     case "refund.paid":
       await handleRefund(data_, type);
       return;
+    case "payment_method.saved": {
+      // The card is only saved once the customer finishes the checkout, so this
+      // is where a `pm_` id first exists. Without it there is nothing to renew
+      // from, and the account silently stops after one period.
+      const pm = data.payment_method_details;
+      const pmId = typeof pm?.id === "string" ? pm.id : null;
+      const email = data.customer?.email?.trim() || data.customer_details?.email?.trim();
+      if (!pmId || !email) {
+        logger.warn({ eventId }, "payment_method.saved had no payment method id or email");
+        return;
+      }
+      const user = await prisma.user.findFirst({
+        where: { OR: [{ email: { equals: email, mode: "insensitive" } }, ...(data.customer?.id ? [{ bachsCustomerId: data.customer.id }] : [])] },
+        select: { clerkId: true },
+      });
+      if (!user) {
+        logger.warn({ eventId, email }, "saved card has no matching user");
+        return;
+      }
+      // The interval and currency come off our own metadata rather than off the
+      // event, so what we re-charge matches what the customer agreed to pay.
+      const planInterval = typeof data.metadata?.plan_interval === "string" && data.metadata.plan_interval === "year" ? "year" : "month";
+      const planCurrency = typeof data.metadata?.plan_currency === "string" ? data.metadata.plan_currency : "USD";
+      const now = new Date();
+
+      await prisma.user.update({
+        where: { clerkId: user.clerkId },
+        data: {
+          bachsPaymentMethodId: pmId,
+          bachsChargeAmount: new Prisma.Decimal(SUBSCRIPTION_PRICE_ANCHORS[planInterval]),
+          bachsChargeCurrency: planCurrency,
+          bachsChargeInterval: planInterval,
+          // A year of access from the moment the card was saved, so somebody who
+          // pays today is not charged again in four weeks.
+          bachsNextChargeAt: addMonths(now, planInterval === "year" ? 12 : 1),
+          planExpiresAt: addMonths(now, planInterval === "year" ? 12 : 1),
+          // Only start renewing accounts that are ours to renew. Anyone still on
+          // a Bachs subscription is billed by Bachs, and charging them here as
+          // well is the double charge this column exists to prevent.
+          bachsRecurring: true,
+          ...(data.customer?.id ? { bachsCustomerId: data.customer.id } : {}),
+        },
+      });
+      logger.info({ eventId, clerkId: user.clerkId, pmId }, "saved card recorded");
+      return;
+    }
     case "invoice.paid":
     case "invoice.payment_failed":
     case "collection.failed":
@@ -592,15 +639,26 @@ billingRouter.post("/checkout", async (req, res) => {
   }
 
   const name = [firstName, lastName].filter(Boolean).join(" ") || undefined;
-  const session = await createProCheckout({ email, name, clerkUserId: clerkId, interval });
 
-  // We do not restrict the corridors, so Bachs decides what the customer is
-  // offered. For this catalog product that is always a card and nothing else:
-  // a subscription has to save a payment method and re-charge it later without
-  // the customer present, and only a card can do that. The restriction is the
-  // product's, not the request's — logging the interval and product so a report
-  // of "the rails were missing" has something concrete to trace.
-  logger.info({ clerkId, checkoutId: session.checkout_id, interval }, "subscription checkout created (card rails only by design)");
+  // Pinned on the user now, so a saved card can attach to an existing customer
+  // and a renewal always charges the same customer the card belongs to.
+  const customerId = await resolveBachsCustomerId(clerkId, email, name);
+
+  const session = await createProCheckout({
+    email,
+    name,
+    clerkUserId: clerkId,
+    customerId,
+    price: planPrice(interval),
+    successUrl: appUrl("/settings#plan"),
+    cancelUrl: appUrl("/settings#plan"),
+  });
+
+  // What the customer will be offered depends on the currency they pick on the
+  // page: a card for a USD price, transfer or crypto for a local one. Bachs does
+  // not return that list over the API, so the session id is logged to tie a
+  // report of "the rails were missing" back to the checkout that dropped them.
+  logger.info({ clerkId, checkoutId: session.checkout_id, interval, currency: planPrice(interval).currency }, "checkout created");
 
   res.status(201).json({ data: { checkoutId: session.checkout_id, url: session.checkout_url } });
 });
@@ -812,3 +870,49 @@ billingRouter.get("/options", async (req, res) => {
     },
   });
 });
+
+/**
+ * What a plan costs, as a raw amount on the checkout.
+ *
+ * Currency is the plan's own, USD by default. Everything else — which corridors
+ * appear, what the customer is actually charged — is resolved by Bachs from this
+ * one value, so this is the only place a price or a currency is decided.
+ *
+ * A plan must be sold in a currency the account can collect in, and a USD price
+ * is the one that converts: with adaptive pricing on, a customer elsewhere is
+ * shown their own currency at the rate of the moment. Exact per-currency prices
+ * can be set on the product, which is the better place for them than here — the
+ * hosted page then shows the same figure everywhere it is opened.
+ */
+export function planPrice(interval: BillingInterval): PlanPrice {
+  const amount = Number(SUBSCRIPTION_PRICE_ANCHORS[interval]).toFixed(2);
+  return { amount, currency: "USD", interval };
+}
+
+/**
+ * The Bachs customer for this account, creating one if needed.
+ *
+ * Reuse matters for the saved card: `chargeSavedCard` names a customer and a
+ * `pm_` id, and a card saved against a throwaway guest customer cannot be
+ * re-charged against the record the next renewal looks up. One customer per
+ * account, forever.
+ */
+async function resolveBachsCustomerId(clerkId: string, email: string, name?: string): Promise<string | null> {
+  const existing = await prisma.user.findUnique({ where: { clerkId }, select: { bachsCustomerId: true } });
+  if (existing?.bachsCustomerId) return existing.bachsCustomerId;
+
+  try {
+    const customer = await bachsFetch<{ customer_id: string }>("/v1/customers", {
+      method: "POST",
+      body: JSON.stringify({ email, ...(name ? { name } : {}) }),
+    });
+    await prisma.user.update({ where: { clerkId }, data: { bachsCustomerId: customer.customer_id } });
+    return customer.customer_id;
+  } catch (error) {
+    // Not fatal: the checkout still works as a guest, and a bank or crypto
+    // payer has no saved card anyway. A card payer whose id we failed to store
+    // simply will not auto-renew, which the renewal nudges then explain.
+    logger.warn({ clerkId, err: error }, "could not create a bachs customer; checkout will proceed as a guest");
+    return null;
+  }
+}

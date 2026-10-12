@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Cta, Detail, Divider, Figure, Footnote, Lead, Layout, LineItem, Meta, Title, TotalRow } from "../components.js";
+import { Cta, Detail, Divider, Figure, Footnote, Layout, Lead, LineItem, Meta, Title, TotalRow } from "../components.js";
 import { appUrl } from "../links.js";
 
 export type MonthInReviewInput = {
@@ -22,11 +22,11 @@ export type MonthInReviewInput = {
 /**
  * The first-import summary — the one email that tries to be worth opening.
  *
- * Everything else we send is a receipt for something the user just did. This
- * is sent once, a few minutes after their first import, and it is the first
- * thing they see that looks back at their own money rather than at ours. So the
- * numbers lead, in the order someone actually wants them, and there is exactly
- * one button — on whatever they still have to decide.
+ * Everything else we send is a receipt for something the user just did. This is
+ * sent once, a few minutes after their first import, and it is the first thing
+ * they see that looks back at their own money rather than at ours. So the figure
+ * leads, the breakdown follows as an itemised statement they can scan down, and
+ * there is exactly one button — on whatever they still have to decide.
  *
  * Transfers are excluded upstream and Uncategorized is kept out of the top
  * categories, because a category called Uncategorized with the largest number on
@@ -43,25 +43,26 @@ export function MonthInReviewEmail({
   uncategorizedLabel,
   tax,
 }: MonthInReviewInput) {
-  const greeting = firstName ? `Here’s your ${period}, ${firstName}.` : `Here’s your ${period}.`;
   const positive = !net.startsWith("-");
+  const kept = positive ? net : net.replace(/^-/, "");
+  const greeting = firstName ? `Here is ${period}, ${firstName}.` : `Here is ${period}.`;
 
   return (
     <Layout preview={`${period}: ${spent} out, ${income} in, ${net} net.`}>
       <Title>Your {period}</Title>
       <Meta>
         {period}
-        {needsReviewCount > 0 ? ` · ${needsReviewCount} awaiting review` : ""}
+        {needsReviewCount > 0 ? ` · ${needsReviewCount} awaiting your review` : " · nothing waiting"}
       </Meta>
 
       <Figure tone="accent" caption="Money out">
         {spent}
       </Figure>
-      <Lead>{greeting}</Lead>
 
+      <Lead>{greeting}</Lead>
       <Detail>
         You spent <strong>{spent}</strong>, took in <strong>{income}</strong>, and kept{" "}
-        <strong>{positive ? net : net.replace(/^-/, "")}</strong> {positive ? "to the side" : "more than you took in"}.
+        <strong>{kept}</strong> {positive ? "to the side." : "less than came in."}
       </Detail>
 
       {topCategories.length > 0 ? (
@@ -72,32 +73,33 @@ export function MonthInReviewEmail({
           {topCategories.map((category) => (
             <LineItem key={category.name} label={category.name} value={category.amount} />
           ))}
-          <TotalRow label={positive ? "Kept" : "Spent over what came in"} value={positive ? net : net.replace(/^-/, "")} />
+          <TotalRow label={positive ? "Kept" : "Spent over what came in"} value={kept} />
         </>
       ) : null}
 
       {uncategorizedLabel ? (
         <Detail>
-          Plus <strong>{uncategorizedLabel}</strong>, which we couldn’t place yet.
+          Plus <strong>{uncategorizedLabel}</strong>, which we could not place yet.
         </Detail>
       ) : null}
 
       {needsReviewCount > 0 ? (
-        <Detail>
-          <strong>
-            {needsReviewCount} {needsReviewCount === 1 ? "transaction needs" : "transactions need"} a quick look
-          </strong>{" "}
-          — they aren’t counted in the totals above until you confirm them, so these figures may change after you review them.
-        </Detail>
+        <>
+          <Divider />
+          <Detail>
+            <strong>
+              {needsReviewCount} {needsReviewCount === 1 ? "transaction needs" : "transactions need"} a quick look
+            </strong>
+            . They are not counted above until you confirm them, so these figures may move once you do.
+          </Detail>
+        </>
       ) : null}
 
       {tax ? (
-        <Detail>
-          Estimated tax so far: <strong>{tax.amount}</strong> (an estimate, not advice).
-          {tax.hasUnreviewedInflows
-            ? " Some money in is still unreviewed, so this can move."
-            : ""}
-        </Detail>
+        <>
+          <Divider />
+          <LineItem label="Estimated tax so far" value={tax.amount} />
+        </>
       ) : null}
 
       <Cta href={appUrl(needsReviewCount > 0 ? "/transactions?view=review" : "/insights")}>
@@ -105,7 +107,8 @@ export function MonthInReviewEmail({
       </Cta>
 
       <Footnote>
-        Totals exclude transfers between your own accounts. Everything you import stays yours — cancel any time.
+        An estimate from your own transactions, not advice. Totals exclude transfers between your
+        accounts, and everything you import stays yours.
       </Footnote>
     </Layout>
   );
