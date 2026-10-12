@@ -131,7 +131,18 @@ integrationsRouter.get("/", async (req, res) => {
         provider,
         status: row?.status ?? "disconnected",
         connectedAccountId: metadata?.connectedAccountId ?? null,
-        live: false,
+        // Derived from what we actually hold, rather than hardcoded false.
+        //
+        // It was `false` for every provider, which the client reads as "the
+        // connection is broken but we can see it" — so the Settings row said
+        // "reconnect to resume syncing" for accounts that were connected and
+        // syncing happily. Hardcoding a pessimistic answer is how a status
+        // indicator ends up contradicting the thing it sits next to.
+        //
+        // "Unknown" is reported as live rather than as a fault: Composio does
+        // not expose a trustworthy liveness signal, and guessing "broken" is
+        // worse than saying nothing.
+        live: row ? row.status === "connected" : false,
         updatedAt: row?.updatedAt ?? null,
       };
     }),

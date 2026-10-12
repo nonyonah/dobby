@@ -5,6 +5,7 @@ import { runMonthlyTaxReminder } from "./monthly-tax-reminder.js";
 import { runFilingDeadlineReminders } from "./filing-deadline-reminder.js";
 import { runFirstImportSummaries } from "./first-import-summary.js";
 import { runNudges } from "../nudges/engine.js";
+import { runDailyEmailSyncs } from "./daily-email-sync.js";
 
 const TIMEZONE = "UTC";
 
@@ -50,6 +51,10 @@ export function startScheduler() {
     // a person in Lagos gets it on the same run as a person in London, and
     // neither is emailed at 03:00.
     cron.schedule("0 * * * *", logged("nudges", () => runNudges()), { timezone: TIMEZONE }),
+    // Every connected mailbox, once a day. Without this, "email auto-fetch"
+    // only ran when somebody pressed the button, so a customer who connected
+    // and then left never saw the statement their bank emailed them.
+    cron.schedule("20 6 * * *", logged("daily-email-sync", () => runDailyEmailSyncs()), { timezone: TIMEZONE }),
   ];
   logger.info({ timezone: TIMEZONE }, "job scheduler started: monthly tax digest, daily filing-deadline check, first-import summary sweep");
   return () => tasks.forEach((task) => task.stop());
