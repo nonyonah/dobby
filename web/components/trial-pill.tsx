@@ -32,8 +32,13 @@ export function TrialPill({ className }: { className?: string }) {
       )}
       title={today ? "Your free trial ends today" : `Your free trial ends in ${trialDaysLeft} days`}
     >
-      <HugeiconsIcon icon={Clock01Icon} size={13} className="text-primary" aria-hidden="true" />
-      <span>Pro trial: {trialDaysLeft === 0 ? "ends today" : `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left`}</span>
+      <HugeiconsIcon icon={Clock01Icon} size={13} className="shrink-0 text-primary" aria-hidden="true" />
+      {/* Short on a phone. The top bar also carries Get Started and the create
+          button, and "Pro trial: 7 days left" does not fit beside them without
+          pushing the title off a 360px screen. The full sentence is the title
+          attribute either way. */}
+      <span className="sm:hidden">{trialDaysLeft === 0 ? "today" : `${trialDaysLeft}d`}</span>
+      <span className="hidden sm:inline">Pro trial: {trialDaysLeft === 0 ? "ends today" : `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left`}</span>
     </span>
   );
 }

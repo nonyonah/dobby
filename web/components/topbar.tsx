@@ -47,7 +47,7 @@ export function TopBar({
               are the same decision, so they sit together: a countdown floating
               on the dashboard told people they had time without ever saying how
               to get the thing it was counting down to. */}
-          <TrialPill className="hidden sm:inline-flex" />
+          <TrialPill />
           <GetStarted />
 
           <DropdownMenu>

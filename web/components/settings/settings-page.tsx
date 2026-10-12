@@ -21,7 +21,6 @@ import { readStoredCurrency, setAppCurrency, writeStoredCurrency } from "@/lib/f
 import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { FEATURES, FREE_WALLET_LIMIT } from "@/lib/features";
-import { TrialPill } from "@/components/trial-pill";
 import { BILLING_COUNTRIES, COUNTRY_OPTIONS, CURRENCIES, CURRENCY_OPTIONS, TAX_JURISDICTION_OPTIONS, TAX_JURISDICTIONS } from "@/lib/countries";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { deriveBillingNotice } from "@/lib/billing-notice";
@@ -1041,9 +1040,6 @@ export function SettingsPage() {
                 </AlertContent>
               </Alert>
             ) : null}
-            {/* After a trial lapses the dashboard goes quiet, so Settings is where
-                the one remaining nudge lives — never a modal, never a countdown. */}
-            <TrialPill className="mb-2" />
             {billingNotice ? (
               <Alert status={billingNotice.status}>
                 <AlertIndicator>
