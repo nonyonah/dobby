@@ -326,10 +326,16 @@ function TransactionsInner() {
         const guidance = guidanceFor(error, "trial");
         toast.error(guidance.title, { description: guidanceText(guidance) });
       } else {
+        // The API's own message where there is one. A generic "try again" hid
+        // a 404 from a row the server could not find, which is a different
+        // problem with a different fix and should not look like a flaky save.
+        const detail = error instanceof ApiError ? error.message : null;
         toast.error(
-          isQueued
-            ? "Could not save this review row. Try again."
-            : "Could not save this transaction. Try again.",
+          detail
+            ? detail
+            : isQueued
+              ? "Could not save this review row. Try again."
+              : "Could not save this transaction. Try again.",
         );
       }
       return false;

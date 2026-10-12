@@ -108,21 +108,28 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
     // immediately, so a save that failed left the reader looking at a dialog
     // that had already taken their edit with it — the change was gone from the
     // screen with nothing said, which is what "it doesn't save" looks like.
-    const landed = await onSave({
-      ...tx,
-      name: name.trim() || tx.name,
-      amount: (tx.amount < 0 ? -1 : 1) * (Number.isFinite(parsed) ? parsed : Math.abs(tx.amount)),
-      sourceAmount: amountChanged ? Math.abs(parsed) : tx.sourceAmount,
-      currency: amountChanged ? appCurrency : tx.currency,
-      date: date || tx.date,
-      category,
-      categoryId: liveIds.has(category) ? category : tx.categoryId,
-      categoryName: option?.name ?? tx.categoryName,
-      taxable: taxable === "taxable",
-      source,
-      note: note.trim(),
-    }, { rememberRule });
-    setSaving(false);
+    //
+    // try/finally because without it a rejected save leaves `saving` stuck true,
+    // and every later attempt is silently dropped by the guard at the top.
+    let landed: boolean | void = false;
+    try {
+      landed = await onSave({
+        ...tx,
+        name: name.trim() || tx.name,
+        amount: (tx.amount < 0 ? -1 : 1) * (Number.isFinite(parsed) ? parsed : Math.abs(tx.amount)),
+        sourceAmount: amountChanged ? Math.abs(parsed) : tx.sourceAmount,
+        currency: amountChanged ? appCurrency : tx.currency,
+        date: date || tx.date,
+        category,
+        categoryId: liveIds.has(category) ? category : tx.categoryId,
+        categoryName: option?.name ?? tx.categoryName,
+        taxable: taxable === "taxable",
+        source,
+        note: note.trim(),
+      }, { rememberRule });
+    } finally {
+      setSaving(false);
+    }
     if (landed !== false) onOpenChange(false);
   };
 
@@ -208,8 +215,8 @@ export function TxEditDialog({ tx, open, onOpenChange, onSave, categories = [] }
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={commit}>
-            Save changes
+          <Button variant="primary" onClick={() => void commit()} disabled={saving}>
+            {saving ? "Saving…" : "Save changes"}
           </Button>
         </DialogFooter>
       </DialogContent>
