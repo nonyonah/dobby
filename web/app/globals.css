@@ -198,9 +198,13 @@
   --color-info-soft: var(--info-soft);
   --color-info-soft-foreground: var(--info-soft-foreground);
 
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-inter);
-  /* coss heads Dialog/AlertDialog titles and <h*> with this; we keep Inter. */
+  --font-sans: var(--font-google-sans);
+  /* Deliberately the same family, as before. The `mono` class on the money
+     figures is really "tabular numerals in the UI font", not a code font —
+     switching this to an actual monospace would change every amount in the app.
+     The distinction that matters there is `tabular-nums`, not the typeface. */
+  --font-mono: var(--font-google-sans);
+  /* coss heads Dialog/AlertDialog titles and <h*> with this; we keep the same family. */
   --font-heading: var(--font-sans);
 
   /* beUI motion easings */

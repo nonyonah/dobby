@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { ClerkProvider } from "@clerk/nextjs";
 import { clerkAppearance } from "@/lib/clerk-appearance";
-import { Inter } from "next/font/google";
+import { Google_Sans_Flex } from "next/font/google";
 import { ThemeSync } from "@/components/theme-sync";
 import { PageViewTracker } from "@/components/page-view-tracker";
 import { UserbackProvider } from "@/components/userback";
@@ -18,10 +18,27 @@ import { Analytics } from "@vercel/analytics/next";
 import "driver.js/dist/driver.css";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+/**
+ * Google Sans Flex, the variable build.
+ *
+ * A variable font rather than a set of static weights: `wght` is left on its
+ * full range so the browser interpolates, which is the point of Flex and is why
+ * the numerals in the money tables can be set heavier without a separate file.
+ * `slnt` and `GRAD` are opt-in axes — Next only ships the axes you ask for, and
+ * asking for them is what makes the file bigger, so only `wght` is requested.
+ *
+ * Downloaded at build time and self-hosted by next/font, so the page itself
+ * makes no request to Google at runtime.
+ *
+ * The build does warn that it cannot find metric overrides for this family, so
+ * the automatic fallback-calibration that trims font-swap shift is skipped for
+ * it. That is cosmetic and only affects the swap itself; the file is
+ * preloaded, so it is a short reflow at worst rather than a flash of fallback
+ * text on every load.
+ */
+const googleSansFlex = Google_Sans_Flex({
+  variable: "--font-google-sans",
   subsets: ["latin"],
-  weight: "variable",
   display: "swap",
 });
 
@@ -43,7 +60,7 @@ export default function RootLayout({
     <ClerkProvider appearance={clerkAppearance}>
       {/* Dark is class-driven, not a media query, so the palette ships light by
           default and the script above decides the real one before paint. */}
-      <html lang="en" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
+      <html lang="en" className={`${googleSansFlex.variable} h-full antialiased`} suppressHydrationWarning>
         <body className="relative min-h-full flex flex-col">
           {/* Must be `next/script`, not a raw <script> element: React never
               executes a <script> rendered inside a component on the client
