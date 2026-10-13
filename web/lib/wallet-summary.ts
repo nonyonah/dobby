@@ -5,7 +5,20 @@ export interface WalletSummaryPayload {
   chain: string;
   address: string;
   provider?: string;
-  transfers?: Array<{ asset?: string | null; value?: number | string | null }>;
+  /**
+   * Carries the timestamp and the full counterparty address, both of which the
+   * wallet page needs and both of which used to be dropped at this boundary.
+   * Without the timestamp every row on the wallet page rendered with a blank
+   * date and no way to tell a recent transfer from an old one.
+   */
+  transfers?: Array<{
+    asset?: string | null;
+    value?: number | string | null;
+    hash?: string | null;
+    from?: string | null;
+    to?: string | null;
+    metadata?: { blockTimestamp?: number | null } | null;
+  }>;
 }
 
 /** Only shown when every attempt fails — the UI renders this as a string. */

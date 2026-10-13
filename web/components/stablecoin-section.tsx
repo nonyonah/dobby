@@ -135,6 +135,18 @@ export function StablecoinSection({
             filterLabel={stableTokenLabel(STABLECOIN_SYMBOLS)}
             rows={monthRows}
             signed
+            // This tab reads the ledger, not the chain. An unsynced wallet has
+            // nothing in it, which is indistinguishable from a year with no
+            // stablecoin activity — so say which one this is rather than
+            // leaving the user to wonder whether the tab is broken.
+            emptyTitle={walletCount > 0 && rows.length === 0 ? "Nothing synced yet" : "No stablecoin activity"}
+            emptyBody={
+              walletCount > 0 && rows.length === 0
+                ? "Your wallet is connected but its transfers have not been imported. Open the wallet and press Sync activity."
+                : monthRows.length === 0 && rows.length > 0
+                  ? "No stablecoin movements in this month. Try another."
+                  : "No stablecoin activity for this year."
+            }
           />
         </div>
         <FlowNarrative title="Stablecoin summary">

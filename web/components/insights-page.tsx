@@ -457,41 +457,6 @@ export default function InsightsPage() {
                 )}
               </section>
 
-              {/* Nigeria only. The stamp duty is a note and never an amount:
-                  it falls on the transferee, so someone cashing out may not
-                  bear it, and showing a figure would invent a liability. */}
-              {stablecoinTax ? (
-                <section aria-label="Stablecoin activity">
-                  <h2 className="m-0 text-[13px] font-semibold">Stablecoin activity</h2>
-                  <p className="m-0 mt-1 text-[12px] text-muted-foreground">{taxYear} estimate · confirmed events only</p>
-                  <dl className="m-0 mt-2 flex flex-col gap-1">
-                    <div className="flex items-baseline justify-between gap-2 text-[13px]">
-                      <dt className="min-w-0 flex-1 text-muted-foreground">Cash-outs</dt>
-                      <dd className="mono shrink-0 font-medium tabular-nums">
-                        {stablecoinTax.cashOutCount}
-                        <span className="ml-1.5 text-muted-foreground">
-                          {formatCurrency(stablecoinTax.cashOutUsd, "USD")} · {stablecoinTax.currency}
-                          {formatCurrency(stablecoinTax.cashOutNaira, stablecoinTax.currency)}
-                        </span>
-                      </dd>
-                    </div>
-                    <div className="flex items-baseline justify-between gap-2 text-[13px]">
-                      <dt className="min-w-0 flex-1 text-muted-foreground">Yield received</dt>
-                      <dd className="mono shrink-0 font-medium tabular-nums">
-                        {stablecoinTax.yieldCount}
-                        <span className="ml-1.5 text-muted-foreground">{formatCurrency(stablecoinTax.yieldUsd, "USD")} · investment income</span>
-                      </dd>
-                    </div>
-                  </dl>
-                  {stablecoinTax.stampDutyApplies ? (
-                    <p className="m-0 mt-2 border-t border-line pt-2 text-[12px] leading-relaxed text-muted-foreground">
-                      {stablecoinTax.stampDutyNote}
-                    </p>
-                  ) : null}
-                  <p className="m-0 mt-2 text-[12px] text-muted-foreground">{stablecoinTax.advisory}</p>
-                </section>
-              ) : null}
-
               <section aria-label="Tax position">
                 <h2 className="m-0 text-[13px] font-semibold">Tax position</h2>
                 <p className="m-0 mt-1 text-[12px] text-muted-foreground">
@@ -555,6 +520,43 @@ export default function InsightsPage() {
                   <p key={note} className="m-0 mt-1.5 text-[12px] leading-relaxed text-muted-foreground">{note}</p>
                 ))}
               </section>
+            </div>
+
+            <div className="mt-8">
+              {/* Nigeria only. The stamp duty is a note and never an amount:
+                  it falls on the transferee, so someone cashing out may not
+                  bear it, and showing a figure would invent a liability. */}
+              {stablecoinTax ? (
+                <section aria-label="Stablecoin activity">
+                  <h2 className="m-0 text-[13px] font-semibold">Stablecoin activity</h2>
+                  <p className="m-0 mt-1 text-[12px] text-muted-foreground">{taxYear} estimate · confirmed events only</p>
+                  <dl className="m-0 mt-2 flex flex-col gap-1">
+                    <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                      <dt className="min-w-0 flex-1 text-muted-foreground">Cash-outs</dt>
+                      <dd className="mono shrink-0 font-medium tabular-nums">
+                        {stablecoinTax.cashOutCount}
+                        <span className="ml-1.5 text-muted-foreground">
+                          {formatCurrency(stablecoinTax.cashOutUsd, "USD")} · {stablecoinTax.currency}
+                          {formatCurrency(stablecoinTax.cashOutNaira, stablecoinTax.currency)}
+                        </span>
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                      <dt className="min-w-0 flex-1 text-muted-foreground">Yield received</dt>
+                      <dd className="mono shrink-0 font-medium tabular-nums">
+                        {stablecoinTax.yieldCount}
+                        <span className="ml-1.5 text-muted-foreground">{formatCurrency(stablecoinTax.yieldUsd, "USD")} · investment income</span>
+                      </dd>
+                    </div>
+                  </dl>
+                  {stablecoinTax.stampDutyApplies ? (
+                    <p className="m-0 mt-2 border-t border-line pt-2 text-[12px] leading-relaxed text-muted-foreground">
+                      {stablecoinTax.stampDutyNote}
+                    </p>
+                  ) : null}
+                  <p className="m-0 mt-2 text-[12px] text-muted-foreground">{stablecoinTax.advisory}</p>
+                </section>
+              ) : null}
             </div>
 
             <div className="mt-8 grid grid-cols-1 items-start gap-x-8 gap-y-8 md:grid-cols-2">

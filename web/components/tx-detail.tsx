@@ -5,6 +5,7 @@ import { formatUSD } from "@/lib/format";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
 import { CardIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
+import { ChainLogo, chainLabel } from "./ui/chain-logo";
 import { CategoryChip } from "@/components/ui/category-chip";
 
 const SOURCE_ICON: Record<TxSource, (props: { className?: string }) => React.ReactNode> = {
@@ -39,9 +40,11 @@ interface TxDetailProps {
   onClose: () => void;
   onEdit: () => void;
   onToggleBudget?: (tx: TxFull) => void;
+  /** Chain for wallet rows. Wallet transfers carry no category of their own. */
+  chain?: string | null;
 }
 
-export function TxDetail({ tx, onEdit, onToggleBudget }: TxDetailProps) {
+export function TxDetail({ tx, onEdit, onToggleBudget, chain }: TxDetailProps) {
   if (!tx) {
     return (
       <div className="p-6 text-center">

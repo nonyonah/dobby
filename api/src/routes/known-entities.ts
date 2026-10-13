@@ -86,6 +86,53 @@ knownEntitiesRouter.patch("/:id", async (req, res) => {
 });
 
 /**
+ * Adds a provider or protocol of the user's own.
+ *
+ * Needed because the seeded list is not exhaustive and cannot be: a user cashing
+ * out through an exchange nobody has heard of has to be able to record it
+ * without waiting for a deploy. Scoped to them, so adding one changes nothing
+ * for anybody else.
+ */
+knownEntitiesRouter.post("/mine", async (req, res) => {
+  const ownerClerkId = req.auth!.userId;
+  const input = z
+    .object({
+      kind: kindSchema,
+      name: z.string().trim().min(1).max(80),
+      chain: z.enum(["BASE", "SOLANA"]).nullable().optional(),
+      address: z.string().trim().min(4).max(128).nullable().optional(),
+      narrationPatterns: z.array(z.string().trim().min(1).max(120)).max(20).default([]),
+    })
+    .parse(req.body ?? {});
+
+  const row = await prisma.userEntity.upsert({
+    where: { ownerClerkId_kind_name: { ownerClerkId, kind: input.kind, name: input.name } },
+    create: {
+      ownerClerkId,
+      kind: input.kind,
+      name: input.name,
+      chain: input.chain ?? null,
+      address: input.address ?? null,
+      narrationPatterns: input.narrationPatterns.map((pattern) => pattern.toLowerCase()),
+    },
+    update: {
+      ...(input.address !== undefined ? { address: input.address } : {}),
+      ...(input.chain !== undefined ? { chain: input.chain } : {}),
+    },
+  });
+  res.status(201).json({ data: row });
+});
+
+/** Sets or clears the address on one of the user's own entries. */
+knownEntitiesRouter.patch("/mine/:id", async (req, res) => {
+  const ownerClerkId = req.auth!.userId;
+  const input = z.object({ address: z.string().trim().min(4).max(128).nullable() }).parse(req.body ?? {});
+  const result = await prisma.userEntity.updateMany({ where: { id: req.params.id, ownerClerkId }, data: { address: input.address } });
+  if (result.count === 0) throw new AppError(404, "That entry was not found.", "USER_ENTITY_NOT_FOUND");
+  res.json({ data: { id: req.params.id, address: input.address } });
+});
+
+/**
  * The user's own entities — the ones "remember this sender" creates.
  *
  * Read-only here on purpose: these are created from a review card, where the

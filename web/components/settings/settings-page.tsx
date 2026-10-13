@@ -378,6 +378,10 @@ function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: 
 export function SettingsPage() {
   const [wallets, setWallets] = useState<Array<{ id: string; chain: string; address: string; displayName: string; color: string }>>([]);
   const [walletSummaries, setWalletSummaries] = useState<Record<string, string>>({});
+  // Which wallet is being written to the ledger. Separate from the summary
+  // fetch: reading a live provider proxy is cheap and silent, whereas a sync
+  // imports history and must say so.
+  const [syncingWalletId, setSyncingWalletId] = useState<string | null>(null);
   // Bumped after a wallet is connected so the loader above re-runs and picks up
   // the new wallet, its summary, and anything else that depends on it. Patching
   // local state alone left net worth and insights showing the pre-connect
@@ -536,6 +540,36 @@ export function SettingsPage() {
    * to its resting glyph. Cleared on unmount too: a timeout that fires after the
    * page is gone would call setState on a dead component.
    */
+  /**
+   * Writes one wallet's transfers into the ledger.
+   *
+   * This is what populates what detection and the stablecoin tab read. Until a
+   * wallet is synced there is no outflow to pair against a naira credit, so
+   * detection correctly finds nothing — which looks identical to "no cash-outs
+   * happened" and is not the same thing.
+   */
+  const syncWallet = async (walletId: string) => {
+    setSyncingWalletId(walletId);
+    try {
+      const response = await api.post<{ data: { created: number; events: number } }>(`/v1/wallets/${walletId}/sync`, {});
+      const { created, events } = response.data;
+      if (created > 0) {
+        toast.success(
+          `Added ${created} transaction${created === 1 ? "" : "s"} to your ledger${events > 0 ? `, and ${events} suggestion${events === 1 ? "" : "s"} to review` : ""}.`,
+        );
+        // The summary line and every count that depends on the ledger are stale
+        // now. Bumping the token refetches them.
+        setReloadToken((current) => current + 1);
+      } else {
+        toast.success("Already up to date — nothing new on chain.");
+      }
+    } catch {
+      toast.error("Could not sync this wallet. Try again.");
+    } finally {
+      setSyncingWalletId(null);
+    }
+  };
+
   const markSyncDone = useCallback((provider: string, summary: string) => {
     setSyncState((prev) => ({ ...prev, [provider]: { busy: false, summary, done: true, lastSyncedAt: Date.now() } }));
     const existing = syncDoneTimers.current.get(provider);
@@ -858,7 +892,17 @@ export function SettingsPage() {
                   key={wallet.id}
                   label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-[13px]" style={{ backgroundColor: `${wallet.color}1A` }} aria-hidden="true"><span className="size-2.5 rounded-full" style={{ backgroundColor: wallet.color }} /></span><span><span className="block">{wallet.displayName} <span className="flex items-center gap-1.5 font-normal text-muted-foreground"><span aria-hidden="true">·</span><ChainLogo chain={wallet.chain} className="block size-3.5 shrink-0 rounded-full ring-1 ring-inset ring-foreground/10" />{chainLabel(wallet.chain)}</span></span><span className="mt-0.5 block font-mono text-[12px] font-medium leading-4 text-muted-foreground">{shortAddress(wallet.address)} · {walletSummaries[wallet.id] ?? "Loading activity…"}</span></span></span>}
                 >
-                  <Button variant="secondary" size="small" onClick={() => void disconnectWallet(wallet.id)}><HugeiconsIcon icon={CancelIcon}  /> Disconnect</Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      disabled={syncingWalletId === wallet.id}
+                      onClick={() => void syncWallet(wallet.id)}
+                    >
+                      {syncingWalletId === wallet.id ? "Syncing…" : "Sync activity"}
+                    </Button>
+                    <Button variant="secondary" size="small" onClick={() => void disconnectWallet(wallet.id)}><HugeiconsIcon icon={CancelIcon}  /> Disconnect</Button>
+                  </div>
                 </Row>
               ))
             )}

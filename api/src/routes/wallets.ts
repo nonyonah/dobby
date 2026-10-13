@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Chain } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { syncWallets } from "../stablecoin/wallet-sync.js";
+import { syncWalletTransfers, syncWallets } from "../stablecoin/wallet-sync.js";
 import { detectStablecoinEvents } from "../stablecoin/detect.js";
 import { getBlockscoutAddressSummary } from "../lib/blockscout.js";
 import { alchemyConfigured, getBaseWalletTransfers, getSolanaWalletTransfers } from "../providers/alchemy.js";
@@ -119,6 +119,28 @@ walletsRouter.delete("/:id", async (req, res) => {
     return;
   }
   res.status(204).send();
+});
+
+/**
+ * Syncs one wallet, then runs detection over what it wrote.
+ *
+ * Per wallet rather than all of them, because the button lives on a wallet row:
+ * pressing it should refresh the wallet you are looking at, not spend a
+ * provider request on every other address too.
+ */
+walletsRouter.post("/:id/sync", async (req, res) => {
+  const ownerClerkId = req.auth!.userId;
+  const wallet = await prisma.walletAccount.findFirst({
+    where: { id: req.params.id, ownerClerkId },
+    select: { id: true, chain: true, address: true },
+  });
+  if (!wallet) {
+    res.status(404).json({ error: { code: "WALLET_NOT_FOUND", message: "Wallet was not found." } });
+    return;
+  }
+  const result = await syncWalletTransfers(ownerClerkId, wallet);
+  const detection = await detectStablecoinEvents(ownerClerkId);
+  res.json({ data: { ...result, events: detection.created } });
 });
 
 /**

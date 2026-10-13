@@ -22,12 +22,16 @@ interface FlowTableProps {
   signed?: boolean;
   typeLabel: string;
   filterLabel: string;
+  /** Opens that row. Omitted keeps rows inert, as they were. */
+  onSelectRow?: (row: TxFull) => void;
+  emptyTitle?: string;
+  emptyBody?: string;
 }
 
 const PAGE_SIZE = 8;
 
 /** Paginated ledger used by the spending, income, and stablecoin insight tabs. */
-export function FlowTable({ title, rows, income = false, signed = false, typeLabel, filterLabel }: FlowTableProps) {
+export function FlowTable({ title, rows, income = false, signed = false, typeLabel, filterLabel, onSelectRow, emptyTitle, emptyBody }: FlowTableProps) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -55,7 +59,11 @@ export function FlowTable({ title, rows, income = false, signed = false, typeLab
           </TableHeader>
           <TableBody className="bg-surface">
             {pageRows.map((transaction) => (
-              <TableRow key={transaction.id} className="border-b border-line hover:bg-secondary!">
+              <TableRow
+                key={transaction.id}
+                onClick={onSelectRow ? () => onSelectRow(transaction) : undefined}
+                className={`border-b border-line hover:bg-secondary! ${onSelectRow ? "cursor-pointer" : ""}`}
+              >
                 <TableCell className="px-3 py-2.5 text-[12px] text-muted-foreground">
                   {transaction.date.slice(5).replace("-", "/")}
                 </TableCell>
@@ -70,8 +78,8 @@ export function FlowTable({ title, rows, income = false, signed = false, typeLab
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={3} className="whitespace-normal! px-3 py-10 text-center">
-                  <p className="m-0 text-[13px] font-medium">No transactions for this month</p>
-                  <p className="m-0 mt-1 text-[12px] text-muted-foreground">Try another month to see activity.</p>
+                  <p className="m-0 text-[13px] font-medium">{emptyTitle ?? "No transactions for this month"}</p>
+                  <p className="m-0 mt-1 text-[12px] text-muted-foreground">{emptyBody ?? "Try another month to see activity."}</p>
                 </TableCell>
               </TableRow>
             ) : null}

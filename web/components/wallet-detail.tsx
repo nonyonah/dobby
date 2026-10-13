@@ -13,6 +13,11 @@ import { FlowTable } from "@/components/flow-table";
 import { ChainLogo, chainLabel } from "@/components/ui/chain-logo";
 import { WalletIcon } from "@/components/icons";
 import { useApi } from "@/hooks/use-api";
+import { toast } from "@/components/ui/toast";
+import { TxDetail } from "@/components/tx-detail";
+import { TxEditDialog } from "@/components/tx-edit-dialog";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { useCategories } from "@/hooks/use-categories";
 import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, formatUSD, getAppCurrency } from "@/lib/format";
 import { fetchWalletSummary } from "@/lib/wallet-summary";
@@ -57,7 +62,14 @@ type NetWorthSnapshot = {
   wallets: WalletSummary[];
 };
 
-type Transfer = { hash?: string; from?: string; to?: string; value?: number | string | null; asset?: string | null };
+type Transfer = {
+  hash?: string;
+  from?: string;
+  to?: string;
+  value?: number | string | null;
+  asset?: string | null;
+  metadata?: { blockTimestamp?: number | null } | null;
+};
 
 /**
  * Asset colour, shared with the stablecoin tab so a token reads the same on
@@ -107,7 +119,10 @@ function transferRows(transfers: Transfer[] | undefined, address: string): TxFul
       id: transfer.hash ?? `transfer-${index}`,
       name: counterparty ? `${incoming ? "Received from" : "Sent to"} ${counterparty}` : "Transfer",
       account: transfer.asset ?? "—",
-      date: "",
+      // Alchemy reports unix seconds. Left blank when it is absent rather than
+      // substituted with today, which would sort a two-year-old transfer to the
+      // top of the list and read as the most recent thing that happened.
+      date: transfer.metadata?.blockTimestamp ? new Date(transfer.metadata.blockTimestamp * 1000).toISOString().slice(0, 10) : "",
       amount: incoming ? value : -value,
       category: "transfer",
       taxable: false,
@@ -130,6 +145,37 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
   // wallet without a synchronous setState in its body.
   const [settledFor, setSettledFor] = useState<string | null>(null);
   const [display, setDisplay] = useState<{ amount: number; currency: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  // The row the user opened, and the one being edited. Two separate pieces of
+  // state because editing replaces the drawer contents with a dialog rather
+  // than nesting one overlay inside another.
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const { categories } = useCategories();
+  /*
+   * Syncing is a separate act from loading. Loading reads a live provider proxy;
+   * syncing writes this wallet's transfers into the ledger, which is what
+   * detection and the stablecoin tab read. Without the difference a page visit
+   * would quietly import months of history, and the user would have no idea a
+   * write had happened or be able to ask for it on demand.
+   */
+  const syncWallet = async () => {
+    setSyncing(true);
+    try {
+      const response = await api.post<{ data: { created: number; events: number } }>(`/v1/wallets/${walletId}/sync`, {});
+      const { created, events } = response.data;
+      toast.success(
+        created > 0
+          ? `Added ${created} new transaction${created === 1 ? "" : "s"}${events > 0 ? `, and ${events} cash-out suggestion${events === 1 ? "" : "s"} to review` : ""}.`
+          : "Already up to date — nothing new on chain.",
+      );
+      setSettledFor(null);
+    } catch {
+      toast.error("Could not sync this wallet. Try again.");
+    } finally {
+      setSyncing(false);
+    }
+  };
   const loading = settledFor !== walletId;
 
   useEffect(() => {
@@ -213,7 +259,37 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
 
   const heldUsd = assets.reduce((sum, item) => sum + item.amount, 0);
 
-  const rows = useMemo(() => transferRows(transfers, wallet?.address ?? ""), [transfers, wallet?.address]);
+  // Edits applied on top of the live projection. The rows are derived from a
+  // provider proxy and are recomputed on every fetch, so anything written back
+  // to them directly is lost the moment that refetch lands — which would look
+  // exactly like the save silently failing.
+  const [localEdits, setLocalEdits] = useState<Record<string, Partial<TxFull>>>({});
+  const rows = useMemo(() => {
+    const projected = transferRows(transfers, wallet?.address ?? "");
+    const edited = projected.map((row) => (localEdits[row.id] ? { ...row, ...localEdits[row.id] } : row));
+    return edited;
+  }, [transfers, wallet?.address, localEdits]);
+  const selected = rows.find((row) => row.id === detailId) ?? null;
+  const editing = rows.find((row) => row.id === editId) ?? null;
+
+  /*
+   * Wallet rows are projections, not ledger rows: they have no id the API can
+   * accept and nothing to save against. Editing one therefore writes to the
+   * ledger only if that wallet has been synced, and says so plainly otherwise,
+   * rather than appearing to save and losing the change.
+   */
+  const saveWalletRow = async (next: TxFull) => {
+    try {
+      await api.patch(`/v1/transactions/${next.id}`, {
+        categoryId: (next.categoryId ?? next.category) || null,
+        isTaxable: next.taxable === true,
+      });
+      setLocalEdits((previous) => ({ ...previous, [next.id]: { ...previous[next.id], categoryId: next.categoryId, category: next.category, taxable: next.taxable } }));
+      toast.success("Saved. This will stick for imports of the same merchant.");
+    } catch {
+      toast.error("Could not save that. Sync this wallet first, then try again.");
+    }
+  };
 
   // The sidebar only lists wallets the user connected, so a missing one means
   // the id is stale (deleted, or from another account).
@@ -254,9 +330,14 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                     { value: "accounts", label: "Bank accounts", disabled: true },
                   ]}
                 />
-                <Button variant="secondary" size="small" onClick={() => router.push("/settings")}>
-                Manage connections
-              </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="secondary" size="small" disabled={syncing || !wallet} onClick={() => void syncWallet()}>
+                    {syncing ? "Syncing…" : "Sync activity"}
+                  </Button>
+                  <Button variant="secondary" size="small" onClick={() => router.push("/settings")}>
+                    Manage connections
+                  </Button>
+                </div>
             </div>
 
               {tab === "accounts" ? (
@@ -331,7 +412,16 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                           <TableSkeletonRows rows={4} columns={2} />
                         </LoadingRegion>
                       ) : null}
-                      <FlowTable title="Recent activity" typeLabel="On-chain" filterLabel={chainLabel(wallet?.chain ?? "BASE")} rows={rows} signed />
+                      <FlowTable
+                        title="Recent activity"
+                        typeLabel="On-chain"
+                        filterLabel={chainLabel(wallet?.chain ?? "BASE")}
+                        rows={rows}
+                        signed
+                        onSelectRow={(row) => setDetailId(row.id)}
+                        emptyTitle="No transfers yet"
+                        emptyBody="Nothing has moved in or out of this address."
+                      />
                   </div>
 
                     <Card className="gap-0 p-0">
@@ -368,6 +458,39 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
             </>
         )}
       </div>
+
+      {/* Opening a transfer is the only way to see which chain it was on, what
+          it moved, and to categorise it. A drawer rather than a dialog so it
+          sits over the activity list it came from, which is where a user
+          compares two rows against each other. */}
+      <Drawer open={selected !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }}>
+        <DrawerContent className="[--drawer-content-width:min(25rem,calc(100vw-4rem))] sm:[--drawer-content-width:25rem]">
+          <DrawerHeader>
+            <DrawerTitle>Transfer</DrawerTitle>
+          </DrawerHeader>
+          {selected ? (
+            <div className="scrollbar-hide flex-1 overflow-y-auto px-6 pt-2 pb-6">
+              <TxDetail
+                tx={selected}
+                chain={wallet?.chain ?? null}
+                onClose={() => setDetailId(null)}
+                onEdit={() => setEditId(selected.id)}
+              />
+            </div>
+          ) : null}
+        </DrawerContent>
+      </Drawer>
+
+      <TxEditDialog
+        tx={editing}
+        open={editing !== null}
+        onOpenChange={(open) => { if (!open) setEditId(null); }}
+        onSave={(next) => {
+          void saveWalletRow(next);
+          return true;
+        }}
+        categories={categories}
+      />
     </div>
   );
 }
