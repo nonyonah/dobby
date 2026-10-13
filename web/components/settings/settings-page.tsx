@@ -915,7 +915,7 @@ export function SettingsPage() {
             )}
             {wallets.length > 0 ? (
               <Row
-                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{walletLimitReached ? `The free tier tracks ${FREE_WALLET_LIMIT} wallet. Upgrade to track them all.` : "Base or Solana address with a custom color"}</span></span></span>}
+                label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Add another wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">{walletLimitReached ? `The free tier tracks ${FREE_WALLET_LIMIT} wallet. Upgrade to track them all.` : "Base address with a custom color"}</span></span></span>}
               >
                 <Button variant={walletLimitReached ? "primary" : "secondary"} size="small" onClick={() => (walletLimitReached ? openCheckout() : setWalletModalOpen(true))}>{walletLimitReached ? "Upgrade" : "Connect"}</Button>
               </Row>

@@ -268,6 +268,38 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
     const edited = projected.map((row) => (localEdits[row.id] ? { ...row, ...localEdits[row.id] } : row));
     return edited;
   }, [transfers, wallet?.address, localEdits]);
+  /*
+   * Activity totals, from the transfers already in hand rather than a second
+   * request.
+   *
+   * "Spent" means value that left the wallet — not the sum of everything that
+   * moved, and not a running total of what arrived. Each stablecoin is quoted
+   * against a dollar, so summing raw token amounts is a dollar figure without
+   * pretending to have converted it, and an naira-pegged token in that sum is
+   * the one case where that stops being true.
+   */
+  const activity = useMemo(() => {
+    const outgoing = rows.filter((row) => row.amount < 0);
+    const incoming = rows.filter((row) => row.amount > 0);
+    const spentByAsset = new Map<string, number>();
+    for (const row of outgoing) {
+      const symbol = row.account && row.account !== "—" ? row.account : "tokens";
+      spentByAsset.set(symbol, (spentByAsset.get(symbol) ?? 0) + Math.abs(row.amount));
+    }
+    const spent = [...spentByAsset.values()].reduce((sum, value) => sum + value, 0);
+    const first = rows[rows.length - 1]?.date;
+    return {
+      transferCount: rows.length,
+      sentCount: outgoing.length,
+      receivedCount: incoming.length,
+      spent,
+      // Named where it is a single asset, so "$4,200" is not ambiguous about
+      // what was spent when the wallet holds more than one.
+      spentLabel: spentByAsset.size === 1 ? [...spentByAsset.keys()][0]! : `${spentByAsset.size} assets`,
+      since: first ? first.slice(0, 7).replace("-", "/") : null,
+    };
+  }, [rows]);
+
   const selected = rows.find((row) => row.id === detailId) ?? null;
   const editing = rows.find((row) => row.id === editId) ?? null;
 
@@ -392,6 +424,24 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                             : "Nothing priced yet"
                         }
                         accent={assets[0]?.color}
+                      />
+                      <StatCard
+                        label="Total spent"
+                        value={formatUSD(activity.spent)}
+                        hint={
+                          activity.transferCount === 0
+                            ? "Nothing has left this wallet"
+                            : `Value sent out${activity.since ? ` · since ${activity.since}` : ""}`
+                        }
+                      />
+                      <StatCard
+                        label="Transfers"
+                        value={String(activity.transferCount)}
+                        hint={
+                          activity.transferCount === 0
+                            ? "No transfers yet"
+                            : `${activity.sentCount} out · ${activity.receivedCount} in${activity.since ? ` · since ${activity.since}` : ""}`
+                        }
                       />
                   </div>
                   )}

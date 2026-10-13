@@ -25,9 +25,22 @@ export interface ConnectedWallet {
   color: string;
 }
 
+/**
+ * Solana is temporarily not offered.
+ *
+ * Its transfer reader was returning self-transfers only — `fromAddress` and
+ * `toAddress` went together, which the provider ANDs — so a connected Solana
+ * wallet showed no history at all, which looked like an empty wallet rather than
+ * a broken reader. The fix landed, but until it is proven on real mainnet
+ * traffic the honest thing is to stop offering the chain than to keep a picker
+ * entry that quietly shows people nothing.
+ *
+ * Restored by putting the row back and deleting this note. Nothing else needs
+ * to change: the API, the schema and the chain plumbing all still support it.
+ */
 const CHAINS = [
   { value: "BASE", label: "Base" },
-  { value: "SOLANA", label: "Solana" },
+  // { value: "SOLANA", label: "Solana" },
 ] as const;
 
 const COLORS = ["#4a55c9", "#22C55E", "#F04438", "#F59E0B", "#a855f7", "#0d9488", "#e11d48", "#8a8b91"];
