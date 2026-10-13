@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { Line, LineChart, ReferenceArea, XAxis, YAxis } from "recharts";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import { MONTH_LABELS, type Range } from "@/lib/insights-data";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { Meter } from "./module-card";
@@ -62,7 +62,7 @@ export function InsightColumn({
       <h2 className="m-0 text-[13px] font-semibold text-foreground">{title}</h2>
       <div className="mt-1 flex flex-wrap items-center gap-2">
         <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
-          {formatUSD(headline)}
+          {formatAppCurrency(headline)}
         </p>
         {delta !== null ? (
           <span
@@ -83,7 +83,7 @@ export function InsightColumn({
           <YAxis hide domain={["auto", "auto"]} />
           <ChartTooltip
             cursor={{ stroke: color, strokeOpacity: 0.35, strokeDasharray: "3 3" }}
-            content={<ChartTooltipContent className="bg-card" formatter={(v) => formatUSD(Number(v))} />}
+            content={<ChartTooltipContent className="bg-card" formatter={(v) => formatAppCurrency(Number(v))} />}
           />
           <ReferenceArea
             x1={MONTH_LABELS[range.start]}
@@ -119,7 +119,7 @@ export function InsightColumn({
                   </span>
                 </td>
                 <td className="mono py-1.5 text-right font-medium tabular-nums">
-                  {formatUSD(r.amount)}
+                  {formatAppCurrency(r.amount)}
                 </td>
               </tr>
             );

@@ -19,7 +19,7 @@ import { TxEditDialog } from "@/components/tx-edit-dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { useCategories } from "@/hooks/use-categories";
 import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
-import { formatCurrency, formatUSD, getAppCurrency } from "@/lib/format";
+import { formatCurrency, formatAppCurrency, getAppCurrency } from "@/lib/format";
 import { fetchWalletSummary } from "@/lib/wallet-summary";
 import type { TxFull } from "@/lib/transactions";
 import { isoDateFromUnixSeconds } from "@/lib/wallet-dates";
@@ -135,7 +135,7 @@ function transferRows(transfers: Transfer[] | undefined, address: string): TxFul
 /**
  * USD amount -> the user's own currency.
  *
- * `formatUSD` does not do this: it prints the number with the app currency's
+ * `formatAppCurrency` does not do this: it prints the number with the app currency's
  * symbol and locale, so a dollar figure renders as "₦707" — the same number
  * wearing the wrong unit. Every dollar-denominated figure on this page goes
  * through here first.
@@ -597,16 +597,39 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
  * asset. Kept reachable in code so the two can be compared before the statement
  * pipeline exists, but the tab that would open it ships disabled.
  */
+/**
+ * Bank accounts. Not reachable yet — the tab ships disabled — so this converts
+ * its total now rather than when someone finally enables it.
+ *
+ * That is the point of the change. The same relabelling bug shipped three times
+ * on this page while each occurrence was individually harmless and invisible in
+ * review; the fourth would have sat behind a disabled tab until the day the tab
+ * was turned on. A tab nobody can reach is exactly where a known-wrong figure
+ * hides longest.
+ */
 function AccountsTab({ accounts, loading }: { accounts: NetWorthSnapshot["accounts"]; loading: boolean }) {
+  const api = useApi();
   const real = accounts.filter((account) => !account.id.startsWith("unassigned-"));
   const unassigned = accounts.filter((account) => account.id.startsWith("unassigned-"));
+  const totalUsd = accounts.reduce((sum, account) => sum + (account.balanceUsd ?? 0), 0);
+  const [total, setTotal] = useState<{ amount: number; currency: string } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void convertUsd(api, totalUsd, getAppCurrency()).then((converted) => {
+      if (!cancelled) setTotal(converted);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, totalUsd]);
 
   return (
     <>
       <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
         <StatCard
           label="Total across accounts"
-          value={formatUSD(accounts.reduce((sum, account) => sum + (account.balanceUsd ?? 0), 0))}
+          value={formatCurrency(total?.amount ?? 0, total?.currency ?? "USD")}
           hint={`${real.length} account${real.length === 1 ? "" : "s"}`}
         />
         <StatCard label="Statements" value="0" hint="Statement processing hasn&apos;t shipped yet" />

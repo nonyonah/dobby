@@ -1,7 +1,7 @@
 "use client";
 
 import { ResponsiveSankey } from "@nivo/sankey";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import type { SankeyGraph } from "@/lib/cashflow";
 
 /** Responsive Nivo Sankey for income sources flowing into spending and savings. */
@@ -32,7 +32,7 @@ export function SankeyDiagram({ graph, month }: { graph: SankeyGraph; month: str
         linkContract={3}
         enableLinkGradient
 
-        valueFormat={(value) => formatUSD(Number(value))}
+        valueFormat={(value) => formatAppCurrency(Number(value))}
         theme={{
           labels: {
             text: {

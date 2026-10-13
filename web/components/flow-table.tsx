@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import type { TxFull } from "@/lib/transactions";
 import { Button } from "./ui/button";
 import {
@@ -71,7 +71,7 @@ export function FlowTable({ title, rows, income = false, signed = false, typeLab
                   {transaction.name}
                 </TableCell>
                 <TableCell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${(signed ? transaction.amount >= 0 : income) ? "text-success-vivid" : ""}`}>
-                  {(signed ? transaction.amount >= 0 : income) ? "+" : "−"}{formatUSD(Math.abs(transaction.amount))}
+                  {(signed ? transaction.amount >= 0 : income) ? "+" : "−"}{formatAppCurrency(Math.abs(transaction.amount))}
                 </TableCell>
               </TableRow>
             ))}

@@ -1,4 +1,4 @@
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import { Card } from "./ui/card";
 
 interface StatDef {
@@ -36,7 +36,7 @@ export function MoneyStats({ stats }: { stats: StatDef[] }) {
             <h2 className="m-0 text-[12px] font-medium text-muted-foreground">{s.label}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <p className="mono m-0 text-lg font-semibold tracking-[-0.02em] tabular-nums sm:text-xl">
-                {s.minus ? "−" : ""}{(s.format ?? formatUSD)(s.value)}
+                {s.minus ? "−" : ""}{(s.format ?? formatAppCurrency)(s.value)}
               </p>
               <Delta value={s.delta} invert={s.invert} />
             </div>

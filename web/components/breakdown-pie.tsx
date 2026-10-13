@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, Tooltip } from "recharts";
 import { NativeSelect } from "./ui/native-select";
 import { CalendarIcon, FilterIcon } from "./icons";
-import { formatCurrency, formatUSD } from "@/lib/format";
+import { formatCurrency, formatAppCurrency } from "@/lib/format";
 import { MONTH_LABELS } from "@/lib/insights-data";
 import { ChartContainer, type ChartConfig } from "./ui/chart";
 import { Card } from "./ui/card";
@@ -91,7 +91,7 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
                   return (
                     <div className="rounded-lg border border-line bg-card px-3 py-2 text-xs text-card-foreground shadow-md">
                       <p className="m-0 font-semibold">{String(point.name ?? "Category")}</p>
-                      <p className="mono m-0 mt-0.5 tabular-nums text-muted-foreground">{formatUSD(Number(point.value))}</p>
+                      <p className="mono m-0 mt-0.5 tabular-nums text-muted-foreground">{formatAppCurrency(Number(point.value))}</p>
                     </div>
                   );
                 }}
@@ -104,7 +104,7 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
             </PieChart>
           </ChartContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center" aria-hidden="true">
-            <span className="mono text-xl font-semibold tabular-nums">{formatUSD(total)}</span>
+            <span className="mono text-xl font-semibold tabular-nums">{formatAppCurrency(total)}</span>
             <span className="text-[11px] text-muted-foreground">{snapshot ? "total" : monthLabel}</span>
           </div>
         </div>
@@ -117,7 +117,7 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
                 <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
                 <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{item.name}</span>
                 <span className="mono shrink-0 text-[13px] font-medium tabular-nums">
-                  {currency ? formatCurrency(item.amount, currency) : formatUSD(item.amount)}
+                  {currency ? formatCurrency(item.amount, currency) : formatAppCurrency(item.amount)}
                 </span>
                 <span className="mono w-11 shrink-0 text-right text-[12px] text-muted-foreground tabular-nums">{pct.toFixed(0)}%</span>
               </li>

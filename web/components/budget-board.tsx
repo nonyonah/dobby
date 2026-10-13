@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Cell, Pie, PieChart, Tooltip } from "recharts";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 
 import {
   budgetAmount,
@@ -72,7 +72,7 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
         </span>
         <span className="truncate text-[13px] font-medium text-foreground">{c.name}</span>
         <span className={`mono text-right text-[13px] font-medium tabular-nums ${over ? "text-danger" : "text-foreground"}`}>
-          {formatUSD(s)}
+          {formatAppCurrency(s)}
         </span>
         <span className="min-w-0">
           {isExcluded || amount <= 0 ? (
@@ -86,7 +86,7 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
           )}
         </span>
         <span className="mono text-right text-[13px] tabular-nums text-muted-foreground">
-          {isExcluded || amount <= 0 ? "—" : formatUSD(amount)}
+          {isExcluded || amount <= 0 ? "—" : formatAppCurrency(amount)}
         </span>
         <span className="flex justify-end">
           {def?.type === "percent" && !isExcluded ? (
@@ -105,13 +105,13 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
       <div className="rounded-2xl border-0 bg-card px-6 py-5">
         <div className="grid grid-cols-[1fr_140px_1fr] items-center gap-4">
           <div className="text-center">
-            <p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatUSD(summarySpent)}</p>
+            <p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatAppCurrency(summarySpent)}</p>
             <p className="m-0 text-[12px] text-muted-foreground">spent {summaryLabel}</p>
           </div>
           <div className="relative flex aspect-square h-30 w-30 items-center justify-center">
             <ChartContainer config={chartConfig} className="absolute inset-0 h-full w-full">
               <PieChart>
-                <Tooltip content={<ChartTooltipContent className="bg-card" formatter={(v) => formatUSD(Number(v))} />} />
+                <Tooltip content={<ChartTooltipContent className="bg-card" formatter={(v) => formatAppCurrency(Number(v))} />} />
                 <Pie data={donut} dataKey="value" nameKey="name" innerRadius={36} outerRadius={52} paddingAngle={2} cornerRadius={6} strokeWidth={0}>
                   {donut.map((d) => (
                     <Cell key={d.name} fill={d.fill} />
@@ -126,11 +126,11 @@ export function BudgetBoard({ budgets, categories, selectedId, onSelect }: Budge
             <button type="button" onClick={() => setSettingsOpen(true)} aria-label="Budget chart settings" title="Budget chart settings" className="absolute right-0 bottom-0 flex size-8 cursor-pointer items-center justify-center rounded-md border border-line bg-card text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><SettingsIcon /></button>
           </div>
           <div className="text-center">
-            <p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatUSD(summaryBudget)}</p>
+            <p className="mono m-0 text-[20px] font-semibold tabular-nums">{formatAppCurrency(summaryBudget)}</p>
             <p className="m-0 text-[12px] text-muted-foreground">planned {summaryLabel}</p>
           </div>
         </div>
-        {chartView === "month" ? <p className={`m-0 mt-4 text-center text-[12px] ${projectedDifference >= 0 ? "text-muted-foreground" : "text-destructive"}`}>At the current pace, you’re projected to finish {projectedDifference >= 0 ? `${formatUSD(projectedDifference)} under` : `${formatUSD(Math.abs(projectedDifference))} over`} this month’s budget.</p> : null}
+        {chartView === "month" ? <p className={`m-0 mt-4 text-center text-[12px] ${projectedDifference >= 0 ? "text-muted-foreground" : "text-destructive"}`}>At the current pace, you’re projected to finish {projectedDifference >= 0 ? `${formatAppCurrency(projectedDifference)} under` : `${formatAppCurrency(Math.abs(projectedDifference))} over`} this month’s budget.</p> : null}
       </div>
 
       <div className="mt-4 rounded-2xl border-0 bg-card px-3 py-3">

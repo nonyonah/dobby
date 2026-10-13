@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import { dayLabel, type TxFull } from "@/lib/transactions";
 import {
   budgetAmount,
@@ -123,8 +123,8 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
       </div>
 
       <p className="mono m-0 mt-3 text-[13px] tabular-nums">
-        <span className="text-[20px] font-semibold text-foreground">{formatUSD(spent)}</span>{" "}
-        <span className="text-muted-foreground">of {formatUSD(amount)} · {formatUSD(left)} left</span>
+        <span className="text-[20px] font-semibold text-foreground">{formatAppCurrency(spent)}</span>{" "}
+        <span className="text-muted-foreground">of {formatAppCurrency(amount)} · {formatAppCurrency(left)} left</span>
       </p>
 
       <ChartContainer config={config} className="aspect-auto h-[130px] w-full">
@@ -133,7 +133,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
           <YAxis hide />
           <ChartTooltip
             cursor={{ fill: "var(--chart-cursor)", fillOpacity: 0.6 }}
-            content={<ChartTooltipContent className="bg-popover" formatter={(v) => formatUSD(Number(v))} />}
+            content={<ChartTooltipContent className="bg-popover" formatter={(v) => formatAppCurrency(Number(v))} />}
           />
           <Bar dataKey="spent" fill="var(--color-spent)" radius={[3, 3, 0, 0]} maxBarSize={14} />
         </BarChart>
@@ -142,11 +142,11 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
       <div className="mt-2 grid grid-cols-2 gap-3 border-y border-soft-line py-2.5">
         <div>
           <p className="m-0 text-[12px] text-muted-foreground">Spent per year</p>
-          <p className="mono m-0 text-[13px] font-semibold tabular-nums">{formatUSD(year)}</p>
+          <p className="mono m-0 text-[13px] font-semibold tabular-nums">{formatAppCurrency(year)}</p>
         </div>
         <div className="text-right">
           <p className="m-0 text-[12px] text-muted-foreground">Avg monthly</p>
-          <p className="mono m-0 text-[13px] font-semibold tabular-nums">{formatUSD(Math.round(year / 12))}</p>
+          <p className="mono m-0 text-[13px] font-semibold tabular-nums">{formatAppCurrency(Math.round(year / 12))}</p>
         </div>
       </div>
 
@@ -166,7 +166,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
                 )}
               </span>
               <span className="flex-1 font-medium">{FEED_LABEL[k]}</span>
-              <span className="mono font-medium tabular-nums">{formatUSD(feeds[k])}</span>
+              <span className="mono font-medium tabular-nums">{formatAppCurrency(feeds[k])}</span>
             </li>
           );
         })}
@@ -183,7 +183,7 @@ export function BudgetDrawer({ catId, budgets, categories, onEdit, onToggleExclu
               {g.items.map((t) => (
                 <li key={t.id} className="flex items-center gap-2 border-b border-soft-line py-1.5 text-[13px] last:border-b-0">
                   <span className="min-w-0 flex-1 truncate font-medium">{t.name}</span>
-                  <span className="mono shrink-0 tabular-nums">{formatUSD(Math.abs(t.amount))}</span>
+                  <span className="mono shrink-0 tabular-nums">{formatAppCurrency(Math.abs(t.amount))}</span>
                 </li>
               ))}
             </ul>

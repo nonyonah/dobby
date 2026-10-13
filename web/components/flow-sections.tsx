@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import { SOURCE_COLOR_MAP, insightCategoryColor, type InsightsSummary } from "@/lib/cashflow";
 import type { TxSource } from "@/lib/finance";
 import type { TxFull } from "@/lib/transactions";
@@ -121,8 +121,8 @@ export function SpendingSection({ month, year, yearSummary, onMonthChange }: { m
           <FlowTable title="Transactions" typeLabel="Spending" filterLabel="All categories" rows={rows} />
         </div>
         <FlowNarrative title="Spending summary">
-          <p className="m-0">You spent <strong>{formatUSD(total)}</strong> this month.</p>
-          {top ? <p className="m-0"><strong>{top.name}</strong> led at {formatUSD(top.amount)} — {total > 0 ? Math.round((top.amount / total) * 100) : 0}% of everything out.</p> : null}
+          <p className="m-0">You spent <strong>{formatAppCurrency(total)}</strong> this month.</p>
+          {top ? <p className="m-0"><strong>{top.name}</strong> led at {formatAppCurrency(top.amount)} — {total > 0 ? Math.round((top.amount / total) * 100) : 0}% of everything out.</p> : null}
         </FlowNarrative>
       </div>
     </div>
@@ -151,8 +151,8 @@ export function IncomeSection({ month, year, yearSummary, onMonthChange }: { mon
           <FlowTable title="Transactions" typeLabel="Income" filterLabel="All sources" rows={rows} income />
         </div>
         <FlowNarrative title="Income summary">
-          <p className="m-0"><strong>{formatUSD(total)}</strong> came in this month.</p>
-          {top ? <p className="m-0"><strong>{top.name}</strong> carried it with {formatUSD(top.amount)} — {total > 0 ? Math.round((top.amount / total) * 100) : 0}% of everything in.</p> : null}
+          <p className="m-0"><strong>{formatAppCurrency(total)}</strong> came in this month.</p>
+          {top ? <p className="m-0"><strong>{top.name}</strong> carried it with {formatAppCurrency(top.amount)} — {total > 0 ? Math.round((top.amount / total) * 100) : 0}% of everything in.</p> : null}
         </FlowNarrative>
       </div>
     </div>

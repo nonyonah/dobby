@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "./ui/button";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import { categoryMeta, type TxFull } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
 import { CardIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
@@ -75,7 +75,7 @@ export function TxDetail({ tx, onEdit, onToggleBudget, chain }: TxDetailProps) {
         <div className="mt-1 flex items-start justify-between gap-3">
           <h2 className="m-0 text-[16px] font-semibold tracking-[-0.01em]">{tx.name}</h2>
           <p className={`mono m-0 shrink-0 text-[16px] font-semibold tabular-nums ${income ? "text-success" : "text-danger"}`}>
-            {income ? "+" : "−"}{formatUSD(Math.abs(tx.amount))}
+            {income ? "+" : "−"}{formatAppCurrency(Math.abs(tx.amount))}
           </p>
         </div>
         <p className="m-0 mt-1 text-[12px] text-muted-foreground">{tx.account}</p>

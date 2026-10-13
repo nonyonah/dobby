@@ -1,7 +1,7 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import type { StackDatum } from "@/lib/cashflow";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 
@@ -62,11 +62,11 @@ export function StackedBars({ data }: { data: StackDatum[] }) {
             tickLine={false}
             axisLine={false}
             tick={{ fill: "var(--chart-tick)", fontSize: 11 }}
-            tickFormatter={(value: number) => (Math.abs(value) >= 1000 ? `${formatUSD(value).replace(/[\d.,\s]/g, "")} ${Math.round(value / 1000)}k` : formatUSD(value))}
+            tickFormatter={(value: number) => (Math.abs(value) >= 1000 ? `${formatAppCurrency(value).replace(/[\d.,\s]/g, "")} ${Math.round(value / 1000)}k` : formatAppCurrency(value))}
           />
           <ChartTooltip
             cursor={{ fill: "var(--chart-cursor)", fillOpacity: 0.6 }}
-            content={<ChartTooltipContent className="bg-card" formatter={(value) => formatUSD(Number(value))} />}
+            content={<ChartTooltipContent className="bg-card" formatter={(value) => formatAppCurrency(Number(value))} />}
           />
           {keys.map((key, index) => (
             <Bar

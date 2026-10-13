@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 import { Skeleton } from "./ui/skeleton";
 import { EmptyState } from "./ui/empty-state";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import type { TxSource, Tx } from "@/lib/finance";
 import { ModuleCard } from "./module-card";
 import { CardIcon, EmailIcon, FileIcon, ManualIcon, ReceiptIcon, WalletIcon } from "./icons";
@@ -86,7 +86,7 @@ export function TransactionsCard() {
                 className={`mono shrink-0 text-[13px] font-medium tabular-nums ${income ? "text-success" : "text-foreground"}`}
               >
                 {income ? "+" : "−"}
-                {formatUSD(Math.abs(t.amount))}
+                {formatAppCurrency(Math.abs(t.amount))}
               </span>
             </li>
           );

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
 import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
-import { formatCurrency, formatUSD, getAppCurrency } from "@/lib/format";
+import { formatCurrency, formatAppCurrency, getAppCurrency } from "@/lib/format";
 import { MONTH_LABELS } from "@/lib/insights-data";
 import type { TxFull } from "@/lib/transactions";
 import { MoneyStats } from "@/components/money-stats";
@@ -155,13 +155,13 @@ export function StablecoinSection({
             {walletCount > 0 ? ` across ${walletCount} connected wallet${walletCount === 1 ? "" : "s"}` : ""}.
           </p>
           <p className="m-0">
-            In {monthLabel} {year}, <strong>{formatUSD(income)}</strong> came in and{" "}
-            <strong>{formatUSD(expense)}</strong> went out — a net{" "}
-            <strong>{formatUSD(earnings)}</strong>.
+            In {monthLabel} {year}, <strong>{formatAppCurrency(income)}</strong> came in and{" "}
+            <strong>{formatAppCurrency(expense)}</strong> went out — a net{" "}
+            <strong>{formatAppCurrency(earnings)}</strong>.
           </p>
           <p className="m-0">
             {busiest && busiest.amount > 0
-              ? <><strong>{busiest.name}</strong> moved the most at {formatUSD(busiest.amount)} of the {formatUSD(assets.reduce((sum, asset) => sum + asset.amount, 0))} total.</>
+              ? <><strong>{busiest.name}</strong> moved the most at {formatAppCurrency(busiest.amount)} of the {formatAppCurrency(assets.reduce((sum, asset) => sum + asset.amount, 0))} total.</>
               : <>No stablecoin movements in {monthLabel} yet.</>}
           </p>
           <p className="m-0">Only pegged stablecoin movements are counted here — yield-bearing tokens are shown separately.</p>

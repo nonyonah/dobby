@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { Bar, BarChart, Cell, XAxis, YAxis } from "recharts";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 import { ModuleCard } from "./module-card";
@@ -56,13 +56,13 @@ export function IncomeExpensesCard() {
         <div>
           <p className="m-0 text-[12px] text-muted-foreground">Income</p>
           <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
-            {formatUSD(income)}
+            {formatAppCurrency(income)}
           </p>
         </div>
         <div>
           <p className="m-0 text-[12px] text-muted-foreground">Expenses</p>
           <p className="mono m-0 text-[20px] font-semibold tracking-[-0.02em] tabular-nums">
-            {formatUSD(expenses)}
+            {formatAppCurrency(expenses)}
           </p>
         </div>
       </div>
@@ -80,13 +80,13 @@ export function IncomeExpensesCard() {
             net < 0 ? "bg-destructive" : "bg-success"
           }`}
         >
-          {net < 0 ? `−${formatUSD(Math.abs(net))} overspent` : `+${formatUSD(net)} saved`}
+          {net < 0 ? `−${formatAppCurrency(Math.abs(net))} overspent` : `+${formatAppCurrency(net)} saved`}
         </span>
       </div>
       {uncategorizedIncome > 0 || uncategorizedExpenses > 0 ? (
         <p className="m-0 mt-2 text-[12px] leading-relaxed text-muted-foreground">
-          Excluded from totals — <span className="mono tabular-nums text-foreground">{formatUSD(uncategorizedIncome)}</span> uncategorized
-          inflow · <span className="mono tabular-nums text-foreground">{formatUSD(uncategorizedExpenses)}</span> uncategorized outflow.
+          Excluded from totals — <span className="mono tabular-nums text-foreground">{formatAppCurrency(uncategorizedIncome)}</span> uncategorized
+          inflow · <span className="mono tabular-nums text-foreground">{formatAppCurrency(uncategorizedExpenses)}</span> uncategorized outflow.
           Categorize them in Transactions to count them.
         </p>
       ) : null}
@@ -96,7 +96,7 @@ export function IncomeExpensesCard() {
           <YAxis hide />
           <ChartTooltip
             cursor={{ fill: "var(--chart-cursor)", fillOpacity: 0.6 }}
-            content={<ChartTooltipContent className="bg-card" formatter={(value) => formatUSD(Number(value))} />}
+            content={<ChartTooltipContent className="bg-card" formatter={(value) => formatAppCurrency(Number(value))} />}
           />
           <Bar dataKey="v" radius={[6, 6, 0, 0]}>
             {data.map((d) => (

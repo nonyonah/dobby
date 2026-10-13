@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -22,6 +22,21 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 const read = (relative: string) => readFileSync(join(ROOT, relative), "utf8");
+
+/** Every .ts/.tsx under a directory, repo-relative so `read` can open it. */
+function walk(relative: string): string[] {
+  const out: string[] = [];
+  const visit = (current: string) => {
+    for (const entry of readdirSync(join(ROOT, current), { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name === ".next") continue;
+      const next = join(current, entry.name);
+      if (entry.isDirectory()) visit(next);
+      else if (/\.tsx?$/.test(entry.name)) out.push(next);
+    }
+  };
+  visit(relative);
+  return out;
+}
 
 const apiSource = read("api/src/lib/stablecoins.ts");
 const webSource = read("web/lib/stablecoins.ts");
@@ -113,7 +128,42 @@ describe("net worth pricing", () => {
   });
 });
 
-describe("formatUSD is not a conversion", () => {
+describe("the misleading formatter is gone", () => {
+  /*
+   * `formatUSD` was renamed to `formatAppCurrency` rather than banned.
+   *
+   * The bug shipped three times because the name read as "format these dollars"
+   * while the function only picked a symbol. Reviewers saw a correct number and
+   * moved on. A call site can be wrong for reasons no test sees, but a name that
+   * lies about what the function does can be removed — so it was.
+   *
+   * The ban is on the name, not the behaviour: most figures in the app are
+   * already converted by the API and this is exactly the right call for them.
+   */
+  it("no longer exports a formatter that claims to convert dollars", () => {
+    const format = read("web/lib/format.ts");
+    expect(format).toMatch(/export function formatAppCurrency\(/);
+    expect(format).not.toMatch(/export function formatUSD\(/);
+  });
+
+  it("is not called anywhere under its old name", () => {
+    const files = [
+      ...walk("web/components"),
+      ...walk("web/app"),
+      ...walk("web/lib"),
+      ...walk("web/hooks"),
+    ];
+    const offenders = files.filter((file) => /\bformatUSD\s*\(/.test(read(file)));
+    expect(offenders, `still calling formatUSD: ${offenders.join(", ")}`).toEqual([]);
+  });
+
+  it("does not check in a build artifact", () => {
+    // The walk above would otherwise pass vacuously if it globbed .next.
+    expect(walk("web/components").length).toBeGreaterThan(10);
+  });
+});
+
+describe("formatAppCurrency is not a conversion", () => {
   /*
    * The third time. `formatUSD` reads the app currency and prints the number
    * with that currency's symbol and locale — it converts nothing. So every

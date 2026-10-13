@@ -63,7 +63,22 @@ export function getAppCurrency(): string {
   return readStoredCurrency() ?? "NGN";
 }
 
-export function formatUSD(n: number): string {
+/**
+ * Formats a figure that is ALREADY in the app's currency.
+ *
+ * The name used to be `formatUSD`, which is the whole problem: it reads as
+ * "format these dollars", and it does not convert a thing. It takes the app
+ * currency preference and prints the number with that currency's symbol and
+ * locale, so a genuine dollar figure handed to it comes out wearing the wrong
+ * unit — $707 rendered as ₦707. That shipped three times on the wallet page
+ * before the name changed, each time looking correct in review because the
+ * number was right.
+ *
+ * If the value is in dollars, convert it first with the API and use
+ * `formatCurrency(amount, currency)`, or use `convertUsd` on the wallet page.
+ * This function is only for values the API already converted.
+ */
+export function formatAppCurrency(n: number): string {
   const currency = getAppCurrency();
   return new Intl.NumberFormat(CURRENCY_LOCALES[currency] ?? "en-US", {
     style: "currency",
@@ -73,7 +88,13 @@ export function formatUSD(n: number): string {
   }).format(n);
 }
 
-/** Formats an amount in an explicit currency (unlike formatUSD, which reads the app preference). */
+/**
+ * Formats an amount in an explicit currency.
+ *
+ * This is the one to reach for when the figure is not already in the app's
+ * currency — a value the API converted, or one converted here.
+ * `formatAppCurrency` assumes the number is right and only picks the symbol.
+ */
 export function formatCurrency(amount: number, currency: string): string {
   try {
     return new Intl.NumberFormat(CURRENCY_LOCALES[currency] ?? "en-US", {

@@ -41,7 +41,7 @@ import {
   TagIcon,
   UploadIcon,
 } from "./icons";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import {
   categoryMeta,
   dayLabel,
@@ -246,7 +246,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
     const pattern = recurringByTransactionId.get(row.id);
     if (pattern) {
       const next = new Date(`${pattern.nextDate}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      return <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring · {pattern.cadence} · next {next} · {formatUSD(pattern.amount)}</span>;
+      return <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring · {pattern.cadence} · next {next} · {formatAppCurrency(pattern.amount)}</span>;
     }
     if (row.recurring) return <span className="mt-0.5 block truncate text-[11px] font-medium text-primary">Recurring</span>;
     return null;
@@ -536,12 +536,12 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
         </div>
         <p className="mono m-0 text-[12px] tabular-nums" aria-live="polite">
           <span className="text-muted-foreground">Spent </span>
-          <span className="font-semibold text-foreground">{formatUSD(totals.spent)}</span>
+          <span className="font-semibold text-foreground">{formatAppCurrency(totals.spent)}</span>
           <span className="text-muted-foreground"> · Income </span>
-          <span className="font-semibold text-success">{formatUSD(totals.income)}</span>
+          <span className="font-semibold text-success">{formatAppCurrency(totals.income)}</span>
           <span className="text-muted-foreground"> · Net </span>
           <span className={`font-semibold ${totals.net >= 0 ? "text-success" : "text-danger"}`}>
-            {totals.net >= 0 ? "+" : "−"}{formatUSD(Math.abs(totals.net))}
+            {totals.net >= 0 ? "+" : "−"}{formatAppCurrency(Math.abs(totals.net))}
           </span>
         </p>
       </div>
@@ -599,7 +599,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                       <TableCell className="hidden px-3 py-2.5 md:table-cell"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-primary text-primary-foreground" : "border-transparent bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></TableCell>
                       <TableCell className="hidden px-3 py-2.5 md:table-cell"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"><SIcon /></span></TableCell>
 
-                      <TableCell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-success" : "text-danger"}`}>{income ? "+" : "−"}{formatUSD(Math.abs(t.amount))}</TableCell>
+                      <TableCell className={`mono px-3 py-2.5 text-right font-medium tabular-nums ${income ? "text-success" : "text-danger"}`}>{income ? "+" : "−"}{formatAppCurrency(Math.abs(t.amount))}</TableCell>
                     </TableRow>
                   </Fragment>
                 );

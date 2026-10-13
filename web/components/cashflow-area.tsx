@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import { MONTH_LABELS, monthOverlap, YEAR, type DayRange } from "@/lib/insights-data";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "./ui/chart";
 
@@ -66,7 +66,7 @@ export function CashflowArea({ range }: { range: DayRange }) {
           />
           <ChartTooltip
             cursor={{ stroke: "var(--chart-tick)", strokeOpacity: 0.35, strokeDasharray: "3 3" }}
-            content={<ChartTooltipContent className="bg-card" formatter={(v) => formatUSD(Number(v))} />}
+            content={<ChartTooltipContent className="bg-card" formatter={(v) => formatAppCurrency(Number(v))} />}
           />
           <Area dataKey="income" type="monotone" stroke="var(--color-income)" strokeWidth={2} fill="url(#riftCashIn)" dot={false} activeDot={{ r: 3.5, fill: "var(--color-income)", stroke: "var(--card)", strokeWidth: 2 }} />
           <Area dataKey="expenses" type="monotone" stroke="var(--color-expenses)" strokeWidth={2} fill="url(#riftCashOut)" dot={false} activeDot={{ r: 3.5, fill: "var(--color-expenses)", stroke: "var(--card)", strokeWidth: 2 }} />

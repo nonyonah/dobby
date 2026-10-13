@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useApi } from "@/hooks/use-api";
-import { formatUSD } from "@/lib/format";
+import { formatAppCurrency } from "@/lib/format";
 import type { Category } from "@/lib/finance";
 import { Meter, ModuleCard } from "./module-card";
 
@@ -29,8 +29,8 @@ export function BudgetSnapshotCard() {
   return (
     <ModuleCard title="Budget snapshot" linkLabel="View all">
       <p className="m-0 text-[13px] font-medium text-foreground">
-        <span className="mono font-semibold tabular-nums">{formatUSD(spent)}</span>{" "}
-        <span className="font-normal text-muted-foreground">of {formatUSD(budgetLimit)} spent</span>
+        <span className="mono font-semibold tabular-nums">{formatAppCurrency(spent)}</span>{" "}
+        <span className="font-normal text-muted-foreground">of {formatAppCurrency(budgetLimit)} spent</span>
       </p>
       <div className="mt-2">
         <Meter value={(spent / budgetLimit) * 100} tone="green" />
@@ -52,13 +52,13 @@ export function BudgetSnapshotCard() {
                 {c.name}
               </span>
               <span className={`mono shrink-0 font-medium tabular-nums ${over ? "text-danger" : "text-foreground"}`}>
-                {formatUSD(c.spent)}
+                {formatAppCurrency(c.spent)}
               </span>
               <span className="w-24 shrink-0">
                 <Meter value={(c.spent / c.budget) * 100} tone={over ? "red" : "green"} />
               </span>
               <span className="mono w-14 shrink-0 text-right text-[12px] text-muted-foreground tabular-nums">
-                {formatUSD(c.budget)}
+                {formatAppCurrency(c.budget)}
               </span>
             </li>
           );
