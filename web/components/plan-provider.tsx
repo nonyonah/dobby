@@ -185,6 +185,41 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   // Signed-out users are never "loading": they simply have no access.
   const loading = !isLoaded ? true : isSignedIn ? !loaded : false;
 
+  /*
+   * The countdown has to move on its own.
+   *
+   * `trialDaysLeft` comes from the server's answer to `/v1/me`, which is fetched
+   * once when the provider mounts. The server rounds with
+   * `Math.ceil(daysRemaining / 86_400_000)`, so without this the pill sat on
+   * "7 days" until the page was reloaded — which reads as a frozen counter even
+   * though the number underneath was right.
+   *
+   * Recomputed from the end date on the same rounding rule the server uses,
+   * rather than by re-fetching, so the two cannot disagree by a day at the
+   * boundary. `trialEndsAt` is the server's own value, so this only re-applies
+   * its arithmetic to the current clock rather than inventing a second opinion
+   * about when the trial ends.
+   */
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (trialEndsAt === null) return;
+    const id = window.setInterval(() => setTick((current) => current + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, [trialEndsAt]);
+
+  const liveTrialDaysLeft = useMemo(() => {
+    // No end date means there is nothing to count down to, so the server's own
+    // answer stands.
+    if (entitlement.trialDaysLeft === null || trialEndsAt === null) return entitlement.trialDaysLeft;
+    // Same `Math.ceil(remaining / 86_400_000)` the server uses, so the two agree
+    // at the boundary instead of the pill claiming a day the API does not.
+    const endsAt = new Date(trialEndsAt).getTime();
+    // An unparseable date is the server's problem to report, not something to
+    // render as "0 days left" and quietly hide a live trial behind.
+    if (!Number.isFinite(endsAt)) return entitlement.trialDaysLeft;
+    return Math.max(0, Math.ceil((endsAt - Date.now()) / 86_400_000));
+  }, [entitlement.trialDaysLeft, trialEndsAt, tick]);
+
   const value = useMemo(
     () => ({
       plan,
@@ -195,14 +230,14 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       // thing it cannot possibly be true of.
       expired: !entitlement.isPro && entitlement.trialStarted && loaded,
       trialStarted: entitlement.trialStarted,
-      trialDaysLeft: entitlement.trialDaysLeft,
+      trialDaysLeft: liveTrialDaysLeft,
       trialEndsAt,
       loading,
       me,
       refresh,
       meFailed,
     }),
-    [plan, entitlement, trialEndsAt, loading, loaded, me, refresh, meFailed],
+    [plan, entitlement, trialEndsAt, loading, loaded, me, refresh, meFailed, liveTrialDaysLeft],
   );
 
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;

@@ -67,8 +67,20 @@ export function IncomeExpensesCard() {
         </div>
       </div>
       <div className="mt-2">
-        <span className="inline-flex items-center rounded-full border-transparent bg-success px-2 py-0.5 text-[12px] font-semibold text-white">
-          +{formatUSD(net)} saved
+        {/*
+          Sign and wording both follow the number.
+
+          This hardcoded "+{net} saved" and a green pill regardless of value, so a
+          month that overspent rendered as "+-$500 saved" in green — which reads
+          as a gain, and is the opposite of what happened. A deficit is a deficit
+          here, and saying so is the whole value of the line.
+        */}
+        <span
+          className={`inline-flex items-center rounded-full border-transparent px-2 py-0.5 text-[12px] font-semibold text-white ${
+            net < 0 ? "bg-destructive" : "bg-success"
+          }`}
+        >
+          {net < 0 ? `−${formatUSD(Math.abs(net))} overspent` : `+${formatUSD(net)} saved`}
         </span>
       </div>
       {uncategorizedIncome > 0 || uncategorizedExpenses > 0 ? (
