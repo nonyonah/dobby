@@ -63,12 +63,33 @@ function SectionHead({
   );
 }
 
+/**
+ * Deliberately a plain anchor rather than `next/link`, and deliberately so only
+ * for the auth routes.
+ *
+ * Clerk lazy-loads its UI bundle, and on a client-side navigation that load
+ * cannot start until React has hydrated — so it happens *after* the click, in
+ * series, on the critical path. A full document load puts it in parallel with
+ * the HTML and the app bundle instead, which is the difference between the sign
+ * up form appearing immediately and the browser giving up on it: the whole page
+ * failed once with `ChunkLoadError … type: "timeout"` fetching Clerk's chunk
+ * from their CDN.
+ *
+ * The cost is a document reload instead of a client-side transition, which is
+ * the right trade for the one journey a user cannot complete without.
+ */
 function PrimaryCta({ href, children }: { href: string; children: React.ReactNode }) {
+  const isAuth = href.startsWith("/sign-");
+  const className = "inline-flex h-10 items-center rounded-[50px] bg-primary px-5 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
+  if (isAuth) {
+    return (
+      <a href={href} className={className}>
+        {children}
+      </a>
+    );
+  }
   return (
-    <Link
-      href={href}
-      className="inline-flex h-10 items-center rounded-[50px] bg-primary px-5 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-    >
+    <Link href={href} className={className}>
       {children}
     </Link>
   );

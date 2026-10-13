@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { CheckIcon } from "@/components/icons";
 import { Switch } from "@/components/ui/switch";
 import { trialLength } from "@/lib/trial";
@@ -100,12 +99,12 @@ export function PricingCard() {
             </ul>
           </div>
           <div className="flex flex-col gap-2 border-t border-line pt-5">
-            <Link
+            <a
               href="/sign-up"
               className="inline-flex h-10 items-center justify-center rounded-[50px] bg-card px-5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
             >
               Start with Free
-            </Link>
+            </a>
           </div>
         </div>
       </div>
@@ -142,12 +141,12 @@ export function PricingCard() {
         </div>
 
         <div className="flex flex-col gap-2 border-t border-line pt-5">
-          <Link
+          <a
             href="/sign-up"
             className="inline-flex h-10 items-center justify-center rounded-[50px] bg-primary px-5 text-[13px] font-medium text-primary-foreground outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
           >
             {`Start Pro — ${trialLength()} trial`}
-          </Link>
+          </a>
           <p className="m-0 text-center text-[12px] text-faint">No card required to start.</p>
         </div>
       </div>
