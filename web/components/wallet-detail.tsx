@@ -16,8 +16,9 @@ import { useApi } from "@/hooks/use-api";
 import { toast } from "@/components/ui/toast";
 import { TxDetail } from "@/components/tx-detail";
 import { TxEditDialog } from "@/components/tx-edit-dialog";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { useCategories } from "@/hooks/use-categories";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, formatAppCurrency, getAppCurrency } from "@/lib/format";
 import { fetchWalletSummary } from "@/lib/wallet-summary";
@@ -176,6 +177,7 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const { categories } = useCategories();
+  const isMobile = useIsMobile();
   /*
    * Syncing is a separate act from loading. Loading reads a live provider proxy;
    * syncing writes this wallet's transfers into the ledger, which is what
@@ -559,10 +561,24 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
           it moved, and to categorise it. A drawer rather than a dialog so it
           sits over the activity list it came from, which is where a user
           compares two rows against each other. */}
-      <Drawer open={selected !== null} onOpenChange={(open) => { if (!open) setDetailId(null); }}>
+      {/* Same drawer as the transactions table, to the letter: right-hand slide
+          on desktop, swipe-down on a phone, same width, same header treatment.
+          A second design here meant two things to learn for one action. */}
+      <Drawer
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailId(null);
+        }}
+        showSwipeHandle={isMobile}
+        swipeDirection={isMobile ? "down" : "right"}
+      >
         <DrawerContent className="[--drawer-content-width:min(25rem,calc(100vw-4rem))] sm:[--drawer-content-width:25rem]">
-          <DrawerHeader>
-            <DrawerTitle>Transfer</DrawerTitle>
+          {/* Visually hidden, as on the transactions page: the heading names the
+              panel for assistive tech without adding a second title above the
+              amount the drawer already leads with. */}
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Transfer details</DrawerTitle>
+            <DrawerDescription>Chain, direction, asset and amount for this on-chain transfer.</DrawerDescription>
           </DrawerHeader>
           {selected ? (
             <div className="scrollbar-hide flex-1 overflow-y-auto px-6 pt-2 pb-6">

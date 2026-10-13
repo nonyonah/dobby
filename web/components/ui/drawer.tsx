@@ -33,6 +33,32 @@ function Drawer({
   showSwipeHandle?: boolean
 }) {
   const hasSnapPoints = snapPoints != null && snapPoints.length > 0
+  const open = props.open ?? false
+
+  /*
+   * Lock the app's scroll container, not just the document.
+   *
+   * Base UI locks `document.body`, which is correct for a page that scrolls at
+   * the window. This app does not: `Shell` scrolls an inner div, so the body has
+   * no overflow and the library's lock has nothing to act on. The result was the
+   * page still scrolling behind an open drawer, showing two scrollbars at once —
+   * the drawer's and the shell's — and a wheel over the drawer also moving the
+   * content behind it.
+   */
+  React.useEffect(() => {
+    if (!modal || !open) return
+    const scrollers = document.querySelectorAll<HTMLElement>("[data-shell-scroll]")
+    if (scrollers.length === 0) return
+    scrollers.forEach((element) => {
+      element.style.overflowY = "hidden"
+    })
+    return () => {
+      scrollers.forEach((element) => {
+        element.style.overflowY = ""
+      })
+    }
+  }, [modal, open])
+
   const contextValue = React.useMemo(
     () => ({ hasSnapPoints, modal, showSwipeHandle, swipeDirection }),
     [hasSnapPoints, modal, showSwipeHandle, swipeDirection]

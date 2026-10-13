@@ -114,7 +114,11 @@ export function Shell({ title, active, children }: ShellProps) {
         <main className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-background shadow-none">
           <TopBar title={title} onCreate={setQuickCreate} />
           <TrialExpiredBanner />
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {/* Tagged so a modal drawer can lock *this* element. The app scrolls a
+              div rather than the document, so Base UI's own scroll lock — which
+              targets the body — has nothing to act on, and the page kept
+              scrolling behind an open drawer. */}
+          <div data-shell-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {children}
           </div>
         </main>
