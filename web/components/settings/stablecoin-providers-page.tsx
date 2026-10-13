@@ -163,7 +163,7 @@ export function StablecoinProvidersPage() {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-8">
-      <h1 className="m-0 text-[20px] font-semibold tracking-[-0.01em]">Stablecoin providers</h1>
+      <h1 data-tour="stablecoin-providers" className="m-0 text-[20px] font-semibold tracking-[-0.01em]">Stablecoin providers</h1>
       <p className="m-0 mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
         Pick the ones you use and add their addresses. Dobby already matches bank narrations by name; an address lets it also
         recognise transfers on chain. Leaving an address empty is fine — that provider is then matched by name only.

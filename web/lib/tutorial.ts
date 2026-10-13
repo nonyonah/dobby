@@ -22,6 +22,32 @@ export interface TutorialStep {
   body: string;
   side?: "top" | "right" | "bottom" | "left";
   align?: "start" | "center" | "end";
+  /**
+   * Whether this step applies to the person taking it.
+   *
+   * Needed because some steps are jurisdiction-specific. A tour that tells a
+   * US user about Nigerian offramps is not a longer tour, it is a wrong one —
+   * and the providers page it points at is not even reachable for them.
+   */
+  when?: () => boolean;
+}
+
+/**
+ * The steps that apply right now.
+ *
+ * `when` is evaluated at the moment the tour starts, not at import, because the
+ * jurisdiction arrives with the profile and can change mid-session.
+ */
+export function activeTutorialSteps(): TutorialStep[] {
+  return TUTORIAL_STEPS.filter((step) => {
+    try {
+      return step.when?.() ?? true;
+    } catch {
+      // A step whose condition throws is dropped rather than taking the whole
+      // tour down with it — one broken predicate should cost one step.
+      return false;
+    }
+  });
 }
 
 export const TUTORIAL_ENABLED_KEY = "dobby-tutorial-enabled";
@@ -97,6 +123,48 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     align: "start",
     title: "Your tax, worked out",
     body: "Dobby counts the deductible expenses you've already categorised, estimates what you'll owe on your income, and keeps the filing checklist beside it. Set your jurisdiction once and these follow it.",
+  },
+  {
+    /**
+     * No `href`: the Connections section is on the Settings page the previous
+     * step already navigated to, so the tour does not bounce back and forth.
+     */
+    anchor: "settings-connections",
+    side: "right",
+    align: "start",
+    title: "Add what you hold",
+    body: "Connect a Base or Solana address and Dobby tracks its balances and activity. Nothing is read without you asking it to.",
+  },
+  {
+    href: "/settings/categories-rules",
+    anchor: "categories-rules",
+    side: "bottom",
+    align: "start",
+    title: "Set it up once",
+    body: "Rename or add categories, and save a rule like \"always call this Shopping\" so the same merchant is classified the same way every time.",
+  },
+  {
+    /**
+     * Nigeria only. Offramps and their addresses are meaningless to anyone
+     * filing elsewhere, and the page this points at is not in their Settings at
+     * all — sending them here would be a 404 with a lecture attached.
+     */
+    // Excluded only when a non-Nigerian jurisdiction is explicitly stored, so
+    // this reads as "hide for everyone else" rather than "show only if a flag
+    // is set". The flag is written when the jurisdiction is changed and never on
+    // load, so requiring it would hide the step from the default account — the
+    // one most likely to want it.
+    when: () => {
+      if (typeof window === "undefined") return true;
+      const stored = window.localStorage?.getItem("dobby-tax-jurisdiction");
+      return stored === null || stored === undefined || stored === "" || stored === "nigeria";
+    },
+    href: "/settings/stablecoin-providers",
+    anchor: "stablecoin-providers",
+    side: "bottom",
+    align: "start",
+    title: "Name your providers",
+    body: "Add the exchanges you cash out through, with their addresses, so Dobby can tell a cash-out from an ordinary transfer.",
   },
   {
     href: "/settings",

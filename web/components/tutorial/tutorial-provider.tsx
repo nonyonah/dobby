@@ -8,6 +8,7 @@ import {
   TUTORIAL_DONE_KEY,
   TUTORIAL_ENABLED_KEY,
   TUTORIAL_STEPS,
+  activeTutorialSteps,
   clearTutorialCompleted,
   readTutorialCompleted,
   readTutorialEnabled,
@@ -145,6 +146,11 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
   const [running, setRunning] = useState(false);
   const instanceRef = useRef<ReturnType<typeof driver> | null>(null);
   const pendingRef = useRef<number | null>(null);
+  // The step list this run is driving. Held as a ref because the route-change
+  // effect resolves the pending index against it, and that effect runs outside
+  // `start` — recomputing the list there could index a different array from the
+  // one driver.js was given.
+  const stepsRef = useRef<TutorialStep[]>(TUTORIAL_STEPS);
   // Holds the scheduled start so an unrelated re-render cannot cancel it.
   const timerRef = useRef<number | null>(null);
   /*
@@ -190,8 +196,17 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       instanceRef.current?.destroy();
       setRunning(true);
 
+      /*
+       * Resolved once per run, not per callback. driver.js indexes into the
+       * array it was given, so the routing guards and the pending marker have to
+       * index the same list — recomputing it per call would let a step be
+       * skipped or repeated the moment a predicate's answer changed mid-tour.
+       */
+      const stepsForThisRun = activeTutorialSteps();
+      stepsRef.current = stepsForThisRun;
+
       const instance = driver({
-        steps: TUTORIAL_STEPS.map(toDriveStep),
+        steps: stepsForThisRun.map(toDriveStep),
         // The tour is guidance, not a gate: Escape and the close control must
         // always work, and the page underneath stays usable.
         allowClose: true,
@@ -219,7 +234,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
 
         onNextClick: (_element, _step, opts) => {
           const index = opts.index ?? 0;
-          const next = TUTORIAL_STEPS[index + 1];
+          const next = stepsForThisRun[index + 1];
           // Navigate first; advancing here would highlight a node the next
           // route has not rendered yet. The pathname effect below re-applies
           // the step once the route settles.
@@ -233,7 +248,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
 
         onPrevClick: (_element, _step, opts) => {
           const index = opts.index ?? 0;
-          const previous = TUTORIAL_STEPS[index - 1];
+          const previous = stepsForThisRun[index - 1];
           if (previous?.href && previous.href !== hrefRef.current) {
             pendingRef.current = index - 1;
             routerRef.current.push(previous.href);
@@ -268,7 +283,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       // index 0 straight away would resolve its anchor against the wrong route,
       // find nothing, and skip straight past it. Navigate first and let the
       // pathname effect below start the tour once the route has settled.
-      const first = TUTORIAL_STEPS[0];
+      const first = stepsForThisRun[0];
       if (first?.href && first.href !== hrefRef.current) {
         pendingRef.current = 0;
         routerRef.current.push(first.href!);
@@ -302,7 +317,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const pending = pendingRef.current;
     if (pending === null) return;
-    const step = TUTORIAL_STEPS[pending];
+    const step = stepsRef.current[pending];
     if (step?.href) {
       if (routeOf(step.href) !== pathname) return;
       // The route can commit before the query has: advancing on route alone

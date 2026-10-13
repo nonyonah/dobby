@@ -65,9 +65,16 @@ type OneTimeState = {
 const formatDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * `tourId` marks a section for the product tour.
+ *
+ * Optional, because most sections are not worth stopping on — a step that
+ * highlights something nobody needs explained trains people to click through the
+ * tour, and then the steps that matter get skipped too.
+ */
+function Section({ label, children, tourId }: { label: string; children: React.ReactNode; tourId?: string }) {
   return (
-    <section aria-labelledby={`${label.toLowerCase().replaceAll(" ", "-")}-heading`}>
+    <section aria-labelledby={`${label.toLowerCase().replaceAll(" ", "-")}-heading`} data-tour={tourId}>
       <h2 id={`${label.toLowerCase().replaceAll(" ", "-")}-heading`} className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </h2>
@@ -879,7 +886,7 @@ export function SettingsPage() {
             <Row label="Country" description="Sets your currency and which payment options you see at checkout."><SelectField id="country" label="Country" value={country} onValueChange={(value) => { const next = value ?? "nigeria"; setCountry(next); /* Applying straight away keeps Currency in step with Country instead of waiting for Save and leaving the two controls disagreeing. The currency comes from the billing-country table so the two cannot drift apart. */ const match = BILLING_COUNTRIES.find((entry) => entry.value === next); if (match) handleCurrencyChange(match.currency.toLowerCase()); }} options={COUNTRY_OPTIONS} /></Row>
           </Section>
 
-          <Section label="Connections">
+          <Section label="Connections" tourId="settings-connections">
             {wallets.length === 0 ? (
               <Row
                 label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-secondary"><HugeiconsIcon icon={WalletIcon} size={16}  /></span><span><span className="block">Wallet</span><span className="mt-0.5 block text-[12px] font-medium leading-4 text-muted-foreground">No wallets connected yet</span></span></span>}

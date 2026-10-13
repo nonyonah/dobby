@@ -135,7 +135,7 @@ export function CategoriesRulesPage() {
       <div className="mx-auto max-w-[680px]">
       <div className="mb-6">
         <Link href="/settings" className="mb-3 inline-flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-white"><HugeiconsIcon icon={ArrowLeftIcon} size={14}  /> Settings</Link>
-        <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-[18px] font-semibold tracking-[-0.01em] text-foreground">Categories &amp; rules</h1><p className="mt-1 text-[13px] text-muted-foreground">Control how imported transactions are organized and classified.</p></div></div>
+        <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 data-tour="categories-rules" className="text-[18px] font-semibold tracking-[-0.01em] text-foreground">Categories &amp; rules</h1><p className="mt-1 text-[13px] text-muted-foreground">Control how imported transactions are organized and classified.</p></div></div>
       </div>
 
       <div className="grid max-w-4xl gap-5">
