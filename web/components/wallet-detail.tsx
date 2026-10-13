@@ -22,6 +22,7 @@ import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, formatUSD, getAppCurrency } from "@/lib/format";
 import { fetchWalletSummary } from "@/lib/wallet-summary";
 import type { TxFull } from "@/lib/transactions";
+import { isoDateFromUnixSeconds } from "@/lib/wallet-dates";
 import { DetailSkeleton, ChartSkeleton, LoadingRegion, StatSkeleton, TableSkeletonRows } from "@/components/loading-skeletons";
 
 /**
@@ -68,7 +69,8 @@ type Transfer = {
   to?: string;
   value?: number | string | null;
   asset?: string | null;
-  metadata?: { blockTimestamp?: number | null } | null;
+  /** Not always a number: the provider sends strings on some responses. */
+  metadata?: { blockTimestamp?: number | string | null } | null;
 };
 
 /**
@@ -119,10 +121,7 @@ function transferRows(transfers: Transfer[] | undefined, address: string): TxFul
       id: transfer.hash ?? `transfer-${index}`,
       name: counterparty ? `${incoming ? "Received from" : "Sent to"} ${counterparty}` : "Transfer",
       account: transfer.asset ?? "—",
-      // Alchemy reports unix seconds. Left blank when it is absent rather than
-      // substituted with today, which would sort a two-year-old transfer to the
-      // top of the list and read as the most recent thing that happened.
-      date: transfer.metadata?.blockTimestamp ? new Date(transfer.metadata.blockTimestamp * 1000).toISOString().slice(0, 10) : "",
+      date: isoDateFromUnixSeconds(transfer.metadata?.blockTimestamp),
       amount: incoming ? value : -value,
       category: "transfer",
       taxable: false,

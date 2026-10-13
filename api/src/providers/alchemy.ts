@@ -10,7 +10,14 @@ export type BaseAssetTransfer = {
   asset?: string;
   rawContract?: { address?: string };
   /** Present because every call requests it, and the backfill dates by it. */
-  metadata?: { blockTimestamp?: number; blockNum?: string };
+  /**
+   * `blockTimestamp` is typed `number` because that is what it usually is, but
+   * the provider sends it as a decimal or hex string on some responses. Both
+   * consumers got this wrong in opposite directions — the browser crashed on
+   * `.toISOString`, the importer skipped the row outright — so the type now
+   * admits what actually arrives.
+   */
+  metadata?: { blockTimestamp?: number | string; blockNum?: string };
 };
 export type WalletBalance = { symbol: string; amount: number; address?: string };
 
@@ -97,7 +104,7 @@ export async function getBaseWalletTransfers(address: string, category: "from" |
     }
   }
 
-  return [...merged.values()].sort((a, b) => (b.metadata?.blockTimestamp ?? 0) - (a.metadata?.blockTimestamp ?? 0));
+  return [...merged.values()].sort((a, b) => Number(b.metadata?.blockTimestamp ?? 0) - Number(a.metadata?.blockTimestamp ?? 0));
 }
 
 type TransferFilter = { fromAddress: string | undefined; toAddress: string | undefined };
@@ -298,7 +305,7 @@ export async function getSolanaWalletTransfers(address: string): Promise<BaseAss
     }
   }
 
-  return [...merged.values()].sort((a, b) => (b.metadata?.blockTimestamp ?? 0) - (a.metadata?.blockTimestamp ?? 0));
+  return [...merged.values()].sort((a, b) => Number(b.metadata?.blockTimestamp ?? 0) - Number(a.metadata?.blockTimestamp ?? 0));
 }
 
 /** How many SPL mints to resolve before we stop, so spam cannot stall a request. */

@@ -17,7 +17,7 @@ export interface WalletSummaryPayload {
     hash?: string | null;
     from?: string | null;
     to?: string | null;
-    metadata?: { blockTimestamp?: number | null } | null;
+    metadata?: { blockTimestamp?: number | string | null } | null;
   }>;
 }
 

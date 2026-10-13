@@ -50,9 +50,23 @@ function directionOf(transfer: BaseAssetTransfer, wallet: string): TransferDirec
 }
 
 /** Alchemy returns unix seconds; the ledger stores a Date. */
+/**
+ * When a transfer happened, or null if it cannot be placed.
+ *
+ * Accepts a string as readily as a number. The provider sends
+ * `blockTimestamp` as a string on some responses and a hex string on others, and
+ * this used to require `typeof seconds === "number"` — so every transfer with a
+ * string timestamp was silently skipped instead of imported. It is the same
+ * defect that crashed the wallet page in the browser, where the identical value
+ * reached `toISOString` unguarded and threw; one place dropped the row, the
+ * other took the page down.
+ */
 function occurredAt(transfer: BaseAssetTransfer): Date | null {
-  const seconds = transfer.metadata?.blockTimestamp;
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return null;
+  const raw = transfer.metadata?.blockTimestamp as number | string | undefined | null;
+  if (raw === null || raw === undefined || raw === "") return null;
+  const trimmed = typeof raw === "string" ? raw.trim() : raw;
+  const seconds = typeof trimmed === "string" && /^0x/i.test(trimmed) ? Number.parseInt(trimmed, 16) : Number(trimmed);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
   const date = new Date(seconds * 1000);
   return Number.isNaN(date.getTime()) ? null : date;
 }
