@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { LandingNav } from "@/components/landing/landing-nav";
+import { TrialBanner } from "@/components/landing/trial-banner";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { PricingCard } from "@/components/landing/pricing-card";
 import { FeatureAccordion } from "@/components/landing/feature-accordion";
@@ -247,6 +248,7 @@ export default async function LandingPage() {
     // classes are all tokens, light mode ended up painting dark text onto that
     // forced dark ground. The tokens flip with the rest of the app.
     <div id="top" className="min-h-dvh bg-background">
+      <TrialBanner />
       <LandingNav />
       <main id="main">
         <Hero />

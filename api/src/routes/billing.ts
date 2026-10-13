@@ -11,6 +11,7 @@ import { logger } from "../lib/logger.js";
 import { SUBSCRIPTION_PRICE_ANCHORS, bachsFetch, billingConfigured, cancelProSubscription, createOneTimeCheckout, createPortalSession, createProCheckout, logMissingPaymentMethods, retrieveSubscriptionOrNull, verifyBachsSignature, warnIfOneTimeUnavailable, type BillingInterval, type PlanPrice, type SubscriptionState } from "../lib/bachs.js";
 import { loadEffectivePlan } from "../middleware/plan.js";
 import { entitlementSelect, getEntitlement, trialWindowFrom, type EntitlementRow } from "../lib/entitlement.js";
+import { TRIAL_CONVERTED, TRIAL_STARTED, recordTrialEvent } from "../billing/trial-events.js";
 import { notifyTrialStarted } from "../lib/mailer.js";
 import { appUrl, publicAppUrl } from "../emails/links.js";
 import {
@@ -376,7 +377,13 @@ async function reconcileSubscription(user: BillingRow | null): Promise<BillingRo
   const paid = PAID_STATUSES.has(live.status);
   logger.info({ subscriptionId: user.bachsSubscriptionId, from: status || null, to: live.status }, "re-synced subscription from Bachs");
 
-  return prisma.user.update({
+  // Read before the write: conversion is the transition *from* a trial, so it has
+  // to be judged against the status that was in force beforehand. Reconciling
+  // runs on every billing read, and writing an event each time would turn one
+  // conversion into as many events as the user has opened the page.
+  const wasOnTrial = user.planStatus === "trial" || user.trialStartedAt !== null;
+
+  const updated = await prisma.user.update({
     where: { clerkId: user.clerkId },
     data: {
       bachsSubscriptionStatus: live.status,
@@ -390,6 +397,18 @@ async function reconcileSubscription(user: BillingRow | null): Promise<BillingRo
     },
     select: billingRowSelect,
   });
+
+  if (paid && wasOnTrial) {
+    await recordTrialEvent(user.clerkId, TRIAL_CONVERTED, {
+      // Whether they actually used the trial, as distinct from merely starting
+      // it. The two numbers differ a lot and only one of them is a product
+      // signal: a trial started and abandoned on day one is not a conversion
+      // problem, it is an activation problem.
+      usedTrial: user.trialStartedAt !== null,
+      fromStatus: status || null,
+    });
+  }
+  return updated;
 }
 
 billingRouter.get("/", async (req, res) => {
@@ -546,6 +565,13 @@ billingRouter.post("/trial", async (req, res) => {
   });
 
   const entitlement = getEntitlement({ ...user, trialStartedAt, trialEndsAt, planStatus: "trial" });
+  // Recorded after the write has landed, and never allowed to fail the request:
+  // this is a measurement of a trial that has already been granted.
+  await recordTrialEvent(clerkId, TRIAL_STARTED, {
+    source: "self_serve",
+    endsAt: trialEndsAt.toISOString(),
+    days: 7,
+  });
   await notifyTrialStarted(clerkId, "trial").catch(() => undefined);
   res.status(201).json({ data: { started: true, entitlement } });
 });
