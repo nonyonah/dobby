@@ -402,14 +402,18 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                   </div>
                   ) : null}
 
-                  {/* Two cards: what this wallet holds, and in how many assets. */}
+                  {/* Four cards: holdings, assets, value sent out, and transfer
+                      count. Skeletons mirror the real grid so the row does not
+                      reflow when the data lands. */}
                   {loading ? (
-                    <LoadingRegion label="Loading wallet balances" className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                    <LoadingRegion label="Loading wallet balances" className="grid grid-cols-2 items-start gap-3 lg:grid-cols-4">
+                      <StatSkeleton cols={1} />
+                      <StatSkeleton cols={1} />
                       <StatSkeleton cols={1} />
                       <StatSkeleton cols={1} />
                     </LoadingRegion>
                   ) : (
-                    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+                    <div className="grid grid-cols-2 items-start gap-3 lg:grid-cols-4">
                       <StatCard
                         label="Total holdings"
                         value={formatCurrency(display?.amount ?? 0, display?.currency ?? "USD")}

@@ -28,7 +28,6 @@ import { usePlan } from "@/components/plan-provider";
 import { StartTrialButton, useUpgrade } from "@/components/upgrade";
 import { WalletConnectModal } from "./wallet-connect-modal";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchWalletSummary, summarizeTransfers, SUMMARY_UNAVAILABLE } from "@/lib/wallet-summary";
 import { trialLength } from "@/lib/trial";
 
 // Shadow-as-border: a transparent ring reads as a 1px edge without a hard
@@ -384,7 +383,6 @@ function AccentColorPicker({ value, onChange }: { value: AccentColor; onChange: 
 
 export function SettingsPage() {
   const [wallets, setWallets] = useState<Array<{ id: string; chain: string; address: string; displayName: string; color: string }>>([]);
-  const [walletSummaries, setWalletSummaries] = useState<Record<string, string>>({});
   // Which wallet is being written to the ledger. Separate from the summary
   // fetch: reading a live provider proxy is cheap and silent, whereas a sync
   // imports history and must say so.
@@ -673,18 +671,7 @@ export function SettingsPage() {
       if (cancelled) return;
 
       if (walletResult.status === "fulfilled") {
-        const walletResponse = walletResult.value;
-        setWallets(walletResponse.data);
-        void Promise.all(
-          walletResponse.data.map(async (wallet) => {
-            const summary = await fetchWalletSummary(api, wallet.id);
-            if (cancelled) return;
-            setWalletSummaries((prev) => ({
-              ...prev,
-              [wallet.id]: summary ? summarizeTransfers(summary.transfers) : SUMMARY_UNAVAILABLE,
-            }));
-          }),
-        );
+        setWallets(walletResult.value.data);
       } else {
         setWallets([]);
       }
@@ -897,7 +884,7 @@ export function SettingsPage() {
               wallets.map((wallet) => (
                 <Row
                   key={wallet.id}
-                  label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-[13px]" style={{ backgroundColor: `${wallet.color}1A` }} aria-hidden="true"><span className="size-2.5 rounded-full" style={{ backgroundColor: wallet.color }} /></span><span><span className="block">{wallet.displayName} <span className="flex items-center gap-1.5 font-normal text-muted-foreground"><span aria-hidden="true">·</span><ChainLogo chain={wallet.chain} className="block size-3.5 shrink-0 rounded-full ring-1 ring-inset ring-foreground/10" />{chainLabel(wallet.chain)}</span></span><span className="mt-0.5 block font-mono text-[12px] font-medium leading-4 text-muted-foreground">{shortAddress(wallet.address)} · {walletSummaries[wallet.id] ?? "Loading activity…"}</span></span></span>}
+                  label={<span className="flex items-start gap-2.5"><span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-[13px]" style={{ backgroundColor: `${wallet.color}1A` }} aria-hidden="true"><span className="size-2.5 rounded-full" style={{ backgroundColor: wallet.color }} /></span><span><span className="block">{wallet.displayName} <span className="flex items-center gap-1.5 font-normal text-muted-foreground"><span aria-hidden="true">·</span><ChainLogo chain={wallet.chain} className="block size-3.5 shrink-0 rounded-full ring-1 ring-inset ring-foreground/10" />{chainLabel(wallet.chain)}</span></span><span className="mt-0.5 block font-mono text-[12px] font-medium leading-4 text-muted-foreground">{shortAddress(wallet.address)}</span></span></span>}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
