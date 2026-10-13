@@ -23,7 +23,7 @@ export function mailConfigured(): boolean {
   return Boolean(env.RESEND_API_KEY && env.RESEND_FROM_EMAIL);
 }
 
-type Mail = { to: string; subject: string; html: string; text: string };
+type Mail = { to: string; subject: string; /** Optional: an admin alert is plain text only. */ html?: string | null; text: string };
 
 /**
  * Best-effort send. Returns false when unconfigured or the send fails, and
@@ -42,7 +42,7 @@ export async function sendEmail(mail: Mail): Promise<boolean> {
   }
   const resend = new Resend(apiKey);
   try {
-    await resend.emails.send({ from: withDisplayName(from), to: mail.to, subject: mail.subject, html: mail.html, text: mail.text });
+    await resend.emails.send({ from: withDisplayName(from), to: mail.to, subject: mail.subject, html: mail.html ?? undefined, text: mail.text });
     logger.info({ to: mail.to, subject: mail.subject }, "email sent");
     return true;
   } catch (error) {
@@ -52,7 +52,7 @@ export async function sendEmail(mail: Mail): Promise<boolean> {
     if (isDomainNotVerified(error) && from !== RESEND_TEST_SENDER) {
       logger.warn({ to: mail.to, subject: mail.subject, from }, "sending domain unverified, retrying via Resend test sender");
       try {
-        await resend.emails.send({ from: withDisplayName(RESEND_TEST_SENDER), to: mail.to, subject: mail.subject, html: mail.html, text: mail.text });
+        await resend.emails.send({ from: withDisplayName(RESEND_TEST_SENDER), to: mail.to, subject: mail.subject, html: mail.html ?? undefined, text: mail.text });
         logger.info({ to: mail.to, subject: mail.subject }, "email sent via Resend test sender");
         return true;
       } catch (fallbackError) {
@@ -637,6 +637,55 @@ export async function sendWelcome(
     ].join("\n"),
   );
   await sendEmail({ to, subject: "You're set up — here's what Dobby found", html, text });
+}
+
+/**
+ * Owner-facing alert: someone started a trial, or converted out of one.
+ *
+ * Plain text on purpose. This leaves your own inbox, which is a different trust
+ * boundary from every other mail in the app, and the question it answers is
+ * "did someone just start" — not "what do they have". So it carries the fact and
+ * a link, and deliberately not their balances, categories or transaction counts:
+ * a notification does not need to be the place someone's finances sit in plain
+ * text, and an address that grows to hold more later is hard to stop growing.
+ *
+ * Skipped entirely when ADMIN_ALERT_EMAIL is unset, which is the default. An
+ * unset value sends nothing rather than bouncing to a placeholder.
+ */
+export async function sendTrialAlert(input: {
+  ownerClerkId: string;
+  kind: "started" | "converted";
+  startedAt?: Date | null;
+  endsAt?: Date | null;
+}): Promise<boolean> {
+  const to = env.ADMIN_ALERT_EMAIL;
+  if (!to) return false;
+
+  // Only used to say who. Resolved server-side rather than trusted from the
+  // request, so a caller cannot steer the alert at an address of its choosing.
+  const user = await prisma.user.findUnique({
+    where: { clerkId: input.ownerClerkId },
+    select: { email: true, firstName: true, lastName: true },
+  });
+
+  const who = user?.email ?? `clerk:${input.ownerClerkId}`;
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+  const name = fullName ? ` (${fullName})` : "";
+  const when = input.startedAt ? input.startedAt.toISOString().slice(0, 10) : "unknown";
+  const ends = input.endsAt ? input.endsAt.toISOString().slice(0, 10) : null;
+
+  const heading = input.kind === "started" ? "Free trial started" : "Free trial converted to paid";
+  const lines = [
+    heading,
+    "",
+    `Account: ${who}${name}`,
+    `Trial started: ${when}${ends ? ` — ends ${ends}` : ""}`,
+    input.kind === "converted" ? "This account was on a trial and is now paid." : "",
+    "",
+    "Dobby admin",
+  ].filter(Boolean);
+
+  return sendEmail({ to, subject: `[Dobby] ${heading}`, text: lines.join("\n"), html: null });
 }
 
 export async function sendWhatsNew(

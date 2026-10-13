@@ -13,6 +13,7 @@ import { loadEffectivePlan } from "../middleware/plan.js";
 import { entitlementSelect, getEntitlement, trialWindowFrom, type EntitlementRow } from "../lib/entitlement.js";
 import { TRIAL_CONVERTED, TRIAL_STARTED, recordTrialEvent } from "../billing/trial-events.js";
 import { notifyTrialStarted } from "../lib/mailer.js";
+import { sendTrialAlert } from "../lib/mailer.js";
 import { appUrl, publicAppUrl } from "../emails/links.js";
 import {
   ONE_TIME_PROVIDER,
@@ -399,6 +400,7 @@ async function reconcileSubscription(user: BillingRow | null): Promise<BillingRo
   });
 
   if (paid && wasOnTrial) {
+    await sendTrialAlert({ ownerClerkId: user.clerkId, kind: "converted", startedAt: user.trialStartedAt }).catch(() => undefined);
     await recordTrialEvent(user.clerkId, TRIAL_CONVERTED, {
       // Whether they actually used the trial, as distinct from merely starting
       // it. The two numbers differ a lot and only one of them is a product
@@ -572,6 +574,9 @@ billingRouter.post("/trial", async (req, res) => {
     endsAt: trialEndsAt.toISOString(),
     days: 7,
   });
+  // Your inbox, so you know a trial started without opening a dashboard. Sent
+  // after the trial is already granted and never allowed to fail it.
+  await sendTrialAlert({ ownerClerkId: clerkId, kind: "started", startedAt: trialStartedAt, endsAt: trialEndsAt }).catch(() => undefined);
   await notifyTrialStarted(clerkId, "trial").catch(() => undefined);
   res.status(201).json({ data: { started: true, entitlement } });
 });

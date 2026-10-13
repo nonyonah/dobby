@@ -46,6 +46,9 @@ const envSchema = z.object({
   PYTHON_BIN: z.string().min(1).default("python3"),
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
+  /// Where trial and conversion alerts go. Optional and absent by default:
+  /// an unset value means no alert, never a bounce to a placeholder address.
+  ADMIN_ALERT_EMAIL: z.preprocess((value) => (value === "" ? undefined : value), z.string().email().optional()),
   BACHS_API_KEY: optionalString,
   BACHS_WEBHOOK_SECRET: optionalString,
   BACHS_PRO_PRODUCT_ID: optionalString,

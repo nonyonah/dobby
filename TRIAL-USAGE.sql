@@ -5,6 +5,10 @@
 -- cleared cookies, or which browser someone signed up in.
 --
 -- psql "$DATABASE_URL" -f TRIAL-USAGE.sql
+--
+-- You also get an email on each of these, if ADMIN_ALERT_EMAIL is set in the
+-- API environment. The queries are the durable record; the mail is a nudge so
+-- you do not have to remember to look.
 
 -- Trials started per day, last 30.
 SELECT date_trunc('day', "createdAt") AS day,
