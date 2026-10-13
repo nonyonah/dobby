@@ -45,6 +45,17 @@ export function isPlainStablecoinAsset(symbol: string | null | undefined): boole
   return STABLE_SET.has(key) && !YIELD_SET.has(key);
 }
 
+/**
+ * True for a naira-pegged token such as cNGN.
+ *
+ * Its value is already naira, so it must never be summed into a dollar figure:
+ * doing so adds two orders of magnitude to a total labelled in another
+ * currency, which reads as a small rounding difference rather than an error.
+ */
+export function isNairaPeggedAsset(symbol: string | null | undefined): boolean {
+  return NAIRA_PEGGED_SET.has(normalise(symbol));
+}
+
 export function isYieldBearingAsset(symbol: string | null | undefined): boolean {
   return YIELD_SET.has(normalise(symbol));
 }

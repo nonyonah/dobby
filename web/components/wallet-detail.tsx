@@ -1,6 +1,6 @@
 "use client";
 
-import { colorForAsset } from "@/lib/stablecoins";
+import { colorForAsset, isNairaPeggedAsset } from "@/lib/stablecoins";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
@@ -132,6 +132,31 @@ function transferRows(transfers: Transfer[] | undefined, address: string): TxFul
   });
 }
 
+/**
+ * USD amount -> the user's own currency.
+ *
+ * `formatUSD` does not do this: it prints the number with the app currency's
+ * symbol and locale, so a dollar figure renders as "₦707" — the same number
+ * wearing the wrong unit. Every dollar-denominated figure on this page goes
+ * through here first.
+ */
+async function convertUsd(
+  api: ReturnType<typeof useApi>,
+  usd: number,
+  target: string,
+): Promise<{ amount: number; currency: string }> {
+  if (target === "USD" || !Number.isFinite(usd)) return { amount: usd, currency: "USD" };
+  try {
+    const response = await api.get<{ data: { convertedAmount: number } }>(
+      `/v1/currency/convert?amount=${encodeURIComponent(usd)}&from=USD&to=${encodeURIComponent(target)}`,
+    );
+    return { amount: response.data.convertedAmount, currency: target };
+  } catch {
+    // No rate: report the dollar figure as dollars rather than mislabelling it.
+    return { amount: usd, currency: "USD" };
+  }
+}
+
 export default function WalletDetailView({ walletId }: { walletId: string }) {
   const api = useApi();
   const router = useRouter();
@@ -192,21 +217,9 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
         const held = response.data.holdings
           .filter((holding) => holding.walletId === walletId && holding.usdValue !== null)
           .reduce((sum, holding) => sum + (holding.usdValue ?? 0), 0);
-        const target = getAppCurrency();
-        if (target === "USD") {
-          setDisplay({ amount: held, currency: "USD" });
-          return;
-        }
-        void api
-          .get<{ data: { convertedAmount: number } }>(
-            `/v1/currency/convert?amount=${encodeURIComponent(held)}&from=USD&to=${encodeURIComponent(target)}`,
-          )
-          .then((conversion) => {
-            if (!cancelled) setDisplay({ amount: conversion.data.convertedAmount, currency: target });
-          })
-          .catch(() => {
-            if (!cancelled) setDisplay({ amount: held, currency: "USD" });
-          });
+        void convertUsd(api, held, getAppCurrency()).then((converted) => {
+          if (!cancelled) setDisplay(converted);
+        });
       })
       .catch(() => {
         if (!cancelled) setBalancesFailed(true);
@@ -282,23 +295,42 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
     const outgoing = rows.filter((row) => row.amount < 0);
     const incoming = rows.filter((row) => row.amount > 0);
     const spentByAsset = new Map<string, number>();
+    const peggedByAsset = new Map<string, number>();
     for (const row of outgoing) {
       const symbol = row.account && row.account !== "—" ? row.account : "tokens";
-      spentByAsset.set(symbol, (spentByAsset.get(symbol) ?? 0) + Math.abs(row.amount));
+      // A naira-pegged token is already naira. Adding it to a dollar total would
+      // be adding 40,000 naira to a figure labelled dollars, which is not a
+      // rounding error — it is two orders of magnitude of nonsense.
+      const bucket = isNairaPeggedAsset(symbol) ? peggedByAsset : spentByAsset;
+      bucket.set(symbol, (bucket.get(symbol) ?? 0) + Math.abs(row.amount));
     }
-    const spent = [...spentByAsset.values()].reduce((sum, value) => sum + value, 0);
     const first = rows[rows.length - 1]?.date;
     return {
       transferCount: rows.length,
       sentCount: outgoing.length,
       receivedCount: incoming.length,
-      spent,
-      // Named where it is a single asset, so "$4,200" is not ambiguous about
+      spent: [...spentByAsset.values()].reduce((sum, value) => sum + value, 0),
+      spentNaira: [...peggedByAsset.values()].reduce((sum, value) => sum + value, 0),
+      // Named where it is a single asset, so a figure is never ambiguous about
       // what was spent when the wallet holds more than one.
       spentLabel: spentByAsset.size === 1 ? [...spentByAsset.keys()][0]! : `${spentByAsset.size} assets`,
       since: first ? first.slice(0, 7).replace("-", "/") : null,
     };
   }, [rows]);
+
+  // Converted separately from holdings because transfers arrive from a different
+  // request and can land after the net-worth snapshot has settled.
+  const [spentDisplay, setSpentDisplay] = useState<{ amount: number; currency: string } | null>(null);
+  const currency = getAppCurrency();
+  useEffect(() => {
+    let cancelled = false;
+    void convertUsd(api, activity.spent, currency).then((converted) => {
+      if (!cancelled) setSpentDisplay(converted);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, activity.spent, currency]);
 
   const selected = rows.find((row) => row.id === detailId) ?? null;
   const editing = rows.find((row) => row.id === editId) ?? null;
@@ -431,11 +463,20 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                       />
                       <StatCard
                         label="Total spent"
-                        value={formatUSD(activity.spent)}
+                        value={formatCurrency(spentDisplay?.amount ?? 0, spentDisplay?.currency ?? "USD")}
                         hint={
                           activity.transferCount === 0
                             ? "Nothing has left this wallet"
-                            : `Value sent out${activity.since ? ` · since ${activity.since}` : ""}`
+                            : [
+                                activity.spent > 0 ? `Value sent out in ${activity.spentLabel}` : null,
+                                // Never folded into the dollar figure above, and
+                                // never dropped either — a user who cashed out
+                                // cNGN deserves to see it somewhere.
+                                activity.spentNaira > 0 ? `+ ${formatCurrency(activity.spentNaira, "NGN")} cNGN` : null,
+                                activity.since ? `since ${activity.since}` : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")
                         }
                       />
                       <StatCard
@@ -494,7 +535,9 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                             <span className="block truncate text-[13px] font-medium text-foreground">{asset.name}</span>
                             <span className="block text-[11px] text-muted-foreground">{share.toFixed(0)}% of holdings</span>
                           </span>
-                          <span className="mono shrink-0 text-[13px] font-medium text-foreground tabular-nums">{formatUSD(asset.amount)}</span>
+                          <span className="mono shrink-0 text-[13px] font-medium text-foreground tabular-nums">
+                            {formatCurrency(asset.amount, snapshot?.displayCurrency ?? "USD")}
+                          </span>
                         </li>
                       );
                     })}

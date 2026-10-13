@@ -113,6 +113,43 @@ describe("net worth pricing", () => {
   });
 });
 
+describe("formatUSD is not a conversion", () => {
+  /*
+   * The third time. `formatUSD` reads the app currency and prints the number
+   * with that currency's symbol and locale — it converts nothing. So every
+   * dollar figure rendered through it comes out wearing the wrong unit, and
+   * "$707" reads as "₦707": a number that is right and a unit that is not.
+   *
+   * It is a fine function for a figure already in the app currency, which is
+   * most of them. The failure is always the same shape — a USD value reaching
+   * it — so the guard is that the obvious USD spots do not.
+   */
+  const wallet = read("web/components/wallet-detail.tsx");
+
+  it("converts the total-spent card rather than relabelling it", () => {
+    expect(wallet).not.toMatch(/label="Total spent"[\s\S]{0,200}formatUSD\(/);
+    expect(wallet).toMatch(/label="Total spent"[\s\S]{0,200}formatCurrency\(/);
+  });
+
+  it("keeps naira-pegged tokens out of a dollar total", () => {
+    // Adding 40,000 naira to a figure labelled dollars is not a rounding error.
+    expect(wallet).toMatch(/isNairaPeggedAsset\(symbol\)\s*\? peggedByAsset : spentByAsset/);
+  });
+
+  it("converts through one helper, so a fix cannot land on one figure and miss the other", () => {
+    expect(wallet).toMatch(/async function convertUsd\(/);
+    // Two inline conversions were how holdings and spending drifted apart.
+    const inline = wallet.match(/currency\/convert\?amount=/g) ?? [];
+    expect(inline.length).toBeLessThanOrEqual(1);
+  });
+
+  it("labels the asset list with the currency the API converted into", () => {
+    // `assets` carries displayValue, so formatUSD re-labels an already-converted
+    // figure with whatever unit the device happens to prefer.
+    expect(wallet).not.toMatch(/tabular-nums\}>\{formatUSD\(asset\.amount\)\}/);
+  });
+});
+
 describe("chart currency", () => {
   const pie = read("web/components/breakdown-pie.tsx");
   const wallet = read("web/components/wallet-detail.tsx");
