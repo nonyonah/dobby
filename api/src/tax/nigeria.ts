@@ -45,6 +45,10 @@ export const nigeriaRules: TaxRuleModule = {
     { key: "rent_receipt", label: "Rent payment receipts and declared rent for relief" },
     { key: "pension_nhf_statements", label: "Pension, NHF and NHIS contribution statements" },
     { key: "tin", label: "Tax Identification Number (TIN)" },
+    { key: "offramp_receipts", label: "Offramp provider receipts for every stablecoin cash-out in the year" },
+    { key: "stamp_duty_records", label: "Stamp duty records for token-to-naira and naira-to-token conversions" },
+    { key: "wallet_history", label: "Wallet transaction history for the tax year, exported and kept with these records" },
+    { key: "yield_record", label: "A record of stablecoin yield received, and where it was claimed in the return" },
   ],
   calculate({ taxYear, transactions, deductions }) {
     const grossIncome = transactions.filter((item) => item.type === "INCOME").reduce((sum, item) => sum + item.amount, 0);
@@ -80,6 +84,8 @@ export const nigeriaRules: TaxRuleModule = {
         "Capital gains are taxed at these income tax rates; the former flat 10% capital gains tax no longer applies under the Nigeria Tax Act 2025.",
         "Filing deadlines are set by your State Internal Revenue Service and are not uniform nationwide.",
         "Nigeria has no quarterly estimated-payment requirement in this module.",
+        "A 1.5% stamp duty can apply to a conversion between a token and naira. It falls on the transferee — the person receiving the token — so someone cashing out may not bear it at all. Dobby shows this as a note and never adds it to a figure; check your provider's receipt for what was actually charged.",
+        "Yield on a stablecoin is investment income, and only the yield is income — the amount you deposited is your own money coming back, not a receipt. Disposal gains are not calculated here; a pegged stablecoin's gain is approximately zero.",
       ],
     };
   },

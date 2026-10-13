@@ -15,6 +15,11 @@ import { describe, expect, it, vi } from "vitest";
 import { Prisma, TransactionType } from "@prisma/client";
 import { prisma } from "./prisma.js";
 
+// The database is a remote pooled instance, so a seed plus a full aggregate
+// routinely outruns the 5s default. Without this the suite reports timeouts
+// that look like failures and hide whatever it was actually asserting.
+vi.setConfig({ hookTimeout: 120_000, testTimeout: 120_000 });
+
 const RUN = process.env.DOBBY_DB_PARITY === "1";
 
 // Deterministic rates so the comparison does not depend on the network.
@@ -169,7 +174,7 @@ async function seed() {
     prisma.profile.deleteMany({ where: { clerkId: OWNER } }),
     prisma.user.deleteMany({ where: { clerkId: OWNER } }),
   ]);
-  await prisma.user.create({ data: { clerkId: OWNER, email: "v@example.com", plan: "ACTIVE" } });
+  await prisma.user.create({ data: { clerkId: OWNER, email: "v@example.com", planStatus: "pro" } });
   await prisma.profile.create({ data: { clerkId: OWNER, currency: "USD" } });
 
   const rent = await prisma.category.create({ data: { ownerClerkId: OWNER, name: "Rent", color: "#111111" } });

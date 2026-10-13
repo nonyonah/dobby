@@ -29,6 +29,16 @@ const proposedTransactionSchema = z.object({
   /** The statement section this row belongs to, used to resolve its account. */
   subAccount: z.string().trim().min(1).max(60).optional(),
   reference: z.string().trim().min(1).max(80).optional(),
+  /**
+   * Whether this row is a repeating charge.
+   *
+   * Has to be declared here, not just accepted by `PATCH /:id`. This schema is
+   * not passthrough, so anything it does not name is stripped from `proposed`
+   * before the approve path reads it — which left the proposed-value fallback
+   * permanently undefined and silently dropped a recurring decision the user had
+   * just made in the review queue.
+   */
+  isRecurring: z.boolean().optional(),
   /** Derived from the country's tax module, never asked of the model. */
   taxTreatment: z.enum(["taxable", "not_taxable", "ask"]).optional(),
   /** Absent on expense and transfer rows, which carry no taxable value. */

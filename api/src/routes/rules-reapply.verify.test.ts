@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TransactionType } from "@prisma/client";
 
 /**
@@ -10,6 +10,11 @@ import { TransactionType } from "@prisma/client";
  * Opt-in, because it writes to a real database:
  *   DOBBY_DB_PARITY=1 DATABASE_URL=postgresql://... npx vitest run src/routes/rules-reapply.verify.test.ts
  */
+
+// The database is a remote pooled instance, so a seed plus a full aggregate
+// routinely outruns the 5s default. Without this the suite reports timeouts
+// that look like failures and hide whatever it was actually asserting.
+vi.setConfig({ hookTimeout: 120_000, testTimeout: 120_000 });
 
 const RUN = process.env.DOBBY_DB_PARITY === "1";
 const OWNER = "user_rules_verify";
@@ -104,7 +109,7 @@ async function appliedState() {
 async function seed() {
   await prisma.transaction.deleteMany({ where: { ownerClerkId: OWNER } });
   await prisma.user.deleteMany({ where: { clerkId: OWNER } });
-  await prisma.user.create({ data: { clerkId: OWNER, email: "rules@example.com", plan: "ACTIVE" } });
+  await prisma.user.create({ data: { clerkId: OWNER, email: "rules@example.com", planStatus: "pro" } });
   const food = await prisma.category.create({ data: { ownerClerkId: OWNER, name: "Food" } });
   const income = await prisma.category.create({ data: { ownerClerkId: OWNER, name: "Income" } });
   RULES = [

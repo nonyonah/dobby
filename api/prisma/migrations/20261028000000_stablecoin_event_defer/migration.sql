@@ -1,0 +1,12 @@
+-- Lets the user answer "not sure" without anything being decided.
+--
+-- Confirm and dismiss both settle a suggestion, but neither fits a third
+-- answer that people actually give: they looked, and could not tell. Forcing
+-- that into "no" would discard a real cash-out; forcing it into "yes" would
+-- assert income that may not exist.
+--
+-- So the event keeps its SUGGESTED status and gains a timestamp saying when it
+-- was last put to the user. The attention feed skips anything asked recently,
+-- and confirming later still works — `confirmedAt` is untouched, so nothing has
+-- been claimed about the movement either way.
+ALTER TABLE "StablecoinEvent" ADD COLUMN "lastShownAt" TIMESTAMP(3);

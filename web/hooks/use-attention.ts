@@ -29,7 +29,7 @@ const READ_KEY = "dobby-notifications-read";
 
 export interface AttentionItem {
   id: string;
-  kind: "review" | "tax";
+  kind: "review" | "tax" | "stablecoin";
   title: string;
   sub: string;
   /**
@@ -40,6 +40,27 @@ export interface AttentionItem {
   action?: string;
   href?: string;
 }
+
+/**
+ * A detected stablecoin movement, offered rather than applied.
+ *
+ * The API writes the wording as plain text in `reason`, so the card renders what
+ * the server said rather than re-deriving the numbers in the browser — a figure
+ * computed twice from two code paths is a figure that will eventually disagree
+ * with itself.
+ */
+type StablecoinEvent = {
+  id: string;
+  kind: "CASH_OUT" | "ON_RAMP" | "YIELD_RECEIVED" | "YIELD_REDEMPTION_GAIN";
+  status: "SUGGESTED" | "CONFIRMED" | "DISMISSED";
+  token: string;
+  tokenAmount: string;
+  usdValue: string | null;
+  nairaAmount: string | null;
+  impliedRate: string | null;
+  matchConfidence: string;
+  reason: string | null;
+};
 
 type ReviewRow = {
   id: string;
@@ -116,9 +137,12 @@ export function useAttention() {
   const refresh = useCallback(async () => {
     if (!isLoaded || !isSignedIn) return;
     try {
-      const [reviews, checklist] = await Promise.all([
+      const [reviews, checklist, stablecoin] = await Promise.all([
         api.get<{ data: ReviewRow[] }>("/v1/reviews?status=PENDING"),
         api.get<{ data: { items: Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> } }>("/v1/tax/checklist"),
+        // Only unresolved suggestions. A confirmed event is settled and belongs
+        // in the ledger, not in a list of things waiting on the user.
+        api.get<{ data: StablecoinEvent[] }>("/v1/stablecoin-events?status=SUGGESTED"),
       ]);
       setReviewCount(reviews.data.length);
       const reviewItems: AttentionItem[] = reviews.data.slice(0, 20).flatMap((item) => {
@@ -155,7 +179,19 @@ export function useAttention() {
           action: "Docs",
           href: "/insights",
         }));
-      setItems([...reviewItems, ...docs]);
+      // A detected cash-out or yield receipt is a question, not a fact, so it
+      // sits alongside the review queue rather than inside it: one tap answers
+      // it, and dismissing it leaves the ledger untouched.
+      const stablecoinItems: AttentionItem[] = stablecoin.data.map((event) => ({
+        id: `stablecoin-${event.id}`,
+        kind: "stablecoin" as const,
+        title: event.kind === "YIELD_RECEIVED" || event.kind === "YIELD_REDEMPTION_GAIN" ? "Possible stablecoin yield" : "Cash-out detected",
+        sub: event.reason ?? `${event.tokenAmount} ${event.token}`,
+        action: "Review",
+        href: "/transactions?view=ledger",
+      }));
+
+      setItems([...reviewItems, ...stablecoinItems, ...docs]);
     } catch {
       setItems([]);
     }

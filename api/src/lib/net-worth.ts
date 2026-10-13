@@ -5,6 +5,7 @@ import { logger } from "./logger.js";
 import { alchemyConfigured, getBaseWalletBalances, getSolanaWalletBalances } from "../providers/alchemy.js";
 import { getBlockscoutBalances } from "./blockscout.js";
 import { getConversionFactors } from "../providers/frankfurter.js";
+import { NAIRA_PEGGED_SET, YIELD_BEARING_SET } from "./stablecoins.js";
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
@@ -32,6 +33,17 @@ export interface NetWorthHolding {
   amount: number;
   /** `null` when the asset has no dollar parity, so it is excluded from the total. */
   usdValue: number | null;
+  /**
+   * `usdValue` converted into the profile's currency.
+   *
+   * Holdings are priced in dollars because that is what a token has parity
+   * with, and the total has always been `totalUsd`. That left the UI holding a
+   * dollar figure with no way to show it in the user's own currency except by
+   * relabelling the same number — which rendered a $0.04 holding as "₦0.04".
+   * The conversion belongs here, where the rate is already loaded, rather than
+   * in a component guessing.
+   */
+  displayValue: number | null;
 }
 
 export interface NetWorthAccount {
@@ -57,6 +69,8 @@ export interface NetWorthSnapshot {
   asOf: string;
   currency: "USD";
   totalUsd: number;
+  /** The currency `displayValue` is expressed in. */
+  displayCurrency: string;
   holdings: NetWorthHolding[];
   accounts: NetWorthAccount[];
   wallets: NetWorthWalletStatus[];
@@ -98,7 +112,8 @@ export function signedFor(type: string, direction: string | null, magnitude: num
 }
 
 export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWorthSnapshot> {
-  const [wallets, accounts, grouped] = await Promise.all([
+  const [profile, wallets, accounts, grouped] = await Promise.all([
+    prisma.profile.findUnique({ where: { clerkId: ownerClerkId }, select: { currency: true } }),
     prisma.walletAccount.findMany({
       where: { ownerClerkId, isActive: true },
       orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
@@ -135,6 +150,12 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
   const usdRates = await getConversionFactors(currencies, "USD");
   const rateToUsd = (code: string) => usdRates.get(code.toUpperCase()) ?? null;
 
+  // Dollar -> the user's own currency, for the holdings chart. One more batched
+  // call, and only when it is actually needed: a USD profile needs no second
+  // request at all.
+  const displayCurrency = (profile?.currency ?? "USD").toUpperCase();
+  const usdToDisplay = displayCurrency === "USD" ? 1 : ((await getConversionFactors(["USD"], displayCurrency)).get("USD") ?? 1);
+
   let totalUsd = 0;
   let unpricedCount = 0;
   const holdings: NetWorthHolding[] = [];
@@ -142,15 +163,44 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
     for (const balance of entry.balances) {
       const symbol = balance.symbol.toUpperCase();
       const key = contractKey(entry.wallet.chain, balance.address);
-      const priced = key !== null && STABLE_CONTRACTS.has(key);
-      let usdValue: number | null = priced ? balance.amount : null;
-      if (usdValue === null && symbol === "CNGN") {
+      // Contract first: anyone can mint an ERC-20 whose symbol reads "USDC",
+      // and pricing that at a dollar peg would inflate a net worth on a
+      // stranger's say-so.
+      let usdValue: number | null = key !== null && STABLE_CONTRACTS.has(key) ? balance.amount : null;
+      // Naira-pegged, so its dollar parity is the naira rate.
+      if (usdValue === null && NAIRA_PEGGED_SET.has(symbol)) {
         const rate = rateToUsd("NGN");
         usdValue = rate === null ? null : balance.amount * rate;
       }
+      /*
+       * Curated-symbol fallback, for the yield-bearing tokens only.
+       *
+       * Every one of these is a dollar-pegged receipt and none of them is
+       * covered by STABLE_CONTRACTS, because filling those in needs verified
+       * addresses and an unverified one is worse than none. Left to the
+       * contract-only path they were `unpricedCount` — present in the wallet,
+       * absent from the net worth, with no explanation, which is how a holder of
+       * real value comes to believe they own nothing.
+       *
+       * The risk is accepted deliberately and is bounded. It overstates the
+       * reader's *own* net worth and their own tax base if someone mints a
+       * token with a colliding symbol; it cannot misrepresent anyone else's, and
+       * an unpriced token stays unpriced rather than defaulting to something.
+       * TODO(stablecoins): replace with STABLE_CONTRACTS entries once the
+       * addresses are verified.
+       */
+      if (usdValue === null && YIELD_BEARING_SET.has(symbol)) {
+        usdValue = balance.amount;
+      }
       if (usdValue !== null) totalUsd += usdValue;
       else unpricedCount += 1;
-      holdings.push({ walletId: entry.wallet.id, symbol, amount: balance.amount, usdValue });
+      holdings.push({
+        walletId: entry.wallet.id,
+        symbol,
+        amount: balance.amount,
+        usdValue,
+        displayValue: usdValue === null ? null : round2(usdValue * usdToDisplay),
+      });
     }
   }
   holdings.sort((a, b) => (b.usdValue ?? -1) - (a.usdValue ?? -1) || b.amount - a.amount);
@@ -221,6 +271,7 @@ export async function buildNetWorthSnapshot(ownerClerkId: string): Promise<NetWo
     asOf: new Date().toISOString(),
     currency: "USD",
     totalUsd: round2(totalUsd),
+    displayCurrency,
     holdings,
     accounts: accountsSnapshot,
     unpricedCount,

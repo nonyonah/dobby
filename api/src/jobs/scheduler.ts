@@ -6,6 +6,8 @@ import { runFilingDeadlineReminders } from "./filing-deadline-reminder.js";
 import { runFirstImportSummaries } from "./first-import-summary.js";
 import { runNudges } from "../nudges/engine.js";
 import { runDailyEmailSyncs } from "./daily-email-sync.js";
+import { runStablecoinNightly } from "../stablecoin/triggers.js";
+import { seedStablecoinReferenceData } from "../stablecoin/seed-runner.js";
 
 const TIMEZONE = "UTC";
 
@@ -38,6 +40,9 @@ export function startScheduler() {
       if (result.count > 0) logger.info({ interrupted: result.count }, "marked stale email syncs as failed at boot");
     })
     .catch((error) => logger.warn({ error: error instanceof Error ? error.message : String(error) }, "stale sync cleanup failed"));
+  // Idempotent upsert, so this is safe on every boot and preserves any address
+  // an operator added through Settings between deploys.
+  void seedStablecoinReferenceData();
   const tasks = [
     cron.schedule("0 9 1 * *", logged("monthly-tax-reminder", () => runMonthlyTaxReminder()), { timezone: TIMEZONE }),
     cron.schedule("0 9 * * *", logged("filing-deadline-reminder", () => runFilingDeadlineReminders()), { timezone: TIMEZONE }),
@@ -55,6 +60,11 @@ export function startScheduler() {
     // only ran when somebody pressed the button, so a customer who connected
     // and then left never saw the statement their bank emailed them.
     cron.schedule("20 6 * * *", logged("daily-email-sync", () => runDailyEmailSyncs()), { timezone: TIMEZONE }),
+    // Nightly backstop. A cash-out is only visible once both its legs exist, and
+    // neither arrives on a schedule we control, so detection also runs on wallet
+    // sync, import and email sync. This catches a leg that landed after those.
+    // Off the hour on purpose, to stay clear of the email sweep and nudge run.
+    cron.schedule("40 6 * * *", logged("stablecoin-detection", () => runStablecoinNightly()), { timezone: TIMEZONE }),
   ];
   logger.info({ timezone: TIMEZONE }, "job scheduler started: monthly tax digest, daily filing-deadline check, first-import summary sweep");
   return () => tasks.forEach((task) => task.stop());

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { createUploadUrl, storePrivateObject } from "../lib/r2.js";
 import { findCompletedImportByHash, isPdfImport, processImportRecord, processPdfStatement } from "../imports/pipeline.js";
+import { runStablecoinDetection } from "../stablecoin/triggers.js";
 import { notifyImportComplete } from "../lib/mailer.js";
 import { MIN_FIRST_IMPORT_TRANSACTIONS } from "../jobs/first-import-summary.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -144,6 +145,10 @@ importsRouter.post("/:id/process", async (req, res) => {
   }
   try {
     const { rowCount, reviewCount } = await processImportRecord(ownerClerkId, { ...record, objectKey });
+    // A statement is one of the four things that can supply half a cash-out.
+    // Not awaited past the response: detection is advisory and a provider
+    // outage must not turn a successful import into a failed one.
+    void runStablecoinDetection(ownerClerkId);
     if (!(await claimsFirstImportSummary(ownerClerkId, record.id, rowCount))) {
       void notifyImportComplete(ownerClerkId, { filename, rowCount, reviewCount });
     }

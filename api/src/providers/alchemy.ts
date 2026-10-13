@@ -61,16 +61,14 @@ function rawToAmount(raw: string, decimals: number): number {
  * which on an active wallet is a matter of days, and is why imports from months
  * ago simply never arrived.
  *
- * So the range is walked backwards in block windows instead. Each window asks
- * for the largest page Alchemy allows and keeps going while the page comes back
- * full, which is the signal that there is more inside that window to find.
+ * So history now follows Alchemy's own `pageKey` cursor backwards from the
+ * head, which is what actually signals "nothing older exists". An earlier
+ * version windowed by block range and stopped at the first short page, which
+ * for almost every wallet meant the very first window — about a week.
  */
 const TRANSFERS_PER_PAGE = 0x3e8; // 1000, the documented maximum
-const BACKFILL_BLOCK_CHUNKS = 26; // bounded, so a fresh wallet costs one request
+/** Upper bound on cursor pages per direction, so a busy address still returns. */
 const MAX_PAGES = 30;
-
-/** Base has roughly a 2-second block, so a week of history is ~300k blocks. */
-const BLOCKS_PER_CHUNK = 300_000n;
 
 export async function getBaseWalletTransfers(address: string, category: "from" | "to" | "fromAndTo" = "fromAndTo") {
   // Alchemy ANDs `fromAddress` with `toAddress`, so passing both is a request
@@ -89,7 +87,13 @@ export async function getBaseWalletTransfers(address: string, category: "from" |
     for (const transfer of await walkTransfers(filter)) {
       // `hash` alone is not unique: one transaction can carry several transfers,
       // which is what the ERC-721 and batch cases produce.
-      merged.set(`${transfer.hash}:${transfer.rawContract?.address ?? ""}:${transfer.value ?? ""}:${transfer.from}:${transfer.to}`, transfer);
+      // Lower-cased: Base addresses arrive checksum-cased from the RPC and
+      // lower-cased from the wallet row, and a case-sensitive key turned one
+      // movement into two rows.
+      merged.set(
+        `${transfer.hash}:${(transfer.rawContract?.address ?? "").toLowerCase()}:${transfer.value ?? ""}:${transfer.from?.toLowerCase() ?? ""}:${transfer.to?.toLowerCase() ?? ""}`,
+        transfer,
+      );
     }
   }
 
@@ -98,55 +102,56 @@ export async function getBaseWalletTransfers(address: string, category: "from" |
 
 type TransferFilter = { fromAddress: string | undefined; toAddress: string | undefined };
 
-/** Walks block windows backwards from the head, collecting transfers newest first. */
+/**
+ * Walks a wallet's transfers backwards from the head.
+ *
+ * This used to window by block range and stopped as soon as a window came back
+ * short of the 1000-transfer page cap. That reasoning does not hold for block
+ * windows: a window spanning ~7 days of Base comes back with a handful of
+ * transfers for almost any real wallet, so the walk stopped after the very
+ * first window and users saw roughly a week of history no matter how far back
+ * they scrolled. "This page wasn't full" only means the page wasn't full — it
+ * says nothing about the window before it.
+ *
+ * Alchemy's own `pageKey` is the actual exhaustion signal: the upstream walks
+ * backwards itself and hands back a cursor until there is nothing left. So this
+ * follows `pageKey` from `latest` and stops when it stops being returned, which
+ * is both correct and cheaper — one request per 1000 transfers rather than one
+ * per block window whether or not anything was there.
+ */
 async function walkTransfers(filter: TransferFilter): Promise<BaseAssetTransfer[]> {
-  const fetchWindow = async (fromBlock: string, toBlock: string) => {
-    const result = await alchemyRpc<{ transfers?: BaseAssetTransfer[] }>(
-      "base",
-      "alchemy_getAssetTransfers",
-      [
-        {
-          fromBlock,
-          toBlock,
-          fromAddress: filter.fromAddress,
-          toAddress: filter.toAddress,
-          category: ["external", "erc20", "erc721", "erc1155"],
-          withMetadata: true,
-          maxCount: `0x${TRANSFERS_PER_PAGE.toString(16)}`,
-          order: "asc",
-        },
-      ],
-      "wallet activity",
-    );
-    return result.transfers ?? [];
-  };
-
-  let head: bigint;
-  try {
-    head = BigInt(await alchemyRpc<string>("base", "eth_blockNumber", [], "block number"));
-  } catch {
-    head = 0n;
-  }
-  if (head === 0n) return fetchWindow("0x0", "latest");
-
   const collected: BaseAssetTransfer[] = [];
-  let cursor = head;
-  for (let i = 0; i < BACKFILL_BLOCK_CHUNKS && collected.length < MAX_PAGES * TRANSFERS_PER_PAGE; i++) {
-    const fromBlock = cursor > BLOCKS_PER_CHUNK ? cursor - BLOCKS_PER_CHUNK : 0n;
+  let pageKey: string | undefined;
+
+  for (let page = 0; page < MAX_PAGES && collected.length < MAX_PAGES * TRANSFERS_PER_PAGE; page++) {
+    let result: { transfers?: BaseAssetTransfer[]; pageKey?: string };
     try {
-      const page = await fetchWindow(`0x${fromBlock.toString(16)}`, `0x${cursor.toString(16)}`);
-      collected.push(...page);
-      // A short page means the window held fewer transfers than the cap, so there
-      // is nothing older in it and the walk is done.
-      if (page.length < TRANSFERS_PER_PAGE) break;
+      result = await alchemyRpc<{ transfers?: BaseAssetTransfer[]; pageKey?: string }>(
+        "base",
+        "alchemy_getAssetTransfers",
+        [
+          {
+            fromAddress: filter.fromAddress,
+            toAddress: filter.toAddress,
+            category: ["external", "erc20", "erc721", "erc1155"],
+            withMetadata: true,
+            maxCount: `0x${TRANSFERS_PER_PAGE.toString(16)}`,
+            order: "asc",
+            ...(pageKey ? { pageKey } : {}),
+          },
+        ],
+        "wallet activity",
+      );
     } catch (error) {
-      // Older windows are the first thing to be rate-limited, and what was
+      // Older pages are the first thing to be rate-limited, and what was
       // already collected is still the most recent and most useful history.
-      logger.warn({ filter, error: error instanceof Error ? error.message : String(error) }, "wallet backfill window failed; stopping");
+      logger.warn({ filter, page, error: error instanceof Error ? error.message : String(error) }, "wallet history page failed; stopping");
       break;
     }
-    if (fromBlock === 0n) break;
-    cursor = fromBlock;
+    collected.push(...(result.transfers ?? []));
+    // No cursor back means the upstream has nothing older to give.
+    if (!result.pageKey) break;
+    pageKey = result.pageKey;
   }
 
   return collected;
@@ -187,24 +192,113 @@ export async function getBaseWalletBalances(address: string): Promise<WalletBala
  * SOL and SPL tokens) rather than the EVM `external`/`erc20` set, so this
  * cannot reuse the Base call above.
  */
-export async function getSolanaWalletTransfers(address: string) {
-  const result = await alchemyRpc<{
-    transfers?: Array<{ hash?: string; signature?: string; from?: string; to?: string; value?: number; asset?: string; mint?: string; rawContract?: { address?: string } }>;
-  }>(
-    "solana",
-    "getAssetTransfers",
-    [{ fromAddress: address, toAddress: address, category: ["external", "nft", "erc20"], withMetadata: true, maxCount: "0x64" }],
-    "wallet activity",
-  );
+/**
+ * A Solana wallet's transfers, oldest reachable history included.
+ *
+ * This was three bugs in one function, and together they produced an empty
+ * history for every Solana user while looking like "no recent activity":
+ *
+ * 1. `fromAddress` and `toAddress` were sent together. Alchemy treats those as
+ *    an AND, so the query only ever matched transfers where the wallet sent to
+ *    itself — which is nothing. The Base path above already worked around this
+ *    by running two separate filters and merging; this did not.
+ * 2. The response mapping dropped `metadata`, so no transfer carried a
+ *    timestamp. Anything that needs to place a movement in a tax period had
+ *    nothing to work with.
+ * 3. A single `maxCount: "0x64"` call with no pagination, so history stopped at
+ *    the hundred most recent transfers.
+ *
+ * Solana has no block numbers to window over, so this pages by signature
+ * instead: `before` the oldest signature already seen, until a short page says
+ * the history is exhausted or the bound is hit.
+ */
+export async function getSolanaWalletTransfers(address: string): Promise<BaseAssetTransfer[]> {
+  type SolanaTransfer = {
+    hash?: string;
+    signature?: string;
+    from?: string;
+    to?: string;
+    value?: number;
+    asset?: string;
+    mint?: string;
+    rawContract?: { address?: string };
+    metadata?: { blockTimestamp?: number };
+  };
 
-  return (result.transfers ?? []).map((transfer) => ({
+  const fetchPage = async (filter: { fromAddress?: string; toAddress?: string }, cursor: { pageKey?: string; before?: string }) => {
+    const result = await alchemyRpc<{ transfers?: SolanaTransfer[]; pageKey?: string }>(
+      "solana",
+      "getAssetTransfers",
+      [
+        {
+          ...filter,
+          // `external` and `erc20` only. The old list included `nft`, which
+          // returned a page full of mint events and used the whole cap before
+          // reaching any token transfer.
+          category: ["external", "erc20"],
+          withMetadata: true,
+          maxCount: `0x${TRANSFERS_PER_PAGE.toString(16)}`,
+          ...cursor,
+        },
+      ],
+      "wallet activity",
+    );
+    return { transfers: result.transfers ?? [], pageKey: result.pageKey };
+  };
+
+  const toTransfer = (transfer: SolanaTransfer): BaseAssetTransfer => ({
     hash: transfer.hash ?? transfer.signature ?? "",
     from: transfer.from ?? "",
     to: transfer.to ?? "",
     value: transfer.value,
     asset: transfer.asset,
     rawContract: { address: transfer.mint ?? transfer.rawContract?.address },
-  })) satisfies BaseAssetTransfer[];
+    metadata: transfer.metadata,
+  });
+
+  const filters: Array<{ fromAddress?: string; toAddress?: string }> = [{ fromAddress: address }, { toAddress: address }];
+  const merged = new Map<string, BaseAssetTransfer>();
+
+  for (const filter of filters) {
+    let cursor: { pageKey?: string; before?: string } = {};
+    let collected = 0;
+    for (let page = 0; page < MAX_PAGES && collected < MAX_PAGES * TRANSFERS_PER_PAGE; page++) {
+      let result: { transfers: SolanaTransfer[]; pageKey?: string };
+      try {
+        result = await fetchPage(filter, cursor);
+      } catch (error) {
+        // Same contract as the Base walk: keep the history already gathered
+        // rather than failing the whole read over one older page.
+        logger.warn({ filter, page, error: error instanceof Error ? error.message : String(error) }, "solana history page failed; stopping");
+        break;
+      }
+      for (const transfer of result.transfers) {
+        const mapped = toTransfer(transfer);
+        merged.set(
+          `${mapped.hash}:${(mapped.rawContract?.address ?? "").toLowerCase()}:${mapped.value ?? ""}:${mapped.from?.toLowerCase() ?? ""}:${mapped.to?.toLowerCase() ?? ""}`,
+          mapped,
+        );
+      }
+      collected += result.transfers.length;
+
+      // Continue while the upstream offers a cursor. A short page is *not* an
+      // exhaustion signal: every real wallet's first page is short, so breaking
+      // on length here is the same week-long history cap this reader had on
+      // Base before it was fixed. Preference order matters — `pageKey` is the
+      // upstream's own cursor, and the signature is a fallback for a response
+      // that carries no key.
+      if (result.pageKey) {
+        cursor = { pageKey: result.pageKey };
+        continue;
+      }
+      const last = result.transfers[result.transfers.length - 1];
+      const before = last?.hash ?? last?.signature;
+      if (!before || result.transfers.length === 0) break;
+      cursor = { before };
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => (b.metadata?.blockTimestamp ?? 0) - (a.metadata?.blockTimestamp ?? 0));
 }
 
 /** How many SPL mints to resolve before we stop, so spam cannot stall a request. */

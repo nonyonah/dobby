@@ -101,6 +101,11 @@ export interface TxFull {
    */
   recurring?: boolean;
   /**
+   * Set when this row is a leg of a detected stablecoin movement. Shared by both
+   * legs, which is how the two halves of a cash-out are shown as one thing.
+   */
+  stablecoinEventId?: string | null;
+  /**
    * The row is a password-locked attachment rather than a parse failure. Such a
    * row can never be approved here — the user has to unlock the file in their
    * mail app and import an unlocked copy — so the UI shows the instruction and

@@ -1039,6 +1039,16 @@ export function SettingsPage() {
 
           <Section label="Categories & rules">
             <Row label="Categorization" description="Keep categorization consistent across new imports."><Link href="/settings/categories-rules" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-primary">Manage categories and rules <HugeiconsIcon icon={ArrowRightIcon} size={14}  /></Link></Row>
+            {/* Only the jurisdictions with stablecoin support see this. Nigeria is
+                the one with the offramp providers, and showing every American
+                exchange a Nigerian user has never heard of would be noise. */}
+            {jurisdiction === "nigeria" ? (
+              <Row label="Stablecoin providers" description="Add the on-ramp or off-ramp addresses Dobby should recognise, so a cash-out can be paired with the right movement.">
+                <Link href="/settings/stablecoin-providers" className="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:text-primary">
+                  Manage providers <HugeiconsIcon icon={ArrowRightIcon} size={14}  />
+                </Link>
+              </Row>
+            ) : null}
           </Section>
 
           <Section label="Plan">

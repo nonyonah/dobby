@@ -1,4 +1,5 @@
 import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
+import { ALL_STABLE_SYMBOLS } from "@/lib/stablecoins";
 
 export interface WalletSummaryPayload {
   chain: string;
@@ -46,9 +47,11 @@ export function summarizeTransfers(transfers?: WalletSummaryPayload["transfers"]
     if (!Number.isFinite(value)) continue;
     totals.set(asset, (totals.get(asset) ?? 0) + Math.abs(value));
   }
-  const stables = ["USDC", "CNGN", "ETH"]
-    .filter((asset) => totals.has(asset))
-    .map((asset) => `${totals.get(asset)?.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${asset}`);
+  // ETH was in this list, which is not a stablecoin: it summarised a volatile
+  // asset next to pegged ones as though they were comparable.
+  const stables = [...ALL_STABLE_SYMBOLS]
+    .filter((asset) => totals.has(asset.toUpperCase()))
+    .map((asset) => `${totals.get(asset.toUpperCase())?.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${asset}`);
   const parts = stables.length > 0 ? stables : [`${transfers.length} transfers`];
   return `${transfers.length} transfers · ${parts.slice(0, 2).join(" · ")}`;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { driver, type DriveStep } from "driver.js";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -85,6 +85,21 @@ const getServerEnabledSnapshot = () => true;
 /** Route a step targets, without its query — readiness is about the route. */
 const routeOf = (href: string | undefined) => (href ? href.split("?")[0]! : undefined);
 
+/** The query a step carries, or "" when it has none. */
+const queryOf = (href: string | undefined) => (href ? (href.split("?")[1] ?? "") : "");
+
+/**
+ * The href currently on screen, query included.
+ *
+ * Comparing full hrefs rather than routes is what makes a step that only
+ * changes the query reachable. `/insights` and `/insights?section=tax` are the
+ * same route, so a route-only comparison decides there is nothing to navigate
+ * to, advances immediately, and the step's anchor is not on the page — which
+ * `skipMissingElement` then swallows silently. The tax step would have been the
+ * third step in this tour to vanish that way.
+ */
+const hrefOf = (pathname: string, search: string) => (search ? `${pathname}?${search}` : pathname);
+
 /** driver.js step for one of ours, keeping the route change out of it. */
 function toDriveStep(step: TutorialStep): DriveStep {
   return {
@@ -144,12 +159,14 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
    * the wait. The dashboard re-renders constantly while its cards load, so the
    * tour never started.
    */
-  const pathnameRef = useRef(pathname);
+  const searchParams = useSearchParams();
+  const searchKey = searchParams.toString();
   const routerRef = useRef(router);
+  const hrefRef = useRef(hrefOf(pathname, searchKey));
   useEffect(() => {
-    pathnameRef.current = pathname;
     routerRef.current = router;
-  }, [pathname, router]);
+    hrefRef.current = hrefOf(pathname, searchKey);
+  }, [router, searchKey]);
 
   const destroy = useCallback(() => {
     instanceRef.current?.destroy();
@@ -206,7 +223,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
           // Navigate first; advancing here would highlight a node the next
           // route has not rendered yet. The pathname effect below re-applies
           // the step once the route settles.
-          if (next?.href && routeOf(next.href) !== pathnameRef.current) {
+          if (next?.href && next.href !== hrefRef.current) {
             pendingRef.current = index + 1;
             routerRef.current.push(next.href);
             return;
@@ -217,7 +234,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
         onPrevClick: (_element, _step, opts) => {
           const index = opts.index ?? 0;
           const previous = TUTORIAL_STEPS[index - 1];
-          if (previous?.href && routeOf(previous.href) !== pathnameRef.current) {
+          if (previous?.href && previous.href !== hrefRef.current) {
             pendingRef.current = index - 1;
             routerRef.current.push(previous.href);
             return;
@@ -252,7 +269,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       // find nothing, and skip straight past it. Navigate first and let the
       // pathname effect below start the tour once the route has settled.
       const first = TUTORIAL_STEPS[0];
-      if (first?.href && routeOf(first.href) !== pathnameRef.current) {
+      if (first?.href && first.href !== hrefRef.current) {
         pendingRef.current = 0;
         routerRef.current.push(first.href!);
         return;
@@ -286,7 +303,12 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
     const pending = pendingRef.current;
     if (pending === null) return;
     const step = TUTORIAL_STEPS[pending];
-    if (step?.href && routeOf(step.href) !== pathname) return;
+    if (step?.href) {
+      if (routeOf(step.href) !== pathname) return;
+      // The route can commit before the query has: advancing on route alone
+      // would highlight the Cashflow view while claiming to show Tax.
+      if (queryOf(step.href) && queryOf(step.href) !== searchKey) return;
+    }
     pendingRef.current = null;
     clearPendingDrive();
 
@@ -307,7 +329,7 @@ export function TutorialProvider({ children }: { children: React.ReactNode }) {
       instanceRef.current?.drive(pending);
     };
     timerRef.current = window.setTimeout(attempt, selector ? 40 : 0);
-  }, [pathname, clearPendingDrive]);
+  }, [pathname, searchKey, clearPendingDrive]);
 
   const setEnabled = useCallback(
     (next: boolean) => {

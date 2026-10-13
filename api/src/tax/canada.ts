@@ -61,6 +61,7 @@ export const canadaRules: TaxRuleModule = {
     { key: "gst_credit", label: "Applied for the GST/HST credit if eligible" },
     { key: "instalments", label: "Federal instalments paid on the 15th of April, June, September and December if required" },
     { key: "balance_paid", label: "Return filed and any balance paid by 30 April" },
+    { key: "crypto_records", label: "Records of crypto disposals, with acquisition cost and proceeds in Canadian dollars on each date" },
   ],
   calculate({ taxYear, transactions, deductions, inputs, now }) {
     const income = transactions.filter((item) => item.type === "INCOME");

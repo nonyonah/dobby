@@ -154,7 +154,6 @@ async function calculate(ownerClerkId: string) {
       AND t."occurredAt" < ${utcTimestamp(period.end)}
     GROUP BY 1, 2, 3, 4, 5, 6
   `;
-  const taxableWalletAssets = new Set(["USDC", "CNGN", "ETH"]);
   const taxCurrency = rules.currency;
   const factors = await getConversionFactors(
     groups.map((group) => group.currency ?? "USD"),
@@ -165,11 +164,16 @@ async function calculate(ownerClerkId: string) {
     return {
       type: group.type as TransactionType,
       amount,
-      isTaxable:
-        group.is_taxable ||
-        (group.source === "wallet" &&
-          Boolean(group.asset_symbol) &&
-          taxableWalletAssets.has(group.asset_symbol!.toUpperCase())),
+      // Trust the stored verdict rather than re-deciding from the asset symbol.
+      //
+      // This used to force any wallet-sourced USDC, CNGN or ETH row to taxable.
+      // It was dead code while nothing wrote wallet rows, so it was never
+      // noticed being wrong — and it is wrong twice over now that on-chain
+      // activity is persisted. A stablecoin arriving is the user's own asset
+      // coming back, not income, and a yield deposit's principal is not a
+      // receipt. Taxability is decided where the movement is known: a transfer
+      // for a conversion, income only for a confirmed yield reward.
+      isTaxable: group.is_taxable,
       incomeSource: group.income_source as IncomeSource | null,
     };
   });

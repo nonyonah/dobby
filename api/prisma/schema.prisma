@@ -33,6 +33,29 @@ enum WalletValidationStatus {
   FAILED
 }
 
+/// What a detected stablecoin movement was. Advisory classification only —
+/// nothing here is ever auto-confirmed, and Dobby never files, pays or moves
+/// money on the strength of one.
+enum StablecoinEventKind {
+  /// Stablecoins left a tracked wallet and naira arrived. Both legs are the
+  /// user's own asset changing form, so neither is income nor spending.
+  CASH_OUT
+  /// Naira went out and stablecoins came in. The mirror of a cash-out.
+  ON_RAMP
+  /// Interest or staking rewards landed in the wallet. Only the reward is
+  /// income — never the principal that earned it.
+  YIELD_RECEIVED
+  /// Underlying received on redemption minus underlying deposited. A gain, not
+  /// a receipt, and deliberately kept distinct from YIELD_RECEIVED.
+  YIELD_REDEMPTION_GAIN
+}
+
+enum StablecoinEventStatus {
+  SUGGESTED
+  CONFIRMED
+  DISMISSED
+}
+
 enum TransactionType {
   INCOME
   EXPENSE
@@ -98,21 +121,21 @@ enum PlanStatus {
 }
 
 model User {
-  clerkId                 String                  @id
-  email                   String?
-  firstName               String?
-  lastName                String?
-  imageUrl                String?
+  clerkId                  String                  @id
+  email                    String?
+  firstName                String?
+  lastName                 String?
+  imageUrl                 String?
   /// The one status column. Everything that decides access reads this through
   /// `getEntitlement`, so there is no second place to keep in step.
-  planStatus              PlanStatus              @default(free) @map("plan_status")
+  planStatus               PlanStatus              @default(free) @map("plan_status")
   // Null until the user starts their first Bachs card subscription. The trial
   // is tied to checkout, not to sign-up, so an account that never pays still has
   // its full week waiting for it.
-  trialStartedAt          DateTime?
+  trialStartedAt           DateTime?
   /// Stored, not derived from trialStartedAt + a constant: changing the length
   /// must not silently move a window a user is already inside.
-  trialEndsAt             DateTime?              @map("trial_ends_at")
+  trialEndsAt              DateTime?               @map("trial_ends_at")
   /// Set once the first-import summary has gone. Doubles as the idempotency
   /// key: a second import must never send it again, and a second sweep of the
   /// job must not send it twice.
@@ -121,42 +144,43 @@ model User {
   /// Every "is this person still around" question is measured from here rather
   /// than from the last transaction's date, which cannot tell a dormant
   /// account from one that has been reading and not acting.
-  lastActiveAt           DateTime?               @map("last_active_at")
+  lastActiveAt             DateTime?               @map("last_active_at")
   /// IANA zone, used for the nudge send window and for "the 2nd of the month".
-  timezone               String?                  @default("Africa/Lagos")
+  timezone                 String?                 @default("Africa/Lagos")
   /// Notification preferences. Default on: a product that starts silent about
   /// what it sends is worse than one that has to be turned off deliberately.
-  nudgeEmailsEnabled     Boolean                  @default(true) @map("nudge_emails_enabled")
-  nudgeInAppEnabled      Boolean                  @default(true) @map("nudge_in_app_enabled")
-  bachsCustomerId         String?                 @unique
-  bachsSubscriptionId     String?                 @unique
-  bachsSubscriptionStatus String?
-  bachsTrialEnd           DateTime?
-  bachsCurrentPeriodEnd   DateTime?
-  bachsCancelAtPeriodEnd  Boolean                 @default(false)
-  planExpiresAt           DateTime?
-  onboardedAt             DateTime?
-  createdAt               DateTime                @default(now())
-  updatedAt               DateTime                @updatedAt
-  profile                 Profile?
-  taxProfile              TaxProfile?
-  accounts                Account[]
-  wallets                 WalletAccount[]
-  transactions            Transaction[]
-  imports                 TransactionImport[]
-  reviewItems             TransactionReviewItem[]
-  categories              Category[]
-  categorizationRules     CategorizationRule[]
-  budgets                 Budget[]
-  goals                   Goal[]
-  goalContributions       GoalContribution[]
-  integrationConnections  IntegrationConnection[]
-  auditEvents             AuditEvent[]
-  emailSyncJobs           EmailSyncJob[]
-  emailImports            EmailImport[]
-  reminderLogs            ReminderLog[]
-  nudgeLogs               NudgeLog[]
-  payments                Payment[]
+  nudgeEmailsEnabled       Boolean                 @default(true) @map("nudge_emails_enabled")
+  nudgeInAppEnabled        Boolean                 @default(true) @map("nudge_in_app_enabled")
+  bachsCustomerId          String?                 @unique
+  bachsSubscriptionId      String?                 @unique
+  bachsSubscriptionStatus  String?
+  bachsTrialEnd            DateTime?
+  bachsCurrentPeriodEnd    DateTime?
+  bachsCancelAtPeriodEnd   Boolean                 @default(false)
+  planExpiresAt            DateTime?
+  onboardedAt              DateTime?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+  profile                  Profile?
+  taxProfile               TaxProfile?
+  accounts                 Account[]
+  wallets                  WalletAccount[]
+  transactions             Transaction[]
+  imports                  TransactionImport[]
+  reviewItems              TransactionReviewItem[]
+  categories               Category[]
+  categorizationRules      CategorizationRule[]
+  budgets                  Budget[]
+  goals                    Goal[]
+  goalContributions        GoalContribution[]
+  integrationConnections   IntegrationConnection[]
+  auditEvents              AuditEvent[]
+  emailSyncJobs            EmailSyncJob[]
+  emailImports             EmailImport[]
+  reminderLogs             ReminderLog[]
+  nudgeLogs                NudgeLog[]
+  payments                 Payment[]
+  stablecoinEvents         StablecoinEvent[]
 
   @@index([email])
   @@index([planStatus])
@@ -228,26 +252,31 @@ model TaxChecklistItem {
  */
 /**
  * Every nudge sent, in-app or by email, with its whole life in one row.
- *
  * Doubles as the idempotency record. `clickedAt`/`completedAt`/`dismissedAt` are
  * set afterwards by the client's callbacks, which is what lets a rule ask
  * "did they ignore this last time?" without keeping any state in memory — and
  * survives a restart, unlike a cache.
  */
 model NudgeLog {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   ownerClerkId String
-  /** The rule's key, matching the entry in the nudge config. */
+  /**
+   * The rule's key, matching the entry in the nudge config.
+   */
   nudgeKey     String
-  /** "email" or "in_app". A nudge sent on both writes one row per channel. */
+  /**
+   * "email" or "in_app". A nudge sent on both writes one row per channel.
+   */
   channel      String
-  sentAt       DateTime @default(now())
+  sentAt       DateTime  @default(now())
   clickedAt    DateTime?
   completedAt  DateTime?
   dismissedAt  DateTime?
-  /** Marks a locally-shown in-app nudge the user swiped away, not acted on. */
+  /**
+   * Marks a locally-shown in-app nudge the user swiped away, not acted on.
+   */
   shownAt      DateTime?
-  owner        User     @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  owner        User      @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@index([ownerClerkId, nudgeKey, channel])
   @@index([ownerClerkId, sentAt])
@@ -271,7 +300,6 @@ model ReminderLog {
  * One-time Pro purchases. Bachs subscriptions live on the User row; these rows
  * are the audit trail plus the idempotency key (txRef) shared by checkout,
  * verify, and webhook fulfillment.
- *
  * Originally Flutterwave/NGN only, so `provider` and the nullable `providerTxId`
  * stay: a Bachs one-time purchase is `provider: "bachs"` with the charge id in
  * `providerTxId`, and the uniqueness that stops a replayed webhook granting a
@@ -285,13 +313,12 @@ model Payment {
   providerTxId String?
   /**
    * The Bachs checkout session this order was opened from.
-   *
    * Its own column rather than sharing `providerTxId`: a `chk_` id is a
    * checkout and a `ch_` id is a charge, and conflating them would make the
    * charge-id uniqueness guard that stops a replayed webhook from granting a
    * second month depend on which half of the payment happened to arrive first.
    */
-  checkoutId    String?
+  checkoutId   String?
   plan         String // "month" | "year" | "once"
   amount       Decimal   @db.Decimal(19, 4)
   currency     String    @default("NGN")
@@ -318,13 +345,11 @@ model Payment {
 
 /**
  * Every webhook delivery, kept before it is acted on.
- *
  * `eventId` is unique and is the whole reason this table exists: Bachs retries
  * anything it does not get a 2xx for, and `collection.succeeded` and
  * `checkout.completed` both describe the same single payment. Fulfilment is
  * written as an insert-or-ignore against this row, so a duplicate delivery
  * loses the race and returns before it can grant a second month of Pro.
- *
  * `processedAt` is left null when the handler did not finish, which makes an
  * interrupted run visible afterwards instead of silently absent.
  */
@@ -363,12 +388,111 @@ model WalletAccount {
   isDefault        Boolean                @default(false)
   validationStatus WalletValidationStatus @default(PENDING)
   verifiedAt       DateTime?
+  /// Y3: "this wallet earns yield". When set, repeated small inflows from the
+  /// same contract are offered as yield rather than ignored. Off by default —
+  /// assuming a wallet earns yield is a claim about the user's finances, and
+  /// most wallets never earn anything.
+  earnsYield       Boolean                @default(false)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   owner            User                   @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
 
   @@unique([ownerClerkId, chain, address])
   @@index([ownerClerkId, isActive])
+}
+
+/// Shared reference data for providers and protocols Dobby can recognise.
+///
+/// Editable, and seeded with names and narration patterns only. `address` is
+/// intentionally left NULL by the seed and is the one field Dobby must never
+/// guess: a wrong address here would mislabel someone else's transfer as a
+/// cash-out or a yield payment, in a tax figure. An absent address costs only a
+/// weaker match, so the seed leaves it empty rather than inventing one.
+model KnownEntity {
+  id                String   @id @default(cuid())
+  kind              String
+  name              String
+  chain             Chain?
+  address           String?
+  /// Lower-cased substrings or regex sources matched against narrations.
+  narrationPatterns String[]
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([kind])
+}
+
+/// The same shape, scoped to one user: "remember this sender as an offramp".
+/// Resolved after the global list so a user's own memory wins over our seed
+/// without either having to know about the other.
+model UserEntity {
+  id                String   @id @default(cuid())
+  ownerClerkId      String
+  kind              String
+  name              String
+  chain             Chain?
+  address           String?
+  narrationPatterns String[]
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([ownerClerkId, kind, name])
+  @@index([ownerClerkId, kind])
+}
+
+/// One detected stablecoin movement, offered to the user rather than applied.
+///
+/// The USD value is captured here, at the moment the movement happened, because
+/// gains on disposal are worked out from the value at disposal time. Recomputing
+/// it later from a rate is not the same number, which is why this column is a
+/// record rather than a derived figure.
+model StablecoinEvent {
+  id                  String                @id @default(cuid())
+  ownerClerkId        String
+  kind                StablecoinEventKind
+  status              StablecoinEventStatus @default(SUGGESTED)
+  token               String
+  chain               Chain?
+  tokenAmount         Decimal               @db.Decimal(19, 4)
+  /// Null for naira-pegged tokens such as cNGN: a naira-pegged token has no
+  /// meaningful USD value to record, and storing zero would read as "worth
+  /// nothing" rather than "not applicable".
+  usdValue            Decimal?              @db.Decimal(19, 4)
+  nairaAmount         Decimal?              @db.Decimal(19, 4)
+  /// Naira received per USD, when both legs were visible. What the user actually
+  /// got, which is not always the headline rate.
+  impliedRate         Decimal?              @db.Decimal(19, 4)
+  feeAmount           Decimal?              @db.Decimal(19, 4)
+  /// That a stamp duty may apply and who bears it depends on the transaction.
+  /// A note, never an amount — see the Nigeria module.
+  stampDutyNote       Boolean               @default(false)
+  onchainTxHash       String?
+  linkedTransactionId String?
+  entityId            String?
+  matchConfidence     Decimal               @default(0) @db.Decimal(3, 2)
+  /// Why this was suggested, in plain words. Read by the review card, so the
+  /// user can judge the suggestion rather than trust it.
+  reason              String?
+  createdAt           DateTime              @default(now())
+  confirmedAt         DateTime?
+  /// Set when the user answered "not sure". The event stays a suggestion —
+  /// nothing was decided — but it stops asking, because being asked again about
+  /// the same movement every day is nagging, not help. Cleared when the answer
+  /// changes, so someone who was unsure and later spots the receipt can still
+  /// confirm it.
+  lastShownAt         DateTime?
+
+  owner        User          @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  transactions Transaction[]
+
+  /// The idempotency guard. Every trigger runs on every sync, so without this a
+  /// second run would suggest the same cash-out again and again. NULLs do not
+  /// collide in Postgres, so bank-only and on-chain events dedupe independently.
+  @@unique([ownerClerkId, onchainTxHash, kind])
+  @@unique([ownerClerkId, linkedTransactionId, kind])
+  @@index([ownerClerkId, status, createdAt])
 }
 
 model Category {
@@ -466,52 +590,54 @@ model CategorizationRule {
 }
 
 model Transaction {
-  id             String             @id @default(cuid())
-  ownerClerkId   String
-  accountId      String?
-  categoryId     String?
-  type           TransactionType
-  amount         Decimal            @db.Decimal(19, 4)
-  currency       String             @default("USD")
-  description    String
-  merchant       String?
-  occurredAt     DateTime
-  source         String?
-  assetSymbol    String?
-  externalId     String?
-  fingerprint    String?
-  isRecurring    Boolean            @default(false)
+  id                String             @id @default(cuid())
+  ownerClerkId      String
+  accountId         String?
+  categoryId        String?
+  type              TransactionType
+  amount            Decimal            @db.Decimal(19, 4)
+  currency          String             @default("USD")
+  description       String
+  merchant          String?
+  occurredAt        DateTime
+  source            String?
+  assetSymbol       String?
+  externalId        String?
+  fingerprint       String?
+  isRecurring       Boolean            @default(false)
   /// Only INCOME carries a value. EXPENSE and TRANSFER are null by definition,
   /// and an ambiguous inflow stays null until the user answers. `taxableSource`
   /// records whether the answer came from the country's tax module or the user.
-  isTaxable      Boolean?
-  taxableSource  String?
+  isTaxable         Boolean?
+  taxableSource     String?
   /// Cached verdict of taxTreatment(): "taxable" | "not_taxable" | "ask".
-  taxTreatment   String?
+  taxTreatment      String?
   /// True once the user has edited this row. Every automated pass — rules
   /// re-apply, future re-categorisation — must skip these.
-  userOverridden Boolean            @default(false)
+  userOverridden    Boolean            @default(false)
   /// Bank transaction reference. The join key for transfer pairing; TEXT
   /// because real references carry leading zeros.
-  reference      String?
+  reference         String?
   /// Which section of a multi-account statement this row came from.
-  subAccount     String?
+  subAccount        String?
   /// Why a transfer verdict was reached: "reference" | "pattern" | "name".
-  transferSource String?
+  transferSource    String?
   /// Which way the money went. A transfer has no INCOME/EXPENSE type to carry
   /// the sign, so without this the two legs of one movement are indistinguishable
   /// and net worth double-counts the whole amount as an outflow.
   transferDirection TransferDirection?
-  incomeSource   IncomeSource?
-  needsReview    Boolean            @default(false)
-  metadata       Json?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  owner          User               @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
-  account        Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  category       Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  import         TransactionImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
-  importId       String?
+  incomeSource      IncomeSource?
+  needsReview       Boolean            @default(false)
+  metadata          Json?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  owner             User               @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  account           Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  category          Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  import            TransactionImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  importId          String?
+  stablecoinEvent   StablecoinEvent?   @relation(fields: [stablecoinEventId], references: [id])
+  stablecoinEventId String?
 
   @@index([ownerClerkId, occurredAt])
   @@index([ownerClerkId, categoryId, occurredAt])
@@ -553,28 +679,28 @@ model TransactionImport {
 }
 
 model TransactionReviewItem {
-  id           String            @id @default(cuid())
-  ownerClerkId String
-  importId     String
-  rowNumber    Int
-  status       ReviewStatus      @default(PENDING)
-  rawData      Json
-  proposedData Json?
-  fingerprint  String?
+  id                String             @id @default(cuid())
+  ownerClerkId      String
+  importId          String
+  rowNumber         Int
+  status            ReviewStatus       @default(PENDING)
+  rawData           Json
+  proposedData      Json?
+  fingerprint       String?
   /// Bank transaction reference — the pairing key for transfers. TEXT, because
   /// real references carry leading zeros and a numeric parse would drop them.
-  reference    String?
+  reference         String?
   /// Section label when one statement carries several accounts.
-  subAccount   String?
+  subAccount        String?
   /// Which way this leg of a transfer moved. Both legs are TRANSFER, so without
   /// this the pair is indistinguishable until it reaches a transaction.
   transferDirection TransferDirection?
-  confidence   Decimal?          @db.Decimal(5, 4)
-  errorMessage String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  owner        User              @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
-  import       TransactionImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  confidence        Decimal?           @db.Decimal(5, 4)
+  errorMessage      String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  owner             User               @relation(fields: [ownerClerkId], references: [clerkId], onDelete: Cascade)
+  import            TransactionImport  @relation(fields: [importId], references: [id], onDelete: Cascade)
 
   @@unique([importId, rowNumber])
   @@index([ownerClerkId, status, createdAt])

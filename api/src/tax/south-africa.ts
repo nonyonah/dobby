@@ -98,6 +98,7 @@ export const southAfricaRules: TaxRuleModule = {
     { key: "donations", label: "Section 18A donation receipts collected" },
     { key: "capital_gains", label: "Capital disposals checked against the R50,000 annual exclusion" },
     { key: "provisional_payments", label: "Provisional tax paid by the end of September and end of March" },
+    { key: "crypto_records", label: "Crypto disposal records — SARS treats a receipt as income and a disposal as a capital event, so both are needed" },
   ],
   calculate({ taxYear, transactions, deductions, inputs }): TaxCalculation {
     const grossIncome = transactions.filter((item) => item.type === "INCOME").reduce((sum, item) => sum + item.amount, 0);

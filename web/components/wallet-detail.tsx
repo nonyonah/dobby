@@ -1,5 +1,6 @@
 "use client";
 
+import { colorForAsset } from "@/lib/stablecoins";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
@@ -49,29 +50,23 @@ type WalletSummary = {
 type NetWorthSnapshot = {
   totalUsd: number;
   unpricedCount: number;
-  holdings: Array<{ walletId: string; symbol: string; amount: number; usdValue: number | null }>;
+  holdings: Array<{ walletId: string; symbol: string; amount: number; usdValue: number | null; displayValue: number | null }>;
+  /** The currency `displayValue` is in — the user's own, not necessarily USD. */
+  displayCurrency: string;
   accounts: Array<{ id: string; name: string; currency: string; balance: number; balanceUsd: number | null }>;
   wallets: WalletSummary[];
 };
 
 type Transfer = { hash?: string; from?: string; to?: string; value?: number | string | null; asset?: string | null };
 
-/** Stablecoin colours reused from the Insights stablecoin tab so an asset reads the same on both pages. */
-const ASSET_COLORS: Record<string, string> = {
-  USDC: "#2775ca",
-  USDT: "#26a17b",
-  CNGN: "#7c3aed",
-  ETH: "#627eea",
-  SOL: "#14f195",
-};
-
-/** Deterministic hue for an asset the palette has no entry for. */
+/**
+ * Asset colour, shared with the stablecoin tab so a token reads the same on
+ * both pages. This page and that one each had their own palette, and they had
+ * already drifted — this one knew ETH and SOL, that one did not, and neither
+ * knew DAI or USDY.
+ */
 function colorFor(symbol: string): string {
-  const upper = symbol.toUpperCase();
-  if (ASSET_COLORS[upper]) return ASSET_COLORS[upper];
-  let hash = 0;
-  for (const char of upper) hash = (hash * 31 + char.charCodeAt(0)) % 360;
-  return `hsl(${hash} 62% 52%)`;
+  return colorForAsset(symbol);
 }
 
 function shortAddress(address: string): string {
@@ -207,9 +202,9 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
   const assets = useMemo<BreakdownItem[]>(() => {
     const totals = new Map<string, number>();
     for (const holding of snapshot?.holdings ?? []) {
-      if (holding.walletId !== walletId || holding.usdValue === null) continue;
+      if (holding.walletId !== walletId || holding.displayValue === null) continue;
       const symbol = holding.symbol.toUpperCase();
-      totals.set(symbol, (totals.get(symbol) ?? 0) + holding.usdValue);
+      totals.set(symbol, (totals.get(symbol) ?? 0) + holding.displayValue);
     }
     return [...totals.entries()]
       .map(([symbol, amount]) => ({ id: symbol, name: symbol, amount, color: colorFor(symbol) }))
@@ -326,7 +321,7 @@ export default function WalletDetailView({ walletId }: { walletId: string }) {
                       <ChartSkeleton height="h-[220px]" />
                     </LoadingRegion>
                   ) : (
-                    <BreakdownPie title="Holdings by asset" items={assets} filterLabel="All assets" />
+                    <BreakdownPie title="Holdings by asset" items={assets} filterLabel="All assets" currency={snapshot?.displayCurrency ?? "USD"} />
                   )}
 
                   <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">

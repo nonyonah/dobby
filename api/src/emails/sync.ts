@@ -1,4 +1,5 @@
 import { ImportType } from "@prisma/client";
+import { runStablecoinDetection } from "../stablecoin/triggers.js";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { storePrivateObject } from "../lib/r2.js";
@@ -424,6 +425,9 @@ export async function runEmailSync(ownerClerkId: string, provider: EmailProvider
         },
       });
       const { duplicateRows } = await persistReviewItems(ownerClerkId, alertImport, alertRows);
+      // A bank alert is the other common source of the naira leg, and S1 (a
+      // provider's own receipt) arrives here and nowhere else.
+      void runStablecoinDetection(ownerClerkId);
       counts.duplicateRows += duplicateRows;
     } catch (error) {
       counts.failed += alertRows.length;

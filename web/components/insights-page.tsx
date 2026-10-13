@@ -3,13 +3,15 @@
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import { MoneyStats } from "@/components/money-stats";
 import { CashflowViz } from "@/components/cashflow-viz";
 import { SpendingSection, IncomeSection } from "@/components/flow-sections";
 import { Meter } from "@/components/module-card";
 import { AlertIcon } from "@/components/icons";
 import { ExportMenu } from "@/components/export-menu";
-import { StablecoinSection, isStablecoinAsset } from "@/components/stablecoin-section";
+import { StablecoinSection } from "@/components/stablecoin-section";
+import { isStablecoinAsset } from "@/lib/stablecoins";
 import { toast } from "@/components/ui/toast";
 
 import { formatCurrency } from "@/lib/format";
@@ -174,6 +176,24 @@ function humanise(key: string): string {
 
 type ChecklistItem = { key: string; label: string; status: "READY" | "OUTSTANDING" };
 
+/** Nigeria-only. The API returns null for every other jurisdiction. */
+type StablecoinTaxSummary = {
+  cashOutCount: number;
+  cashOutUsd: number;
+  cashOutNaira: number;
+  yieldCount: number;
+  yieldUsd: number;
+  currency: string;
+  stampDutyNote: string;
+  stampDutyApplies: boolean;
+  advisory: string;
+};
+
+async function fetchStablecoinTax(api: ReturnType<typeof useApi>) {
+  const response = await api.get<{ data: StablecoinTaxSummary | null }>("/v1/stablecoin-events/summary");
+  return response.data;
+}
+
 async function fetchTax(api: ReturnType<typeof useApi>) {
   const [estimate, checklist] = await Promise.all([
     api.get<{ data: TaxEstimate }>("/v1/tax/estimate"),
@@ -183,7 +203,17 @@ async function fetchTax(api: ReturnType<typeof useApi>) {
 }
 
 export default function InsightsPage() {
-  const [section, setSection] = useState<Section>("cashflow");
+  // Deep-link entry point, same shape as the transactions page's `?view=ledger`.
+  // The product tour has to land on Tax rather than describe it from the
+  // Cashflow view, and driver.js has no router integration — it navigates first
+  // and only then advances. Read once at mount on purpose: this is not a
+  // two-way binding, and syncing it back would fight the segmented control.
+  const requestedSection = useSearchParams().get("section");
+  const [section, setSection] = useState<Section>(
+    (["cashflow", "spending", "income", "stablecoin", "tax"] as Section[]).includes(requestedSection as Section)
+      ? (requestedSection as Section)
+      : "cashflow",
+  );
   const [range, setRange] = useState<DayRange>(() => {
     const now = new Date();
     return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999) };
@@ -194,6 +224,7 @@ export default function InsightsPage() {
   const [summaryRetry, setSummaryRetry] = useState(0);
   const [yearTransactions, setYearTransactions] = useState<{ year: number; rows: TxFull[] } | null>(null);
   const [taxChecklist, setTaxChecklist] = useState<Array<{ key: string; label: string; status: "READY" | "OUTSTANDING" }> | null>(null);
+  const [stablecoinTax, setStablecoinTax] = useState<StablecoinTaxSummary | null>(null);
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
   const selectedYear = range.from.getFullYear();
@@ -226,6 +257,16 @@ export default function InsightsPage() {
         if (cancelled) return;
         setTaxEstimate(null);
         setTaxChecklist([]);
+      });
+
+    // Only ever non-null for Nigeria. The endpoint returns null elsewhere, so no
+    // other jurisdiction can render Nigerian wording by accident.
+    void fetchStablecoinTax(api)
+      .then((summary) => {
+        if (!cancelled) setStablecoinTax(summary);
+      })
+      .catch(() => {
+        if (!cancelled) setStablecoinTax(null);
       });
     return () => { cancelled = true; };
   }, [api, isLoaded, isSignedIn]);
@@ -378,7 +419,7 @@ export default function InsightsPage() {
             loading={transactionsLoading}
           />
         ) : (
-          <div>
+          <div data-tour="insights-tax">
             <div className="grid grid-cols-1 items-start gap-x-8 gap-y-8 md:grid-cols-2">
               <section aria-label="Deductions">
                 <h2 className="m-0 text-[13px] font-semibold">Deductions</h2>
@@ -415,6 +456,41 @@ export default function InsightsPage() {
                   </>
                 )}
               </section>
+
+              {/* Nigeria only. The stamp duty is a note and never an amount:
+                  it falls on the transferee, so someone cashing out may not
+                  bear it, and showing a figure would invent a liability. */}
+              {stablecoinTax ? (
+                <section aria-label="Stablecoin activity">
+                  <h2 className="m-0 text-[13px] font-semibold">Stablecoin activity</h2>
+                  <p className="m-0 mt-1 text-[12px] text-muted-foreground">{taxYear} estimate · confirmed events only</p>
+                  <dl className="m-0 mt-2 flex flex-col gap-1">
+                    <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                      <dt className="min-w-0 flex-1 text-muted-foreground">Cash-outs</dt>
+                      <dd className="mono shrink-0 font-medium tabular-nums">
+                        {stablecoinTax.cashOutCount}
+                        <span className="ml-1.5 text-muted-foreground">
+                          {formatCurrency(stablecoinTax.cashOutUsd, "USD")} · {stablecoinTax.currency}
+                          {formatCurrency(stablecoinTax.cashOutNaira, stablecoinTax.currency)}
+                        </span>
+                      </dd>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2 text-[13px]">
+                      <dt className="min-w-0 flex-1 text-muted-foreground">Yield received</dt>
+                      <dd className="mono shrink-0 font-medium tabular-nums">
+                        {stablecoinTax.yieldCount}
+                        <span className="ml-1.5 text-muted-foreground">{formatCurrency(stablecoinTax.yieldUsd, "USD")} · investment income</span>
+                      </dd>
+                    </div>
+                  </dl>
+                  {stablecoinTax.stampDutyApplies ? (
+                    <p className="m-0 mt-2 border-t border-line pt-2 text-[12px] leading-relaxed text-muted-foreground">
+                      {stablecoinTax.stampDutyNote}
+                    </p>
+                  ) : null}
+                  <p className="m-0 mt-2 text-[12px] text-muted-foreground">{stablecoinTax.advisory}</p>
+                </section>
+              ) : null}
 
               <section aria-label="Tax position">
                 <h2 className="m-0 text-[13px] font-semibold">Tax position</h2>

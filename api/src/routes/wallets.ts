@@ -2,6 +2,8 @@ import { Router } from "express";
 import { Chain } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
+import { syncWallets } from "../stablecoin/wallet-sync.js";
+import { detectStablecoinEvents } from "../stablecoin/detect.js";
 import { getBlockscoutAddressSummary } from "../lib/blockscout.js";
 import { alchemyConfigured, getBaseWalletTransfers, getSolanaWalletTransfers } from "../providers/alchemy.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -16,6 +18,12 @@ const walletSchema = z.object({
   displayName: z.string().trim().min(1).max(80),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   isDefault: z.boolean().optional().default(false),
+  /**
+   * Y3: "this wallet earns yield". Off unless the user says so — claiming a
+   * wallet earns yield is a claim about their finances, and most wallets never
+   * earn anything.
+   */
+  earnsYield: z.boolean().optional(),
 });
 
 function validateAddress(chain: Chain, address: string) {
@@ -111,6 +119,22 @@ walletsRouter.delete("/:id", async (req, res) => {
     return;
   }
   res.status(204).send();
+});
+
+/**
+ * Syncs a wallet's stablecoin transfers into the ledger, then runs detection.
+ *
+ * The summary route above is a live proxy and deliberately stores nothing, so
+ * without this there is no path by which an on-chain movement ever reaches the
+ * ledger — and detection, which pairs a stablecoin outflow against a naira
+ * credit, would have no outflow to pair. Kept separate from the summary route
+ * because persisting is a decision, not a side effect of looking.
+ */
+walletsRouter.post("/sync", async (req, res) => {
+  const ownerClerkId = req.auth!.userId;
+  const result = await syncWallets(ownerClerkId);
+  const detection = await detectStablecoinEvents(ownerClerkId);
+  res.json({ data: { ...result, events: detection.created } });
 });
 
 walletsRouter.get("/:id/summary", async (req, res) => {

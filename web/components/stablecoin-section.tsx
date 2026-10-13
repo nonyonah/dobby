@@ -13,20 +13,17 @@ import { FlowNarrative } from "@/components/flow-narrative";
 import { FlowTable } from "@/components/flow-table";
 import { LoadingRegion, TableSkeletonRows } from "@/components/loading-skeletons";
 
-/** Assets that count as stablecoins anywhere in the app. CNGN is Nigeria's. */
-export const STABLECOIN_SYMBOLS = ["USDC", "USDT", "CNGN"];
+/**
+ * Re-exported rather than redeclared. This list used to live here, and was
+ * already out of step with the three other copies of it by the time DAI and
+ * USDY were added — the balance page showed them while this tab did not.
+ */
+import { ASSET_COLORS, STABLECOIN_SYMBOLS, isStablecoinAsset, stableTokenLabel } from "@/lib/stablecoins";
 
-const ASSET_COLORS: Record<string, string> = {
-  USDC: "#2775ca",
-  USDT: "#26a17b",
-  CNGN: "#7c3aed",
-};
+export { STABLECOIN_SYMBOLS, isStablecoinAsset };
+
 
 const MONTHS = MONTH_LABELS.map((label, value) => ({ value, label }));
-
-export function isStablecoinAsset(symbol?: string | null): boolean {
-  return Boolean(symbol && STABLECOIN_SYMBOLS.includes(symbol.toUpperCase()));
-}
 
 type NetWorthPayload = {
   totalUsd: number;
@@ -135,7 +132,7 @@ export function StablecoinSection({
           <FlowTable
             title="Transactions"
             typeLabel="Stablecoin"
-            filterLabel="USDC · USDT · CNGN"
+            filterLabel={stableTokenLabel(STABLECOIN_SYMBOLS)}
             rows={monthRows}
             signed
           />
@@ -155,7 +152,7 @@ export function StablecoinSection({
               ? <><strong>{busiest.name}</strong> moved the most at {formatUSD(busiest.amount)} of the {formatUSD(assets.reduce((sum, asset) => sum + asset.amount, 0))} total.</>
               : <>No stablecoin movements in {monthLabel} yet.</>}
           </p>
-          <p className="m-0">Only USDC, USDT, and CNGN movements are counted here.</p>
+          <p className="m-0">Only pegged stablecoin movements are counted here — yield-bearing tokens are shown separately.</p>
         </FlowNarrative>
       </div>
     </div>

@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { Button } from "../ui/button";
 import { toast } from "../ui/toast";
 import { ColorSelect } from "../ui/color-select";
@@ -60,6 +61,7 @@ export function WalletConnectModal({
   const [address, setAddress] = useState("");
   const [name, setName] = useState("");
   const [color, setColor] = useState(COLORS[0]);
+  const [earnsYield, setEarnsYield] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const reset = () => {
@@ -87,6 +89,7 @@ export function WalletConnectModal({
         address: address.trim(),
         displayName: trimmedName,
         color,
+        earnsYield,
       });
       // No summary fetch here on purpose: the API proxies the chain provider live, so
       // a brand-new address can take tens of seconds and sometimes fails
@@ -156,6 +159,20 @@ export function WalletConnectModal({
             value={color}
             onChange={(next) => setColor(next || COLORS[0])}
           />
+        </div>
+
+        {/* Y3. Off by default, and phrased as a question rather than a claim:
+            it is what lets Dobby suggest yield on small repeated inflows from
+            one contract, and nothing here acts on it without a confirmation. */}
+        <div className="flex items-start justify-between gap-4 border-t border-line pt-4">
+          <div className="min-w-0">
+            <p className="m-0 text-[13px] font-medium">This wallet earns yield</p>
+            <p className="m-0 mt-0.5 text-[12px] leading-4 text-muted-foreground">
+              Repeated small deposits from the same contract will be offered as possible yield, for you to confirm. Nothing is
+              counted as income on its own.
+            </p>
+          </div>
+          <Switch checked={earnsYield} onCheckedChange={setEarnsYield} aria-label="This wallet earns yield" />
         </div>
         <DialogFooter className="sm:justify-between">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

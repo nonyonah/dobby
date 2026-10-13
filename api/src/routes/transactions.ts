@@ -99,6 +99,9 @@ transactionsRouter.get("/", async (req, res) => {
     source: true,
     assetSymbol: true,
     isRecurring: true,
+    // Lets the ledger mark a row as one leg of a cash-out, so the two halves of
+    // a conversion are visibly one event rather than two unrelated rows.
+    stablecoinEventId: true,
     isTaxable: true,
     needsReview: true,
     // Carried so the ledger can show which statement section a row came from

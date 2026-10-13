@@ -31,6 +31,11 @@ const { prisma } = await import("../lib/prisma.js");
 const { utcTimestamp } = await import("../lib/sql.js");
 const { getConversionFactors } = await import("../providers/frankfurter.js");
 
+// The database is a remote pooled instance, so a seed plus a full aggregate
+// routinely outruns the 5s default. Without this the suite reports timeouts
+// that look like failures and hide whatever it was actually asserting.
+vi.setConfig({ hookTimeout: 120_000, testTimeout: 120_000 });
+
 const RUN = process.env.DOBBY_DB_PARITY === "1";
 const OWNER = "user_tax_verify";
 const TAXABLE_WALLET_ASSETS = new Set(["USDC", "CNGN", "ETH"]);
@@ -118,7 +123,7 @@ function digest(transactions: Array<{ type: string; amount: number; isTaxable: b
 async function seed() {
   await prisma.transaction.deleteMany({ where: { ownerClerkId: OWNER } });
   await prisma.user.deleteMany({ where: { clerkId: OWNER } });
-  await prisma.user.create({ data: { clerkId: OWNER, email: "tax@example.com", plan: "ACTIVE" } });
+  await prisma.user.create({ data: { clerkId: OWNER, email: "tax@example.com", planStatus: "pro" } });
 
   const rows: Array<Record<string, unknown>> = [
     // salary, mixed currencies, taxable and not

@@ -61,6 +61,8 @@ export const kenyaRules: TaxRuleModule = {
     { key: "relief_evidence", label: "Insurance and medical premium receipts kept for relief" },
     { key: "instalment_tax", label: "Instalment tax deducted if your monthly salary exceeds KSh 100,000" },
     { key: "return_filed", label: "Individual return filed and balance paid by the due date" },
+    { key: "crypto_records", label: "Virtual-asset records for the year: receipts, disposals and the value on each date" },
+    { key: "vasp_records", label: "Statements from every virtual-asset service provider used during the year" },
   ],
   calculate({ taxYear, transactions, deductions, inputs }): TaxCalculation {
     const income = transactions.filter((item) => item.type === "INCOME");

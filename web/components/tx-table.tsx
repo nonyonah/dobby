@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Input } from "./ui/input";
 import { NativeSelect } from "./ui/native-select";
@@ -55,6 +55,8 @@ import {
 } from "@/lib/transactions";
 import type { TxSource } from "@/lib/finance";
 import { detectRecurringTransactions } from "@/lib/recurring";
+import { StablecoinEventCard, StablecoinBulkConfirm, type StablecoinSuggestion } from "@/components/stablecoin-event-card";
+import { useApi } from "@/hooks/use-api";
 import { CardIcon, EmailIcon, FileIcon, ManualIcon, WalletIcon } from "./icons";
 import { CategoryChip } from "@/components/ui/category-chip";
 
@@ -207,6 +209,26 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
   const [source, setSource] = useState<SourceFilter>("all");
   const [dateRange, setDateRange] = useState<DateFilter>("all");
   const [recurringOnly, setRecurringOnly] = useState(false);
+  // Detected movements the user has not answered yet. Fetched here rather than
+  // passed in, because they are the ledger's business and the page above this
+  // has two views that would otherwise each need to know about them.
+  const [stablecoinEvents, setStablecoinEvents] = useState<StablecoinSuggestion[]>([]);
+  const api = useApi();
+
+  const loadStablecoinEvents = useCallback(async () => {
+    try {
+      const response = await api.get<{ data: StablecoinSuggestion[] }>("/v1/stablecoin-events?status=SUGGESTED&unanswered=true");
+      setStablecoinEvents(response.data);
+    } catch {
+      // Detection is advisory. A failure to load suggestions must never take
+      // the ledger down with it.
+      setStablecoinEvents([]);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void loadStablecoinEvents();
+  }, [loadStablecoinEvents]);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
@@ -346,8 +368,25 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
 
   const from = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
   const to = Math.min(safePage * PAGE_SIZE, filtered.length);
+  // Only the confident ones can be bulk-confirmed; the rest are one at a time
+  // by design, because a narration-only guess is the kind of thing a person
+  // should look at.
+  const confidentIds = stablecoinEvents.filter((event) => Number(event.matchConfidence) >= 0.8).map((event) => event.id);
+
   return (
     <div>
+      {stablecoinEvents.length > 0 ? (
+        <section aria-label="Detected stablecoin activity" className="mb-4 flex flex-col gap-2">
+          {stablecoinEvents.map((event) => (
+            <StablecoinEventCard key={event.id} event={event} onAnswered={() => void loadStablecoinEvents()} />
+          ))}
+          {confidentIds.length > 1 ? (
+            <div className="flex justify-end">
+              <StablecoinBulkConfirm ids={confidentIds} onAnswered={() => void loadStablecoinEvents()} />
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       {/* Search with filters inside */}
       <div className="flex items-center justify-end gap-2">
         <NativeSelect
@@ -556,7 +595,7 @@ export function TxTable({ rows, selectedId, onSelect, onEdit, onDelete, onImport
                           <span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground"><SIcon className="size-3" /></span>
                         </span>
                       </TableCell>
-                      <TableCell className="hidden px-3 py-2.5 md:table-cell"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} /></TableCell>
+                      <TableCell className="hidden px-3 py-2.5 md:table-cell"><span className="flex flex-wrap items-center gap-1.5"><CategoryChip id={t.categoryId ?? t.category} name={t.categoryName} color={t.categoryColor} />{t.stablecoinEventId ? <span className="inline-flex items-center rounded-full border border-transparent bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Stablecoin</span> : null}</span></TableCell>
                       <TableCell className="hidden px-3 py-2.5 md:table-cell"><span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap ${t.taxable ? "border-transparent bg-primary text-primary-foreground" : "border-transparent bg-secondary text-secondary-foreground"}`}>{t.taxable ? "Taxable" : "Non-tax"}</span></TableCell>
                       <TableCell className="hidden px-3 py-2.5 md:table-cell"><span title={SOURCE_LABEL[t.source]} aria-label={SOURCE_LABEL[t.source]} className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground"><SIcon /></span></TableCell>
 

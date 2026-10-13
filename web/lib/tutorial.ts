@@ -83,7 +83,20 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     side: "bottom",
     align: "start",
     title: "Where it went",
-    body: "Cashflow, spending, income, stablecoins and tax. Pick a month and every card, chart and table follows it.",
+    body: "Cashflow, spending, income and stablecoins. Pick a month and every card, chart and table follows it.",
+  },
+  {
+    /**
+     * Carries `?section=tax`, which without this query the step would arrive on
+     * Cashflow and highlight a panel that isn't there — the same failure the
+     * `?view=ledger` step above documents.
+     */
+    href: "/insights?section=tax",
+    anchor: "insights-tax",
+    side: "bottom",
+    align: "start",
+    title: "Your tax, worked out",
+    body: "Dobby counts the deductible expenses you've already categorised, estimates what you'll owe on your income, and keeps the filing checklist beside it. Set your jurisdiction once and these follow it.",
   },
   {
     href: "/settings",

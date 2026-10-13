@@ -96,6 +96,8 @@ export const ukRules: TaxRuleModule = {
     { key: "return_deadline", label: "Return filed by 31 October (paper) or 31 January (online)" },
     { key: "balancing_payment", label: "Balancing payment made by 31 July" },
     { key: "payment_on_account", label: "Payments on account made by 31 January and 31 July" },
+    { key: "crypto_records", label: "Records of cryptoasset disposals, with value in pounds on the disposal date and what it cost" },
+    { key: "cgt_allowance", label: "Gains above the annual exempt amount reported, if anything was disposed of" },
   ],
   calculate({ taxYear, transactions, deductions, inputs, now }) {
     const income = transactions.filter((item) => item.type === "INCOME");

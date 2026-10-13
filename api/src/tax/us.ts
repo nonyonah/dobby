@@ -139,6 +139,8 @@ export const usRules: TaxRuleModule = {
     { key: "expense_records", label: "Categorized expense records" },
     { key: "estimated_payments", label: "Prior estimated payment records" },
     { key: "home_office_area", label: "Home office square footage if claiming that deduction" },
+    { key: "crypto_records", label: "Records of virtual-asset purchases, receipts and disposals — a receipt is income, a disposal is a capital gain, and they are not the same thing" },
+    { key: "cost_basis", label: "Acquisition cost worked out for anything disposed of, in dollars on the date it was bought" },
   ],
   calculate({ taxYear, transactions, deductions, inputs, now }) {
     const { figures, exact } = figuresFor(taxYear);

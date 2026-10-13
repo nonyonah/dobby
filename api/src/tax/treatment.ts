@@ -24,19 +24,49 @@ const TREATMENT: Record<TaxCountry, Record<string, TaxTreatment>> = {
     salary: "taxable",
     "business sales": "taxable",
     "interest income": "taxable",
+    // NRS Guidelines on Taxation of Virtual Assets (31 July 2026): yield on a
+    // stablecoin is investment income under Category 4. Only the yield — the
+    // principal that earned it is never income.
+    "yield / investment income": "taxable",
+    // A conversion of the user's own asset, so not income. A disposal gain would
+    // be a capital matter, but a pegged stablecoin's gain is approximately zero
+    // and capital gains are not modelled in this pass.
+    "stablecoin cash-out": "not_taxable",
+    "stablecoin purchase": "not_taxable",
     "gift / family support": "not_taxable",
     "loan received": "not_taxable",
     refund: "not_taxable",
     "own account transfer": "not_taxable",
   },
-  // The other jurisdictions keep their existing behaviour for now: the Nigeria
-  // rule set is the one derived from a tested statement, and guessing at the
-  // rest would be worse than asking. They fall through to `ask`.
-  US: {},
-  UK: {},
-  CANADA: {},
-  KENYA: {},
-  SOUTH_AFRICA: {},
+  // Yield is income on receipt in the US (ordinary income once dominion and
+  // control is obtained), Canada (CRA treats a crypto receipt as barter income
+  // at receipt), Kenya (income from virtual assets is taxable when received)
+  // and South Africa (SARS taxes a crypto receipt at receipt, not on disposal).
+  US: { "yield / investment income": "taxable", "interest income": "taxable", "stablecoin cash-out": "not_taxable", "stablecoin purchase": "not_taxable" },
+  CANADA: { "yield / investment income": "taxable", "interest income": "taxable", "stablecoin cash-out": "not_taxable", "stablecoin purchase": "not_taxable" },
+  KENYA: { "yield / investment income": "taxable", "interest income": "taxable", "stablecoin cash-out": "not_taxable", "stablecoin purchase": "not_taxable" },
+  SOUTH_AFRICA: { "yield / investment income": "taxable", "interest income": "taxable", "stablecoin cash-out": "not_taxable", "stablecoin purchase": "not_taxable" },
+  /**
+   * The one jurisdiction here that treats yield differently, and the reason this
+   * table is per-country rather than global.
+   *
+   * HMRC treats staking rewards that come with dominion and control — the
+   * "additional tokens" case — as part of the cost of acquiring the asset, not
+   * as income. Tax arises on disposal instead. So the same receipt that is
+   * taxable on receipt in the US, Canada, Kenya and South Africa is not income
+   * here. A user's own ruling can differ, which is why it is a category the
+   * user can move.
+   */
+  UK: {
+    "yield / investment income": "not_taxable",
+    // Bank interest is taxable on receipt everywhere, including here. Adding it
+    // is what stopped an ordinary savings row being sent back to the user as a
+    // question while stablecoin yield, a far more contested point, resolved
+    // itself.
+    "interest income": "taxable",
+    "stablecoin cash-out": "not_taxable",
+    "stablecoin purchase": "not_taxable",
+  },
 };
 
 /**

@@ -29,6 +29,7 @@ type KindFilter = "all" | AttentionItem["kind"];
 const KIND_LABEL: Record<AttentionItem["kind"], string> = {
   review: "Review",
   tax: "Tax",
+  stablecoin: "Stablecoin",
 };
 
 export default function NotificationsPage() {

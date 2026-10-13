@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, Tooltip } from "recharts";
 import { NativeSelect } from "./ui/native-select";
 import { CalendarIcon, FilterIcon } from "./icons";
-import { formatUSD } from "@/lib/format";
+import { formatCurrency, formatUSD } from "@/lib/format";
 import { MONTH_LABELS } from "@/lib/insights-data";
 import { ChartContainer, type ChartConfig } from "./ui/chart";
 import { Card } from "./ui/card";
@@ -32,10 +32,20 @@ interface BreakdownPieProps {
   onMonthChange?: (month: number) => void;
   /** Label for the "everything" option of the item filter, e.g. "All assets". */
   filterLabel?: string;
+  /**
+   * The currency `amount` is denominated in.
+   *
+   * Omitted means "already in the user's own currency", which is what every
+   * aggregate endpoint returns and what most callers pass. The wallet holdings
+   * chart is the exception: holdings are priced in dollars, and formatting those
+   * with the app currency relabelled the number instead of converting it — a
+   * $0.04 holding read as "₦0.04".
+   */
+  currency?: string;
 }
 
 /** Breakdown card with aligned controls, a larger donut, and category detail. */
-export function BreakdownPie({ title, items, month, year, months, onMonthChange, filterLabel = "All categories" }: BreakdownPieProps) {
+export function BreakdownPie({ title, items, month, year, months, onMonthChange, filterLabel = "All categories", currency }: BreakdownPieProps) {
   const [catFilter, setCatFilter] = useState("all");
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   const config = useMemo(
@@ -106,7 +116,9 @@ export function BreakdownPie({ title, items, month, year, months, onMonthChange,
               <li key={item.id} className="flex items-center gap-2 border-b border-line py-2">
                 <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
                 <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{item.name}</span>
-                <span className="mono shrink-0 text-[13px] font-medium tabular-nums">{formatUSD(item.amount)}</span>
+                <span className="mono shrink-0 text-[13px] font-medium tabular-nums">
+                  {currency ? formatCurrency(item.amount, currency) : formatUSD(item.amount)}
+                </span>
                 <span className="mono w-11 shrink-0 text-right text-[12px] text-muted-foreground tabular-nums">{pct.toFixed(0)}%</span>
               </li>
             );

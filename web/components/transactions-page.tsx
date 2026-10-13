@@ -57,6 +57,8 @@ type ApiTransaction = {
   needsReview: boolean;
   /** Whether this row is a repeating charge, by the customer's or a rule's say-so. */
   isRecurring: boolean;
+  /** The stablecoin movement this row is a leg of, when it has one. */
+  stablecoinEventId?: string | null;
   subAccount?: string | null;
   reference?: string | null;
   transferSource?: string | null;
@@ -113,6 +115,7 @@ function mapTransaction(item: ApiTransaction): TxFull {
     subAccount: item.subAccount ?? null,
     source: sourceId(item.source),
     recurring: item.isRecurring === true,
+    stablecoinEventId: item.stablecoinEventId ?? null,
     parse: { state: item.needsReview ? "review" : "parsed" },
     note: "",
   };

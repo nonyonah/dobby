@@ -15,6 +15,16 @@ export const DEFAULT_INCOME_CATEGORIES = [
   "Loan received",
   "Refund",
   "Other income",
+  /**
+   * Yield and other investment income earned on a stablecoin.
+   *
+   * Kept separate from "Interest income" on purpose: a bank pays interest on a
+   * deposit and a protocol pays a reward on a token, and only the second one
+   * needs a wallet history behind it when someone checks the figure. Tax
+   * treatment of the two also differs by jurisdiction — see tax/treatment.ts,
+   * where this is taxable on receipt everywhere except the UK.
+   */
+  "Yield / investment income",
 ] as const;
 
 export const DEFAULT_EXPENSE_CATEGORIES = [
@@ -33,7 +43,23 @@ export const DEFAULT_EXPENSE_CATEGORIES = [
   "Other",
 ] as const;
 
+/**
+ * Categories for the two legs of a stablecoin conversion.
+ *
+ * Both are transfers, and neither is a category the user picks from a dropdown
+ * during import — they are applied when a detected cash-out is confirmed. They
+ * are seeded like any other category so the row has a real destination, and they
+ * are labelled as transfers rather than spending, because putting a conversion
+ * under a spend category would put the user's own money straight back into their
+ * expense totals.
+ */
+export const DEFAULT_TRANSFER_CATEGORIES = [
+  "Stablecoin cash-out",
+  "Stablecoin purchase",
+] as const;
+
 export const DEFAULT_CATEGORIES = [
+  ...DEFAULT_TRANSFER_CATEGORIES,
   ...DEFAULT_INCOME_CATEGORIES,
   ...DEFAULT_EXPENSE_CATEGORIES,
   // The protected catch-all. Seeded like any other category so a row can always
