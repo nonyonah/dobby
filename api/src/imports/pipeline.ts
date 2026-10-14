@@ -35,6 +35,44 @@ export type PreparedReview = {
   proposedData?: Prisma.InputJsonValue;
 };
 
+/**
+ * Fingerprints in this batch that the user has already been shown.
+ *
+ * Covers two things, and the second is the one that was missing:
+ *
+ * 1. An **approved transaction** with the same fingerprint — the file was
+ *    imported before and dealt with.
+ * 2. A **pending review item** from another import — the same statement
+ *    re-issued by the bank, or saved through a different tool, is a different
+ *    file with different bytes and therefore a different content hash, carrying
+ *    identical rows. The first copy is normally still sitting in the queue when
+ *    the second arrives, so there was no transaction to match and every row went
+ *    in a second time. Approving the lot then double-counts the month.
+ *
+ * Scoped to PENDING and to other imports. A rejected row is one the user has
+ * already answered, and deliberately re-importing it has to stay possible.
+ *
+ * Exported so the rule can be tested without standing up extraction.
+ */
+export async function findDuplicateFingerprints(ownerClerkId: string, fingerprints: string[], importId: string): Promise<Set<string>> {
+  // Null is a row with no fingerprint at all, which can never match a fingerprint
+  // this batch produced — filtering it keeps the returned set honestly typed.
+  const wanted = fingerprints.filter((value): value is string => typeof value === "string" && value.length > 0);
+  if (wanted.length === 0) return new Set();
+  const [existing, pendingElsewhere] = await Promise.all([
+    prisma.transaction.findMany({ where: { ownerClerkId, fingerprint: { in: wanted } }, select: { fingerprint: true } }),
+    prisma.transactionReviewItem.findMany({
+      where: { ownerClerkId, fingerprint: { in: wanted }, status: ReviewStatus.PENDING, importId: { not: importId } },
+      select: { fingerprint: true },
+    }),
+  ]);
+  const seen = new Set<string>();
+  for (const item of [...existing, ...pendingElsewhere]) {
+    if (item.fingerprint) seen.add(item.fingerprint);
+  }
+  return seen;
+}
+
 export function fingerprintFor(date: string | undefined, amount: number | undefined, description: string | undefined) {
   return createHash("sha256").update([date ?? "", amount ?? "", description ?? ""].join("|").toLowerCase()).digest("hex");
 }
@@ -235,8 +273,7 @@ export async function persistReviewItems(ownerClerkId: string, record: { id: str
   });
 
   const fingerprints = enriched.map((item) => item.fingerprint);
-  const existing = await prisma.transaction.findMany({ where: { ownerClerkId, fingerprint: { in: fingerprints } }, select: { fingerprint: true } });
-  const existingFingerprints = new Set(existing.map((item) => item.fingerprint));
+  const existingFingerprints = await findDuplicateFingerprints(ownerClerkId, fingerprints, record.id);
   const reviewItems = enriched.map((item, index) => ({
     ownerClerkId,
     importId: record.id,
