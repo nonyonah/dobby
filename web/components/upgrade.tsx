@@ -11,6 +11,8 @@ import { usePlan } from "@/components/plan-provider";
 import { ApiError } from "@/lib/api-client";
 import { guidanceFor, guidanceText } from "@/lib/error-guidance";
 import { Banner } from "./ui/banner";
+import Link from "next/link";
+import { cn } from "cn";
 import { trialLength } from "@/lib/trial";
 
 /** The two cadences Dobby Pro is sold on. */
@@ -388,6 +390,50 @@ export function StartTrialButton({ className, size = "small" }: { className?: st
     <Button variant="primary" size={size} disabled={busy} onClick={() => void start()} className={className}>
       {busy ? "Starting…" : "Start free trial"}
     </Button>
+  );
+}
+
+/**
+ * Prompt for someone who has never started a trial.
+ *
+ * Shown for exactly one population: signed in, not Pro, and the trial was never
+ * started. The other two cases already have somewhere better to say so, and
+ * repeating them here would contradict the product:
+ *
+ * - A trial that is *running* is counted down by the pill in the top bar. A
+ *   second banner saying "start your free trial" while one is already running
+ *   asks for something they have.
+ * - A trial that *lapsed* gets `TrialExpiredBanner`, and the API refuses a
+ *   second window, so prompting here would offer a door that does not open.
+ *
+ * Not dismissible, and that is a considered choice. It disappears the moment the
+ * trial starts, which is the only thing that makes it go away — so dismissing
+ * it would mean a user with no way to reach the trial again from the dashboard.
+ */
+export function TrialStartBanner({ className }: { className?: string }) {
+  const { isPro, trialStarted, expired, loading } = usePlan();
+  if (loading || isPro || trialStarted || expired) return null;
+
+  return (
+    <div className={cn("px-4 py-3 sm:px-6", className)}>
+      <Banner
+        tone="review"
+        title="Try Dobby free for a week"
+        description="No card, and nothing is deleted either way. Import a statement or connect an email and see where you stand."
+        actions={
+          <>
+            <Link
+              href="/settings"
+              className="inline-flex h-8 items-center justify-center rounded-[50px] px-3 text-[13px] font-medium outline-none transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+              style={{ backgroundColor: "var(--secondary)", color: "var(--secondary-foreground)" }}
+            >
+              Import a statement
+            </Link>
+            <StartTrialButton />
+          </>
+        }
+      />
+    </div>
   );
 }
 

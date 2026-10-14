@@ -29,6 +29,7 @@ import { AGGREGATE_TIMEOUT_MS } from "@/lib/api-client";
 import { formatCurrency, getAppCurrency } from "@/lib/format";
 import { FEATURES } from "@/lib/features";
 import { NudgeCard } from "@/components/nudge-card";
+import { TrialStartBanner } from "@/components/upgrade";
 
 type ColumnId = "left" | "right";
 
@@ -252,6 +253,10 @@ export function Dashboard() {
 
   return (
     <div className="w-full px-6 pt-6 pb-10">
+      {/* Above the nudge, not below it. Both are asking for something, and the
+          nudge is time-sensitive by nature while the trial prompt is not — so
+          the one that ages should not push the one that does. */}
+      <TrialStartBanner className="mb-3" />
       <NudgeCard />
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
